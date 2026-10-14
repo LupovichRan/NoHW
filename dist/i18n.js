@@ -1,6 +1,14 @@
 let interfaceLanguage='he';try{interfaceLanguage=localStorage.getItem('homework-language')||'he'}catch{}if(!['he','en','ru','ar'].includes(interfaceLanguage))interfaceLanguage='he';
 const originalText=new WeakMap(),originalAttributes=new WeakMap();
-function t(text){return window.NOHOMEWORK_TRANSLATIONS[text]?.[interfaceLanguage]||text}
+let prefixKeys=null;
+function t(text){
+ const dict=window.NOHOMEWORK_TRANSLATIONS,hit=dict[text]?.[interfaceLanguage];if(hit)return hit;
+ if(interfaceLanguage==='he'||typeof text!=='string')return text;
+ for(const [re,forms] of window.NOHOMEWORK_PATTERNS||[]){const m=text.match(re);if(m&&forms[interfaceLanguage])return forms[interfaceLanguage](...m.slice(1))}
+ if(text.includes(' · ')){const parts=text.split(' · '),out=parts.map(x=>t(x));if(out.some((x,i)=>x!==parts[i]))return out.join(' · ')}
+ prefixKeys??=Object.keys(dict).filter(k=>/[:—·]$/.test(k)).sort((a,b)=>b.length-a.length);
+ for(const k of prefixKeys)if(text.length>k.length&&text.startsWith(k)){const tr=dict[k]?.[interfaceLanguage];if(tr)return tr+text.slice(k.length)}
+ return text}
 function siteLocale(){return {he:'he-IL',en:'en-US',ru:'ru-RU',ar:'ar'}[interfaceLanguage]}
 function languageName(){return{he:'עברית',en:'English',ru:'Русский',ar:'العربية'}[interfaceLanguage]}
 function translateInterface(){
