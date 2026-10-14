@@ -71,3 +71,4 @@ body{min-height:100vh;background-attachment:fixed}
 form{gap:14px}
 label{font-weight:500;color:var(--ink)}
 .formbuttons,.panel form>div:has(>button){gap:10px}
+[hidden]{display:none!important}
