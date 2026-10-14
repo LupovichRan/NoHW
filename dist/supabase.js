@@ -1,4 +1,4 @@
-const cloud={client:null,user:null,profile:null,ready:false,enabled:false,busy:false,notificationPolicies:[],permissions:[],profiles:[],staff:[],invitations:[],subscriptions:[],publicQuestionIds:new Set()};
+const cloud={roleRequests:[],client:null,user:null,profile:null,ready:false,enabled:false,busy:false,notificationPolicies:[],permissions:[],profiles:[],staff:[],invitations:[],subscriptions:[],publicQuestionIds:new Set()};
 const cloudStatus=document.getElementById('cloudStatus');
 function cloudMessage(text){cloudStatus.textContent=text}
 function cloudConfigured(){const c=window.NOHOMEWORK_SUPABASE||{};return !!(c.url&&c.publishableKey)}
@@ -6,7 +6,7 @@ function cloudGuard(){if(!cloud.ready)throw new Error('אין חשבון מחו�
 async function cloudResult(promise){const result=await promise;if(result.error)throw new Error(result.error.message);return result.data}
 async function cloudRefresh(){
  if(!cloud.user)return;const c=cloud.client;const enabled=await cloudResult(c.rpc('school_account_enabled'));if(!enabled){cloud.ready=false;document.getElementById('appContent').hidden=true;throw new Error('החשבון הושבת. פנו לאדמין.');}
- const profile=await cloudResult(c.from('school_profiles').select('*').eq('id',cloud.user.id).single());cloud.profile=profile;cloud.permissions=await cloudResult(c.from('school_class_permissions').select('*'));cloud.notificationPolicies=await cloudResult(c.from('school_notification_settings').select('*'));
+ const profile=await cloudResult(c.from('school_profiles').select('*').eq('id',cloud.user.id).single());cloud.profile=profile;try{cloud.roleRequests=await cloudResult(c.from('school_role_requests').select('*'))}catch{cloud.roleRequests=[]}cloud.permissions=await cloudResult(c.from('school_class_permissions').select('*'));cloud.notificationPolicies=await cloudResult(c.from('school_notification_settings').select('*'));
  const [institutions,classes,members,profiles,guardians,lessons,completions,privateQuestions,publicAnswers,drafts]=await Promise.all([
  cloudResult(c.from('school_schools').select('*')),cloudResult(c.from('school_classes').select('*')),cloudResult(c.from('school_members').select('*')),cloudResult(c.from('school_profiles').select('*')),cloudResult(c.from('school_guardians').select('*')),
  cloudResult(c.from('school_lessons').select('*').order('lesson_date',{ascending:false}).limit(500)),cloudResult(c.from('school_completions').select('*')),

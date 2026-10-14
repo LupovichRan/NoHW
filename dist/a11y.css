@@ -1,0 +1,34 @@
+/* Accessibility widget + user-selected accessibility modes. */
+.skip-link{position:absolute;inset-inline-start:8px;top:-60px;background:#111827;color:#fff;padding:10px 16px;border-radius:0 0 10px 10px;z-index:10000;text-decoration:none;font-weight:700}
+.skip-link:focus{top:0}
+#siteFooter{max-width:1220px;margin:0 auto;padding:18px 28px 90px;text-align:center;font-size:13px;color:var(--muted,#64748b)}
+#siteFooter a{color:inherit;text-decoration:underline}
+#a11yToggle{position:fixed;inset-inline-start:16px;bottom:16px;z-index:9998;width:52px;height:52px;border-radius:50%;border:2px solid #fff;background:#1d4ed8;color:#fff;font-size:26px;line-height:1;box-shadow:0 6px 18px #0004;display:flex;align-items:center;justify-content:center;cursor:pointer}
+#a11yToggle:focus-visible,#a11yPanel button:focus-visible,#a11yPanel a:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
+#a11yPanel{position:fixed;inset-inline-start:16px;bottom:80px;z-index:9999;width:min(340px,calc(100vw - 32px));max-height:calc(100vh - 110px);overflow:auto;background:#fff;color:#0f172a;border:1px solid #cbd5e1;border-radius:16px;box-shadow:0 18px 50px #0004;padding:16px;font-size:15px}
+#a11yPanel[hidden]{display:none!important}
+#a11yPanel h2{font-size:18px;margin:0 0 12px;-webkit-text-fill-color:currentColor}
+#a11yPanel .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#a11yPanel button.opt{border:1px solid #94a3b8;background:#f8fafc;color:#0f172a;border-radius:10px;padding:10px 8px;font-size:14px;line-height:1.3;cursor:pointer;min-height:44px}
+#a11yPanel button.opt[aria-pressed=true]{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
+#a11yPanel .row{display:flex;gap:8px;margin-top:10px}
+#a11yPanel .row>*{flex:1}
+#a11yPanel .reset{border:1px solid #b91c1c;color:#b91c1c;background:#fff;border-radius:10px;padding:10px;cursor:pointer;min-height:44px}
+#a11yPanel a{display:block;margin-top:12px;color:#1d4ed8;text-align:center}
+/* modes (applied on <html>) */
+html.a11y-contrast-dark body{background:#000!important;color:#fff!important}
+html.a11y-contrast-dark body>*:not(#a11yPanel):not(#a11yToggle),html.a11y-contrast-dark body>*:not(#a11yPanel):not(#a11yToggle) *{background-color:#000!important;background-image:none!important;color:#fff!important;border-color:#fff!important;box-shadow:none!important;-webkit-text-fill-color:#fff!important}
+html.a11y-contrast-dark body>*:not(#a11yPanel):not(#a11yToggle) a{color:#ffeb3b!important;-webkit-text-fill-color:#ffeb3b!important}
+html.a11y-contrast-light body{background:#fff!important;color:#000!important}
+html.a11y-contrast-light body>*:not(#a11yPanel):not(#a11yToggle),html.a11y-contrast-light body>*:not(#a11yPanel):not(#a11yToggle) *{background-color:#fff!important;background-image:none!important;color:#000!important;border-color:#000!important;box-shadow:none!important;-webkit-text-fill-color:#000!important}
+html.a11y-contrast-light body>*:not(#a11yPanel):not(#a11yToggle) a{color:#0000ee!important;-webkit-text-fill-color:#0000ee!important}
+html.a11y-grayscale body>*:not(#a11yPanel):not(#a11yToggle){filter:grayscale(1)}
+html.a11y-invert body>*:not(#a11yPanel):not(#a11yToggle){filter:invert(1) hue-rotate(180deg)}
+html.a11y-links body>*:not(#a11yPanel):not(#a11yToggle) a{background:#ffeb3b!important;color:#000!important;-webkit-text-fill-color:#000!important;text-decoration:underline!important;outline:2px solid #000}
+html.a11y-headings h1,html.a11y-headings h2,html.a11y-headings h3,html.a11y-headings h4{outline:3px solid #1d4ed8;outline-offset:3px;-webkit-text-fill-color:currentColor!important;background:none!important}
+html.a11y-font body,html.a11y-font button,html.a11y-font input,html.a11y-font select,html.a11y-font textarea{font-family:Arial,Helvetica,sans-serif!important;letter-spacing:.02em}
+html.a11y-spacing body{line-height:2!important;word-spacing:.12em}
+html.a11y-spacing p,html.a11y-spacing li,html.a11y-spacing label{line-height:2!important}
+html.a11y-cursor,html.a11y-cursor *{cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><path d='M6 3l30 20-13 3 8 14-6 3-8-14-9 9z' fill='black' stroke='white' stroke-width='3'/></svg>") 4 2,auto!important}
+html.a11y-motion *,html.a11y-motion *::before,html.a11y-motion *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+html.a11y-focus *:focus{outline:4px solid #f59e0b!important;outline-offset:3px!important}

@@ -72,3 +72,5 @@ form{gap:14px}
 label{font-weight:500;color:var(--ink)}
 .formbuttons,.panel form>div:has(>button){gap:10px}
 [hidden]{display:none!important}
+#siteFooter{color:var(--muted)}
+@media(prefers-color-scheme:dark){#a11yPanel{background:#fff}}
