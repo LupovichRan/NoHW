@@ -1,0 +1,73 @@
+/* Modern theme: loaded after the base styles in index.html; overrides only. */
+:root{--green:#0f766e;--green-2:#14b8a6;--accent:#6366f1;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f4f6fb;--card:#ffffff;--soft:#f1f5f9;--shadow:0 1px 2px #0f172a0a,0 8px 24px #0f172a0d;--shadow-lg:0 12px 40px #0f172a1f;--r:18px}
+html{scroll-behavior:smooth}
+body{background:radial-gradient(1000px 500px at 85% -10%,#c7d2fe55,transparent 60%),radial-gradient(900px 500px at 0% 0%,#99f6e444,transparent 55%),var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+.demo{background:linear-gradient(90deg,#eef2ff,#ecfeff);color:#4338ca;border-bottom:1px solid #e0e7ff;font-weight:500}
+header{position:sticky;top:0;z-index:20;background:#ffffffb8;backdrop-filter:saturate(180%) blur(14px);-webkit-backdrop-filter:saturate(180%) blur(14px);border-bottom:1px solid #e2e8f0cc;padding:14px 5%}
+.logo{background:linear-gradient(135deg,var(--green),var(--accent));border-radius:14px;box-shadow:0 6px 16px #6366f14d;padding:7px 13px}
+.brand{letter-spacing:-.5px}
+.roles{background:#e8edf5;border-radius:14px;padding:4px}
+.roles button{border-radius:11px;font-weight:500;transition:.18s}
+.roles button:hover{color:var(--ink)}
+.roles .active{background:#fff;color:var(--green);box-shadow:0 2px 8px #0f172a14;font-weight:700}
+.avatar{background:linear-gradient(135deg,#c7d2fe,#99f6e4);color:#134e4a}
+main{padding:40px 28px 60px}
+.eyebrow{color:var(--accent);font-weight:700;letter-spacing:.3px}
+h1{font-size:38px;font-weight:800;letter-spacing:-1.5px;background:linear-gradient(120deg,var(--ink) 30%,var(--accent));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;padding-bottom:3px}
+h2{font-weight:700;letter-spacing:-.3px}
+.button{background:linear-gradient(135deg,var(--green),var(--accent));border-radius:12px;padding:12px 22px;font-weight:600;box-shadow:0 8px 20px #6366f133;transition:transform .15s,box-shadow .15s,filter .15s}
+.button:hover{transform:translateY(-1px);box-shadow:0 12px 26px #6366f14d;filter:brightness(1.05)}
+.button:active{transform:none}
+.secondary{border-radius:12px;font-weight:500;transition:.15s}
+.secondary:hover{background:var(--soft)}
+.stat,.panel{background:var(--card);border:1px solid #e2e8f0b3;border-radius:var(--r);box-shadow:var(--shadow)}
+.stat{transition:transform .2s,box-shadow .2s}
+.stat:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.stat strong{font-weight:800;letter-spacing:-1px}
+.icon{background:linear-gradient(135deg,#eef2ff,#ccfbf1);border-radius:14px}
+.panel{padding:26px}
+.day{border-radius:14px;background:#fff;transition:.15s;font-weight:500}
+.day:hover{border-color:var(--accent);color:var(--accent)}
+.day.selected{background:linear-gradient(135deg,var(--green),var(--accent));border-color:transparent;color:#fff;box-shadow:0 8px 18px #6366f13d}
+.task{border-radius:16px;border-color:var(--line);background:#fff;transition:transform .15s,box-shadow .15s,border-color .15s}
+.task:hover{transform:translateY(-1px);box-shadow:var(--shadow);border-color:#c7d2fe}
+.subject{background:linear-gradient(135deg,#ede9fe,#e0f2fe);border-radius:14px}
+.badge{border-radius:999px;background:#fef3c7;color:#92400e;font-weight:600}
+.badge.done{background:#d1fae5;color:#065f46}
+.check{border-radius:10px;border-color:#cbd5e1;font-weight:600;transition:.15s}
+.check:hover{background:#f0fdfa;border-color:var(--green-2)}
+.check.checked{background:#d1fae5;border-color:#6ee7b7;color:#065f46}
+.notice{background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:16px}
+.progress{height:9px;background:#e2e8f0}
+.progress div{background:linear-gradient(90deg,var(--green-2),var(--accent));border-radius:10px;transition:width .4s}
+.side-row{border-color:var(--line)}
+.tip{background:linear-gradient(135deg,#eef2ff,#ecfeff);border:1px solid #e0e7ff;border-radius:16px;color:#312e81}
+dialog{border-radius:22px;box-shadow:var(--shadow-lg);animation:pop .18s ease-out}
+dialog::backdrop{background:#0f172a73;backdrop-filter:blur(4px)}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}}
+input,select,textarea{border-radius:11px;border:1px solid #cbd5e1;background:#fff;transition:border-color .15s,box-shadow .15s}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 4px #6366f126}
+button:focus-visible,.day:focus-visible{outline:3px solid #6366f180;outline-offset:2px}
+.footer,.empty{color:var(--muted)}
+@media(max-width:850px){h1{font-size:30px}header{padding:12px 14px}main{padding:24px 14px 50px}.panel{padding:18px}}
+@media(prefers-color-scheme:dark){
+:root{--ink:#e6eaf5;--muted:#94a3b8;--line:#263248;--bg:#0b1020;--card:#121a2e;--soft:#1a2440;--shadow:0 1px 2px #0006,0 8px 24px #0005;--shadow-lg:0 12px 40px #000a}
+body{background:radial-gradient(1000px 500px at 85% -10%,#4338ca33,transparent 60%),radial-gradient(900px 500px at 0% 0%,#0f766e33,transparent 55%),var(--bg)}
+.demo{background:#161d36;color:#a5b4fc;border-color:#263248}
+header{background:#0b1020b8;border-color:#263248}
+.roles{background:#1a2440}.roles .active{background:#263248;color:#5eead4}
+.stat,.panel,.task,.day,.secondary,input,select,textarea,dialog{background:var(--card);color:var(--ink);border-color:var(--line)}
+.day.selected{color:#fff}
+h1{background:linear-gradient(120deg,#fff 30%,#a5b4fc);-webkit-background-clip:text;background-clip:text}
+.icon,.subject{background:linear-gradient(135deg,#1e1b4b,#134e4a)}
+.notice{background:#2a2412;border-color:#5b4a14;color:#fde68a}
+.tip{background:#161d36;border-color:#263248;color:#c7d2fe}
+.badge{background:#3a2e0b;color:#fcd34d}.badge.done,.check.checked{background:#0b3a2e;color:#6ee7b7;border-color:#115e4a}
+.check{background:var(--card);color:#5eead4;border-color:var(--line)}
+.progress{background:#263248}
+}
+html{min-height:100%}
+body{min-height:100vh;background-attachment:fixed}
+form{gap:14px}
+label{font-weight:500;color:var(--ink)}
+.formbuttons,.panel form>div:has(>button){gap:10px}
