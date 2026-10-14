@@ -5,7 +5,7 @@ alter table school_invitations add constraint school_invitations_invite_role_che
 drop policy invitation_create on school_invitations;
 create policy invitation_create on school_invitations for insert to authenticated with check(created_by=auth.uid() and status='pending' and accepted_by is null and accepted_at is null and is_school_manager(school_id) and (invite_role<>'manager' or is_system_admin()) and (class_id is null or exists(select 1 from school_classes c where c.id=class_id and c.school_id=school_invitations.school_id)) and (invite_role<>'student' or class_id is not null) and (invite_role<>'parent' or (student_id is not null and exists(select 1 from school_members m join school_classes c on c.id=m.class_id where m.user_id=student_id and m.member_role='student' and c.school_id=school_invitations.school_id))));
 create or replace function public.accept_school_invitation(invitation_token uuid) returns void language plpgsql security definer set search_path=public as $$
-declare invite school_invitations%rowtype;user_email text;verified timestamptz;current_role text;
+declare invite school_invitations%rowtype;user_email text;verified timestamptz;existing_role text;
 begin
  if auth.uid() is null then raise exception 'Sign in first';end if;
  select lower(email),email_confirmed_at into user_email,verified from auth.users where id=auth.uid();
@@ -13,7 +13,7 @@ begin
  select * into invite from school_invitations where token=invitation_token for update;
  if not found or invite.status<>'pending' or invite.expires_at<=now() then raise exception 'Invitation expired or unavailable';end if;
  if invite.email<>user_email then raise exception 'Sign in with the invited email';end if;
- current_role:=school_role(auth.uid());if current_role not in('student',invite.invite_role) then raise exception 'Existing account role conflicts with invitation';end if;
+ existing_role:=school_role(auth.uid());if existing_role not in('student',invite.invite_role) then raise exception 'Existing account role conflicts with invitation';end if;
  update school_profiles set role=invite.invite_role where id=auth.uid();
  if invite.invite_role in('teacher','manager') then
   insert into school_staff(school_id,user_id,staff_role) values(invite.school_id,auth.uid(),invite.invite_role) on conflict(school_id,user_id) do update set staff_role=excluded.staff_role;

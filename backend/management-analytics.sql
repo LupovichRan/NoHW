@@ -60,7 +60,7 @@ grant execute on function public.set_school_account_active(uuid,boolean) to auth
 grant execute on function public.school_account_directory(uuid) to authenticated;
 grant execute on function public.record_school_usage(text,uuid) to authenticated;
 create or replace function public.accept_school_invitation(invitation_token uuid) returns void language plpgsql security definer set search_path=public as $$
-declare invite school_invitations%rowtype;user_email text;verified timestamptz;current_role text;
+declare invite school_invitations%rowtype;user_email text;verified timestamptz;existing_role text;
 begin
  if auth.uid() is null or not school_account_enabled() then raise exception 'Active account required';end if;
  select lower(email),email_confirmed_at into user_email,verified from auth.users where id=auth.uid();
@@ -68,7 +68,7 @@ begin
  select * into invite from school_invitations where token=invitation_token for update;
  if not found or invite.status<>'pending' or invite.expires_at<=now() then raise exception 'Invitation expired or unavailable';end if;
  if invite.email<>user_email then raise exception 'Sign in with the invited email';end if;
- current_role:=school_role(auth.uid());if current_role not in('student',invite.invite_role) then raise exception 'Existing account role conflicts with invitation';end if;
+ existing_role:=school_role(auth.uid());if existing_role not in('student',invite.invite_role) then raise exception 'Existing account role conflicts with invitation';end if;
  update school_profiles set role=invite.invite_role where id=auth.uid();
  if invite.invite_role in('teacher','manager') then
   insert into school_staff(school_id,user_id,staff_role) values(invite.school_id,auth.uid(),invite.invite_role) on conflict(school_id,user_id) do update set staff_role=excluded.staff_role;
