@@ -74,3 +74,7 @@ label{font-weight:500;color:var(--ink)}
 [hidden]{display:none!important}
 #siteFooter{color:var(--muted)}
 @media(prefers-color-scheme:dark){#a11yPanel{background:#fff}}
+#demoBar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;padding:10px 16px;background:linear-gradient(90deg,#fef3c7,#e0e7ff);border-bottom:1px solid #fde68a;font-size:14px;color:#1e1b4b}
+#demoBar #demoBarRoles{display:inline-flex;flex-wrap:wrap;gap:6px}
+#demoBar .button,#demoBar .secondary{padding:7px 12px;border-radius:10px;font-size:13px}
+@media(prefers-color-scheme:dark){#demoBar{background:linear-gradient(90deg,#3a2e0b,#1e1b4b);border-color:#5b4a14;color:#fde68a}}
