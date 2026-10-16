@@ -5,7 +5,7 @@ if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.
 const demo=document.querySelector('.demo');
 if(window.NOHOMEWORK_POC?.enabled&&demo&&!document.getElementById('pocReset')){
  const b=document.createElement('button');b.type='button';b.id='pocReset';b.textContent='איפוס נתוני דמו';
- b.onclick=()=>{if(!confirm(typeof t==='function'?t('לאפס את נתוני הדמו במכשיר הזה?'):'Reset?'))return;try{for(const k of Object.keys(localStorage))if(k.startsWith('homework-')&&k!=='homework-language')localStorage.removeItem(k)}catch{}location.reload()};
+ b.onclick=()=>{if(!confirm(typeof t==='function'?t('לאפס את נתוני הדמו במכשיר הזה?'):'Reset?'))return;try{for(const k of Object.keys(localStorage))if(k.startsWith('homework-')&&k!=='homework-language')localStorage.removeItem(k)}catch{}const done=()=>location.reload();try{const r=indexedDB.deleteDatabase('nohomework-materials');r.onsuccess=r.onerror=r.onblocked=done}catch{done()}};
  demo.append(b);
 }
 if(standalone)return;

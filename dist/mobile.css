@@ -46,3 +46,20 @@ body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
  @media(max-width:760px){header .roles[aria-label] .active{background:#0b3a2e;color:#5eead4}}
  #installBar{background:#0b3a2e;color:#b9f1e6}
 }
+/* class materials */
+.materialForm{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.materialButtons{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
+.materialGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px;margin-top:12px}
+.materialCard{margin:0;display:flex;flex-direction:column;gap:8px;background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:14px;padding:8px;font-size:13px}
+.materialCard figcaption{display:flex;flex-direction:column;gap:2px;color:var(--muted,#64748b);word-break:break-word}
+.materialCard figcaption b{color:var(--ink,#0f172a);font-size:14px}
+.materialThumb{border:0;padding:0;background:none;cursor:zoom-in;display:block;border-radius:10px;overflow:hidden;line-height:0}
+.materialThumb img{width:100%;height:130px;object-fit:cover}
+.materialActions{display:flex;gap:6px;flex-wrap:wrap}
+.materialActions button{padding:6px 12px;font-size:13px;min-height:36px}
+.uploaderRow{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line,#e2e8f0)}
+.uploaderRow input{width:22px;height:22px;min-height:0!important;margin:0}
+dialog.viewer{border:0;border-radius:16px;padding:12px;width:min(900px,96vw);max-width:96vw;max-height:94vh;overflow:auto;text-align:center}
+dialog.viewer img{max-width:100%;max-height:72vh;border-radius:10px}
+dialog.viewer p{margin:10px 0}
+@media(max-width:760px){#materialsPanel{order:5}#questionsPanel{order:6!important}dialog.viewer[open]{margin:auto;width:96vw;border-radius:16px}}

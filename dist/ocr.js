@@ -16,6 +16,7 @@ async function addBoardPhotos(files){
  finally{photosLoading=false;filesInput.disabled=false;showBoardPhotos();filesInput.value=''}
 }
 filesInput.onchange=()=>addBoardPhotos(Array.from(filesInput.files));
+const boardCamera=document.getElementById('boardCamera');document.getElementById('boardCameraBtn').onclick=()=>boardCamera.click();boardCamera.onchange=()=>{const files=Array.from(boardCamera.files);boardCamera.value='';addBoardPhotos(files)};
 document.getElementById('boardPanel').addEventListener('paste',e=>{const images=Array.from(e.clipboardData?.items||[]).filter(x=>x.kind==='file'&&x.type.startsWith('image/')).map(x=>x.getAsFile()).filter(Boolean);if(images.length){e.preventDefault();addBoardPhotos(images)}});
 function loadTesseract(){
  if(!tesseractPromise)tesseractPromise=new Promise((resolve,reject)=>{if(window.Tesseract){resolve(window.Tesseract);return}const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';script.onload=()=>window.Tesseract?resolve(window.Tesseract):reject(new Error('ספריית OCR לא נטענה.'));script.onerror=()=>{script.remove();reject(new Error('הורדת OCR נכשלה. בדקו חיבור לאינטרנט ונסו שוב.'))};document.head.append(script)}).catch(e=>{tesseractPromise=null;throw e});
