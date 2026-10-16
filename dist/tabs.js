@@ -36,8 +36,9 @@ function buildTabs(){
  const chip=document.createElement('button');chip.type='button';chip.id='roleChip';chip.setAttribute('aria-haspopup','dialog');
  const header=document.querySelector('header');header.append(chip);
  const sheet=document.createElement('dialog');sheet.id='roleSheet';sheet.className='sheet';document.body.append(sheet);
+ const pickPersona=r=>{sheet.textContent='';const h=document.createElement('h2');h.textContent='בתור מי להמשיך?';sheet.append(h);for(const person of personaList(r)){const b=document.createElement('button');b.type='button';b.className=person.id===personaId(r)?'button':'secondary';b.textContent=withCode(person)+(r==='parent'?' · '+(person.studentIds.length===1?'ילד אחד':person.studentIds.length+' ילדים'):'');b.onclick=()=>{personaSet(r,person.id);sheet.close();render()};sheet.append(b)}const x=document.createElement('button');x.type='button';x.className='plain';x.textContent='סגירה';x.onclick=()=>sheet.close();sheet.append(x)};
  chip.onclick=()=>{sheet.textContent='';const h=document.createElement('h2');h.textContent='החלפת תפקיד (תצוגת דמו)';sheet.append(h);
-  for(const [r,icon,label] of ROLE_CHOICES){const b=document.createElement('button');b.type='button';b.className=r===role?'button':'secondary';b.textContent=icon+' '+label;b.onclick=()=>{sheet.close();document.querySelector(`.roles[aria-label] [data-role="${r}"]`)?.click()};sheet.append(b)}
+  for(const [r,icon,label] of ROLE_CHOICES){const b=document.createElement('button');b.type='button';b.className=r===role?'button':'secondary';b.textContent=icon+' '+label;b.onclick=()=>{document.querySelector(`.roles[aria-label] [data-role="${r}"]`)?.click();if(cloud.ready||!personaList(r).length){sheet.close();return}pickPersona(r)};sheet.append(b)}
   const x=document.createElement('button');x.type='button';x.className='plain';x.textContent='סגירה';x.onclick=()=>sheet.close();sheet.append(x);sheet.showModal()};
  sheet.addEventListener('click',e=>{if(e.target===sheet)sheet.close()});
  tabState.panes=panes;tabState.nav=nav;tabState.chip=chip;tabState.built=true;
@@ -58,6 +59,6 @@ function renderTabs(){
  tabState.nav.textContent='';
  for(const k of tabs){const [icon,label]=TAB_DEFS[k];const b=document.createElement('button');b.type='button';b.dataset.tab=k;const i=document.createElement('span');i.className='ti';i.textContent=icon;const l=document.createElement('span');l.textContent=label;b.append(i,l);b.onclick=()=>showTab(k,true);tabState.nav.append(b)}
  const info=ROLE_CHOICES.find(r=>r[0]===role);
- tabState.chip.hidden=!!cloud.enabled;tabState.chip.textContent=info?info[1]+' '+(info[3]||info[2])+' ▾':'';
+ tabState.chip.hidden=!!cloud.enabled;tabState.chip.textContent=info?info[1]+' '+(personaName()||info[3]||info[2])+' ▾':'';
  showTab(tabState.active,roleChanged);
 }

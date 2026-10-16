@@ -1,5 +1,5 @@
 let localInvitations=[];try{localInvitations=JSON.parse(localStorage.getItem('homework-admin-invites')||'[]')}catch{}
-function adminId(){return cloud.ready?cloud.user.id:role==='admin'?'admin-demo':'manager-demo'}
+function adminId(){return cloud.ready?cloud.user.id:role==='admin'?'admin-demo':school.managerId}
 function canAdminSchool(schoolId=activeSchoolId()){return role==='admin'||role==='manager'&&school.staff.some(s=>s.schoolId===schoolId&&s.userId===adminId()&&s.role==='manager')}
 function invitationExpired(invite,now=Date.now()){return new Date(invite.expires_at).getTime()<=now}
 function invitationUrl(invite){return location.origin+location.pathname+'#invite='+invite.token}

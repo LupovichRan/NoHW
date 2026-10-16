@@ -110,7 +110,7 @@ const FLOWS={
 const PEOPLE_BY_ROLE={admin:['בית ספר','מנהל בית ספר','מורה','הורה','תלמיד'],manager:['מורה','הורה','תלמיד'],teacher:['הורה','תלמיד'],parent:['ילד']};
 const PEOPLE_ALLOWED={'בית ספר':['admin'],'מנהל בית ספר':['admin'],'מורה':['admin','manager'],'הורה':['admin','manager','teacher'],'תלמיד':['admin','manager','teacher'],'ילד':['parent']};
 const studentsOfClass=()=>school.students.filter(s=>s.classIds.includes(activeClassId()));
-const personNeedsEmail=d=>['מנהל בית ספר','מורה','הורה'].includes(d.who)||(d.who==='תלמיד'&&cloud.ready);
+const personNeedsEmail=d=>cloud.ready&&(['מנהל בית ספר','מורה','הורה'].includes(d.who)||d.who==='תלמיד');
 function personSummary(d){const l=[`• ${d.who}: ${d.name}`];if(d.studentName)l.push(`• של התלמיד: ${d.studentName}`);if(d.email)l.push(`• אימייל: ${d.email}`);if(d.who==='תלמיד'||d.who==='ילד'){const c=school.classes.find(x=>x.id===activeClassId());if(c)l.push(`• כיתה: ${c.name}`)}return l.join('\n')}
 function lessonSummary(d){const l=[`• מקצוע: ${d.subject}`];if(d.learned)l.push(`• נלמד: ${d.learned}`);if(d.concepts)l.push(`• מושגים: ${d.concepts}`);l.push(d.kind==='task'?`• שיעורי בית: ${d.details}`:'• שיעורי בית: אין');if(d.kind==='task'&&d.due)l.push(`• להכין עד: ${prettyDate(d.due)}`);return l.join('\n')}
 
@@ -199,7 +199,7 @@ async function createInvitation({invite_role,email,class_id,student_id,school_id
  chat.lastInviteUrl=location.origin+location.pathname+'#invite='+token;return chat.lastInviteUrl;
 }
 const linkPool=who=>who==='מורה'?school.teachers:school.students;
-const linkClasses=d=>{const person=linkPool(d.who).find(x=>x.id===d.personId);const mine=role==='teacher'?(activeTeacher()?.classIds||[]):school.classes.map(c=>c.id);return school.classes.filter(c=>mine.includes(c.id)&&!(person?.classIds||[]).includes(c.id))};
+const linkClasses=d=>{const person=linkPool(d.who).find(x=>x.id===d.personId);const mine=role==='teacher'?(activeTeacher()?.classIds||[]):role==='manager'?school.classes.filter(c=>(activeManager()?.schoolIds||[]).includes(c.schoolId)).map(c=>c.id):school.classes.map(c=>c.id);return school.classes.filter(c=>mine.includes(c.id)&&!(person?.classIds||[]).includes(c.id))};
 async function linkPersonAction(a){
  if(!['admin','manager','teacher'].includes(role)||(a.who==='מורה'&&role==='teacher'))throw new Error('אין לך הרשאה לחבר '+a.who+'.');
  const cls=school.classes.find(c=>c.id===a.classId);if(!cls)throw new Error('הכיתה לא נמצאה.');
@@ -214,6 +214,13 @@ async function addPersonAction(a){
  const needClass=()=>{if(!classId)throw new Error('בחרו כיתה קודם (בלשונית "עוד").')};
  const addLocalStudent=()=>{needClass();const id=crypto.randomUUID();school.students.push({id,name,classIds:[classId]});school.studentId=id;saveSchool();render()};
  if(a.who==='בית ספר'){if(cloud.ready){await cloudResult(cloud.client.from('school_schools').insert({name,owner_teacher_id:cloud.user.id}));await cloudRefresh()}else{const id=crypto.randomUUID();school.schools.push({id,name,ownerId:adminId()});school.schoolId=id;school.classId='';school.studentId='';saveSchool();render()}return `✓ נוסף בית הספר ${name}`}
+ if(!cloud.ready&&a.who!=='בית ספר'&&a.who!=='תלמיד'){
+  const id=crypto.randomUUID();
+  if(a.who==='ילד'){const parent=activeParent();if(!parent)throw new Error('בחרו הורה (החלפת תפקיד).');school.students.push({id,name,classIds:[]});parent.studentIds.push(id);school.studentId=id;saveSchool();render();return `✓ נוסף ${name} (קוד #${entityCode(id)}). אפשר לחבר אותו לכיתה דרך המורה.`}
+  if(a.who==='הורה'){if(!a.studentId)throw new Error('חסר תלמיד.');school.parents.push({id,name,studentIds:[a.studentId]});saveSchool();render();return `✓ נוסף ההורה ${name} (קוד #${entityCode(id)}), הורה של ${a.studentName||'התלמיד'}`}
+  if(a.who==='מורה'){school.teachers.push({id,name,classIds:[]});school.staff.push({schoolId,userId:id,role:'teacher'});saveSchool();render();return `✓ נוסף המורה ${name} (קוד #${entityCode(id)}). לשיוך לכיתה: "חיבור לכיתה נוספת".`}
+  if(a.who==='מנהל בית ספר'){school.managers.push({id,name,schoolIds:[schoolId]});school.staff.push({schoolId,userId:id,role:'manager'});saveSchool();render();return `✓ נוסף מנהל בית הספר ${name} (קוד #${entityCode(id)})`}
+ }
  if(a.who==='ילד'){if(cloud.ready){await cloudResult(cloud.client.rpc('create_managed_child',{child_name:name}));await cloudRefresh()}else addLocalStudent();return `✓ נוסף ${name}. ${cloud.ready?'אפשר להצטרף לכיתה עם קוד מהמורה.':''}`.trim()}
  if(a.who==='תלמיד'){if(!cloud.ready){addLocalStudent();return `✓ נוסף התלמיד ${name} לכיתה ${cls?.name||''}`}needClass();const url=await createInvitation({invite_role:'student',email:clip(a.email,120),class_id:classId,school_id:schoolId});return [`✓ נוצרה הזמנה לתלמיד ${name}`,'קישור: '+url]}
  if(a.who==='הורה'){if(!a.studentId)throw new Error('חסר תלמיד.');const url=await createInvitation({invite_role:'parent',email:clip(a.email,120),class_id:classId,student_id:a.studentId,school_id:schoolId});return [`✓ נוצרה הזמנה להורה ${name}`,'קישור: '+url]}
