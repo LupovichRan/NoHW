@@ -29,63 +29,106 @@ function subjectsIn(text){const found=[];for(const [s,words] of Object.entries(S
 
 // ---------- local Hebrew parser ----------
 function cleanDetails(seg){return seg.replace(/\s*עד (?:מחרתיים|מחר|יום \S+|\d{1,2}[./]\d{1,2})/,'').replace(/^[\s,:\-–]+|[\s,.:\-–]+$/g,'').trim()}
+const hasDue=s=>/מחרתיים|מחר|עד (?:יום )?(?:ראשון|שני|שלישי|רביעי|חמישי)|עד \d{1,2}[./]\d{1,2}/.test(s);
+const UPDATEISH=/למדנו|למדו|שיעורי בית|להכין|עמוד\s*\d|תרגיל|לפתור|לקרוא/;
+function extractLearned(s){const m=s.match(/(?:למדנו|למדו|נלמד|למדנו על|נושא(?: השיעור)?\s*[:\-]?)\s+(.+?)(?=\s*[.,]?\s*(?:שיעורי בית|שב\b|להכין|לפתור|לקרוא|לכתוב|עמוד|תרגיל|מושגים|אין שיעורי|$))/);return m?m[1].replace(/^(?:על|את)\s+/,'').trim():''}
+function extractHomework(s){const m=s.match(/(?:שיעורי בית|שב"?ב|משימה|להכין|לפתור|לקרוא|לכתוב|עמוד\s*\d|תרגיל)[\s\S]*/);return m?cleanDetails(m[0].replace(/^(?:שיעורי בית|שב"?ב|משימה)\s*[:\-]?\s*/,'')):''}
 function parseLessonSegments(text){
  const parts=text.split(/\n+|[.;]\s+|\sוגם\s/).map(s=>s.trim()).filter(Boolean);
  const items=[];let current=null;
- for(const seg of parts){
-  const subs=subjectsIn(seg);
-  if(subs.length){current={subject:subs[0],text:seg};items.push(current)}else if(current)current.text+=' . '+seg;
- }
+ for(const seg of parts){const subs=subjectsIn(seg);if(subs.length){current={subject:subs[0],text:seg};items.push(current)}else if(current)current.text+=' . '+seg}
  return items.map(it=>{
   const s=it.text,out={type:'save_lesson',subject:it.subject,kind:'task',details:'',due:null,topic:'',summary:'',concepts:''};
   const none=/אין שיעורי בית|בלי שיעורי בית|לא נתתי שיעורי בית|אין משימה/.test(s);
-  const learned=s.match(/(?:למדנו|למדו|נלמד|למדנו על|נושא(?: השיעור)?\s*[:\-]?)\s+(.+?)(?=\s*[.,]?\s*(?:שיעורי בית|שב\b|להכין|לפתור|לקרוא|לכתוב|עמוד|תרגיל|מושגים|אין שיעורי|$))/);
-  if(learned){out.summary=learned[1].replace(/^(?:על|את)\s+/,'').trim();out.topic=out.summary.split(/\s+/).slice(0,4).join(' ')}
+  out.summary=extractLearned(s);out.topic=out.summary.split(/\s+/).slice(0,4).join(' ');
   const concepts=s.match(/מושגים(?: חדשים)?\s*[:\-]?\s*(.+?)(?=\s*(?:שיעורי בית|$))/);if(concepts)out.concepts=concepts[1].trim();
-  const hw=s.match(/(?:שיעורי בית|שב"?ב|משימה|להכין|לפתור|לקרוא|לכתוב|עמוד\s*\d|תרגיל)[\s\S]*/);
-  if(none){out.kind='none'}else if(hw){out.details=cleanDetails(hw[0].replace(/^(?:שיעורי בית|שב"?ב|משימה)\s*[:\-]?\s*/,''));out.due=parseDue(s)}
+  if(none)out.kind='none';else{out.details=extractHomework(s);if(out.details&&hasDue(s))out.due=parseDue(s)}
   if(!none&&!out.details)out.kind='ask';
   return out});
 }
-function listWeekTasks(filter){const rs=classRecords().filter(r=>r.kind==='task'&&filter(r));return rs}
+function listWeekTasks(filter){return classRecords().filter(r=>r.kind==='task'&&filter(r))}
 function taskLine(r){return `• ${r.subject}: ${r.details}${r.due?' (עד '+prettyDate(r.due)+')':''} — ${r.done?'הוכן ✓':'ממתין'}`}
 function lessonLines(day){const out=[];for(const r of classRecords().filter(r=>r.day===day)){const l=r.lesson;if(l&&(l.summary||l.topic))out.push(`• ${r.subject}: ${l.topic||''}${l.summary&&l.summary!==l.topic?' — '+l.summary:''}`)}return out}
 function missingSubjects(day){const have=new Set(classRecords().filter(r=>r.day===day).map(r=>r.subject));return subjects.filter(s=>!have.has(s))}
+function openSubjects(){return [...new Set(classRecords().filter(r=>r.kind==='task'&&!r.done).map(r=>r.subject))]}
+
+// ---------- guided flows: the assistant asks one focused question at a time ----------
+function newLessonFlow(prefill={}){return {type:'lesson',step:'subject',asked:{learned:!!prefill.summary||!!prefill.kind,due:false},d:{subject:null,summary:'',topic:'',concepts:'',kind:null,details:'',due:null,...prefill}}}
+function lessonQuestion(f){
+ const d=f.d;
+ if(!d.subject){const open=missingSubjects(todayKey());return {step:'subject',reply:'לאיזה מקצוע נעדכן?',chips:[...open,...subjects.filter(s=>!open.includes(s))]}}
+ if(!f.asked.learned)return {step:'learned',reply:`מה למדתם היום ב${d.subject}? אפשר לכתוב בקצרה, או לדלג.`,chips:['דלג']};
+ if(d.kind===null)return {step:'hw',reply:`יש שיעורי בית ב${d.subject}? כתבו אותם, או לחצו "אין".`,chips:['אין שיעורי בית']};
+ if(d.kind==='task'&&!d.due&&!f.asked.due)return {step:'due',reply:'עד מתי להכין?',chips:['מחר','מחרתיים','יום ראשון','יום שני']};
+ return null}
+function flowHandle(f,t0){
+ const start=t0==='__start__';
+ if(!start&&/^(ביטול|עזוב|תבטל|לא משנה)/.test(t0)){chat.flow=null;return {reply:'בסדר, לא שמרתי כלום.',actions:[],chips:[]}}
+ if(f.type==='ask')return askFlowHandle(f,t0);
+ if(f.type==='done')return doneFlowHandle(f,t0);
+ if(!start)switch(f.step){
+  case 'subject':{const s=subjectsIn(t0)[0];if(!s)return {reply:'לא זיהיתי מקצוע. איזה מהם?',chips:subjects,actions:[]};f.d.subject=s;break}
+  case 'learned':if(!/^(דלג|אין|לא|כלום|בלי)\b/.test(t0)){f.d.summary=t0;f.d.topic=t0.split(/\s+/).slice(0,4).join(' ')}f.asked.learned=true;break;
+  case 'hw':if(/^(אין|לא|בלי)/.test(t0))f.d.kind='none';else{f.d.kind='task';f.d.details=cleanDetails(t0);if(hasDue(t0)){f.d.due=parseDue(t0);f.asked.due=true}}break;
+  case 'due':f.d.due=parseDue(/עד/.test(t0)?t0:'עד '+t0);f.asked.due=true;break;
+ }
+ const q=lessonQuestion(f);
+ if(q){f.step=q.step;return {reply:q.reply,chips:q.chips,actions:[]}}
+ chat.flow=null;
+ return {reply:'',actions:[{type:'save_lesson',...f.d,due:f.d.kind==='task'?(f.d.due||dateKeyPlus(1)):null}],followUp:'more'};
+}
+function askFlowHandle(f,t0){
+ if(t0!=='__start__'){if(f.step==='subject'){const s=subjectsIn(t0)[0];if(!s)return {reply:'על איזה מקצוע השאלה?',chips:subjects,actions:[]};f.d.subject=s}
+ else if(f.step==='text')f.d.text=t0}
+ if(!f.d.subject){f.step='subject';return {reply:'על איזה מקצוע השאלה?',chips:subjects,actions:[]}}
+ if(!f.d.text){f.step='text';return {reply:'מה לשאול את המורה?',chips:[],actions:[]}}
+ chat.flow=null;return {reply:'',actions:[{type:'ask_teacher',subject:f.d.subject,text:f.d.text}]};
+}
+function doneFlowHandle(f,t0){
+ if(/^(הכול|הכל|כולם)/.test(t0)){chat.flow=null;return {reply:'',actions:openSubjects().map(s=>({type:'mark_done',subject:s}))}}
+ const s=subjectsIn(t0)[0];if(!s)return {reply:'איזה מקצוע הכנת?',chips:[...openSubjects(),'הכול'],actions:[]};
+ chat.flow=null;return {reply:'',actions:[{type:'mark_done',subject:s}]};
+}
 
 function localBrain(text){
- const actions=[];let reply='';
- const t0=text.trim();
- const subs=subjectsIn(t0);
- const teacher=role==='teacher';
- if(chat.pendingSubject){
-  const subject=chat.pendingSubject;chat.pendingSubject=null;
-  const p=chat.pendingLesson||{};chat.pendingLesson=null;
-  if(/^(אין|לא|בלי)/.test(t0))actions.push({...p,type:'save_lesson',subject,kind:'none'});
-  else actions.push({...p,type:'save_lesson',subject,kind:'task',details:cleanDetails(t0),due:parseDue(t0)});
-  return {reply:'',actions};
- }
+ const t0=text.trim(),subs=subjectsIn(t0),teacher=role==='teacher';
+ if(chat.flow)return flowHandle(chat.flow,t0);
  if(/^(עזרה|מה אפשר|מה אתה יודע)/.test(t0))return {reply:helpText(),actions:[]};
+ if(/^(תודה|סיימתי|זהו|מעולה)\s*[.!]?$/.test(t0)&&teacher)return {reply:'מעולה! אני כאן כשצריך.',actions:[]};
  if(teacher){
-  if(/מה (?:כבר )?(?:עודכן|נשמר|יש)/.test(t0)&&!/שיעורי בית ב/.test(t0)){
+  if(/^(עדכון|עדכן|לעדכן|נעדכן|שיעור חדש)/.test(t0)&&!UPDATEISH.test(t0)){chat.flow=newLessonFlow(subs.length?{subject:subs[0]}:{});return flowHandle(chat.flow,'__start__')}
+  if(/מה (?:כבר )?(?:עודכן|נשמר)/.test(t0)){
    const rs=classRecords().filter(r=>r.day===todayKey());
-   if(!rs.length)return {reply:'עוד לא עודכן כלום היום. אפשר לכתוב לי, למשל: "בחשבון למדנו שברים, שיעורי בית עמוד 42 עד מחר".',actions:[]};
-   return {reply:'מה שעודכן היום:\n'+rs.map(r=>r.kind==='task'?taskLine(r).replace(/ — .*/,''):`• ${r.subject}: אין שיעורי בית`).join('\n'),actions:[]};
+   if(!rs.length)return {reply:'עוד לא עודכן כלום היום. נתחיל?',chips:['עדכון שיעור'],actions:[]};
+   const miss=missingSubjects(todayKey());
+   return {reply:'מה שעודכן היום:\n'+rs.map(r=>r.kind==='task'?taskLine(r).replace(/ — .*/,''):`• ${r.subject}: אין שיעורי בית`).join('\n')+(miss.length?`\n\nעוד לא עודכן: ${miss.join(', ')}.`:''),chips:miss.length?['עדכון שיעור']:[],actions:[]};
   }
   if(subs.length){
    const items=parseLessonSegments(t0);
-   if(items.length){
-    const ask=items.find(i=>i.kind==='ask');
-    if(ask&&items.length===1){chat.pendingSubject=ask.subject;chat.pendingLesson={topic:ask.topic,summary:ask.summary,concepts:ask.concepts};return {reply:`שמרתי את מה שלמדו ב${ask.subject}. יש שיעורי בית? כתבו אותם, או "אין".`,actions:[]}}
-    for(const it of items)if(it.kind!=='ask')actions.push(it);
-    if(actions.length)return {reply:'',actions};
+   if(items.length===1){const it=items[0];
+    if(it.kind==='ask'){chat.flow=newLessonFlow({subject:it.subject,summary:it.summary,topic:it.topic,concepts:it.concepts});return flowHandle(chat.flow,'__start__')}
+    if(it.kind==='task'&&!it.due){chat.flow=newLessonFlow({subject:it.subject,summary:it.summary,topic:it.topic,concepts:it.concepts,kind:'task',details:it.details});return flowHandle(chat.flow,'__start__')}
    }
+   const ready=items.filter(i=>i.kind!=='ask');
+   if(ready.length)return {reply:'',actions:ready,followUp:'more'};
+  }else if(UPDATEISH.test(t0)){
+   chat.flow=newLessonFlow({summary:extractLearned(t0),topic:extractLearned(t0).split(/\s+/).slice(0,4).join(' '),...(extractHomework(t0)?{kind:'task',details:extractHomework(t0),...(hasDue(t0)?{due:parseDue(t0)}:{})}:{})});
+   chat.flow.asked.due=!!chat.flow.d.due;return flowHandle(chat.flow,'__start__');
   }
-  return {reply:'לא הבנתי איזה מקצוע. כתבו למשל: "בעברית לקרוא את הסיפור ולענות על שאלות 1–3 עד יום שלישי".',actions:[]};
+  return {reply:'אני יכול לעדכן שיעור צעד אחר צעד. נתחיל?',chips:['עדכון שיעור'],actions:[]};
  }
  // parent / child
- if(/^(?:שאל(?:ו)? את המורה|שאלה למורה)/.test(t0)||(/\?\s*$/.test(t0)&&/(?:המורה|שאלה)/.test(t0)))return {reply:'',actions:[{type:'ask_teacher',subject:subs[0]||null,text:t0.replace(/^(?:שאל(?:ו)? את המורה|שאלה למורה)\s*[:\-]?\s*/,'')}]};
- if(/(?:סיימתי|הכנתי|סיים|הכין|עשיתי|עשה)/.test(t0)&&subs.length)return {reply:'',actions:subs.map(s=>({type:'mark_done',subject:s}))};
- if(/מה למדו|מה למדנו|סיכום (?:ה)?שיעור/.test(t0)){const lines=lessonLines(todayKey());return {reply:lines.length?'מה למדו היום:\n'+lines.join('\n'):'המורה עוד לא פרסם סיכום שיעור להיום.',actions:[]}}
+ if(/^(?:שאל(?:ו)? את המורה|שאלה למורה)/.test(t0)||(/\?\s*$/.test(t0)&&/(?:המורה|שאלה)/.test(t0))){
+  chat.flow={type:'ask',step:subs.length?'text':'subject',d:{subject:subs[0]||null,text:t0.replace(/^(?:שאל(?:ו)? את המורה|שאלה למורה)\s*[:\-]?\s*/,'').trim()}};
+  return flowHandle(chat.flow,'__start__');
+ }
+ if(/(?:סיימתי|הכנתי|סיים|הכין|עשיתי|עשה)/.test(t0)){
+  if(subs.length)return {reply:'',actions:subs.map(s=>({type:'mark_done',subject:s}))};
+  const open=openSubjects();if(!open.length)return {reply:'אין משימות פתוחות כרגע. 🎉',actions:[]};
+  if(open.length===1)return {reply:'',actions:[{type:'mark_done',subject:open[0]}]};
+  chat.flow={type:'done',step:'subject',d:{}};return {reply:'איזה מקצוע הכנת?',chips:[...open,'הכול'],actions:[]};
+ }
+ if(/מה למדו|מה למדנו|מה למדתי|סיכום (?:ה)?שיעור/.test(t0)){const lines=lessonLines(todayKey());return {reply:lines.length?'מה למדו היום:\n'+lines.join('\n'):'המורה עוד לא פרסם סיכום שיעור להיום.',actions:[]}}
  if(/(?:מה|יש|צריך|להכין|שיעורי בית|משימות)/.test(t0)){
   const w=dayWord(t0);let rs,title;
   if(w==='tomorrow'){rs=listWeekTasks(r=>r.due===dateKeyPlus(1));title='מה צריך להכין למחר'}
@@ -96,13 +139,14 @@ function localBrain(text){
   const miss=missingSubjects(todayKey());
   let reply=rs.length?title+':\n'+rs.map(taskLine).join('\n'):'אין משימות להצגה. 🎉';
   if(miss.length&&w!=='week')reply+=`\n\nעוד אין עדכון מהמורה ב: ${miss.join(', ')}.`;
-  return {reply,actions:[]};
+  const open=openSubjects();
+  return {reply,actions:[],chips:open.length?['הכנתי את '+open[0]]:[]};
  }
  return {reply:helpText(),actions:[]};
 }
 function helpText(){
- if(role==='teacher')return 'אני עוזר לסדר את הכיתה. אפשר לכתוב לי בחופשיות:\n• "בחשבון למדנו שברים, שיעורי בית עמוד 42 תרגילים 1–6 עד מחר"\n• "באנגלית אין שיעורי בית"\n• "מה עודכן היום?"\nאני שומר, מסדר ומציג לכיתה, ואפשר לבטל.';
- if(role==='parent'||role==='child')return 'אפשר לשאול אותי:\n• "מה יש להכין היום?" או "מה למחר?"\n• "מה למדו היום?"\n• "הכנתי את החשבון"\n• "שאל את המורה איך פותרים תרגיל 3"';
+ if(role==='teacher')return 'אני עוזר לסדר את הכיתה. אפשר לכתוב לי בחופשיות ("בחשבון למדנו שברים, שיעורי בית עמוד 42 עד מחר"), או לבקש "עדכון שיעור" ואשאל אותך צעד אחר צעד. אפשר גם לשאול "מה עודכן היום?".';
+ if(role==='parent'||role==='child')return 'אפשר לשאול אותי:\n• "מה יש להכין היום?" או "מה למחר?"\n• "מה למדו היום?"\n• "הכנתי את החשבון"\n• "שאל את המורה" ואשאל מה לשאול';
  return 'כאן אפשר לשאול על הכיתות והמורים. את ההגדרות עצמן (כיתות, מורים, הזמנות) תמצאו בלשונית "ניהול".';
 }
 
@@ -117,7 +161,7 @@ async function llmBrain(text){
  const cfg=ASSIST_CFG();const res=await fetch(cfg.endpoint,{method:'POST',headers:{'Content-Type':'application/json',...(cfg.apiKey?{apikey:cfg.apiKey}:{})},body:JSON.stringify({message:text,history:chat.history.slice(-8).map(m=>({from:m.from,text:m.text})),context:assistContext()})});
  if(!res.ok)throw new Error('assistant '+res.status);
  const data=await res.json();if(typeof data.reply!=='string')throw new Error('bad reply');
- return {reply:data.reply,actions:Array.isArray(data.actions)?data.actions:[]};
+ return {reply:data.reply,actions:Array.isArray(data.actions)?data.actions:[],chips:Array.isArray(data.suggestions)?data.suggestions.filter(x=>typeof x==='string').slice(0,5).map(x=>x.slice(0,40)):[]};
 }
 
 // ---------- validated actions ----------
@@ -186,8 +230,10 @@ function chatDraw(){
  log.scrollTop=log.scrollHeight;
  const cfg=ASSIST_CFG();$a('assistantMode').textContent=cfg.enabled&&cfg.endpoint?'מצב חכם':'מצב בסיסי';
  const chips=$a('chatChips');chips.textContent='';
- const byRole={teacher:[['בחשבון למדנו ... שיעורי בית ... עד מחר','fill'],['באנגלית אין שיעורי בית היום','fill'],['מה עודכן היום?','send']],parent:[['מה יש להכין היום?','send'],['מה למדו היום?','send'],['שאל את המורה ...','fill']],child:[['מה יש להכין היום?','send'],['מה למדתי היום?','send'],['הכנתי את החשבון','fill']],manager:[['עזרה','send']],admin:[['עזרה','send']]};
- for(const [text,mode] of byRole[role]||[]){const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=()=>{if(mode==='send')chatSend(text);else{$a('chatInput').value=text;$a('chatInput').focus()}};chips.append(b)}
+ const last=chat.history[chat.history.length-1];
+ const byRole={teacher:['עדכון שיעור','מה עודכן היום?','עזרה'],parent:['מה יש להכין היום?','מה למדו היום?','שאל את המורה'],child:['מה יש להכין היום?','מה למדתי היום?','הכנתי'],manager:['עזרה'],admin:['עזרה']};
+ const list=(last&&last.from==='bot'&&last.chips&&last.chips.length)?last.chips:(chat.flow?[]:(byRole[role]||[]));
+ for(const text of list){const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=()=>chatSend(text);chips.append(b)}
  if(chat.pendingPhoto){chips.textContent='';for(const s of subjects){const b=document.createElement('button');b.type='button';b.textContent=s;b.onclick=()=>chatPhotoSubject(s);chips.append(b)}}
 }
 function chatPush(m){chat.history.push({...m,at:Date.now()});chatSave();chatDraw()}
@@ -197,11 +243,12 @@ async function chatSend(raw){
  let result;
  try{
   const cfg=ASSIST_CFG();
-  if(cfg.enabled&&cfg.endpoint&&!chat.pendingSubject){try{result=await llmBrain(text)}catch(e){result=localBrain(text);if(!chat.noticed){chat.noticed=true;result.reply=(result.reply?result.reply+'\n\n':'')+'(העוזר החכם לא זמין כרגע, אני עובד במצב בסיסי)'}}}
+  if(cfg.enabled&&cfg.endpoint&&!chat.flow&&!/^(עדכון שיעור|עדכון|שאל את המורה|הכנתי)\b/.test(text)){try{result=await llmBrain(text)}catch(e){result=localBrain(text);if(!chat.noticed){chat.noticed=true;result.reply=(result.reply?result.reply+'\n\n':'')+'(העוזר החכם לא זמין כרגע, אני עובד במצב בסיסי)'}}}
   else result=localBrain(text);
   const {lines,undoable}=await runActions(result.actions);
   const reply=result.reply||(lines.length?'':'בסדר.');
-  chat.busy=false;chatPush({from:'bot',text:reply||'סידרתי:',card:lines.length?lines:null,undo:undoable||undefined});
+  chat.busy=false;chatPush({from:'bot',text:reply||'סידרתי:',card:lines.length?lines:null,undo:undoable||undefined,chips:result.chips||undefined});
+  if(result.followUp==='more'&&lines.some(l=>l.startsWith('✓'))){const miss=missingSubjects(todayKey());chatPush(miss.length?{from:'bot',text:'רוצים לעדכן גם מקצוע אחר?',chips:[...miss,'סיימתי']}:{from:'bot',text:'הכול מעודכן להיום. 🎉'})}
  }catch(e){chat.busy=false;chatPush({from:'bot',text:'משהו השתבש: '+(e.message||e)})}
 }
 function chatUndo(m){if(!chat.lastSnapshot)return;try{records=JSON.parse(chat.lastSnapshot);save();render();m.undo=false;chat.lastSnapshot=null;chatSave();chatPush({from:'bot',text:'ביטלתי את העדכון האחרון.'})}catch{}}
@@ -211,8 +258,15 @@ async function chatPhotoSubject(subject){
  try{matEl('materialSubject').value=subject;matEl('materialKind').value=role==='teacher'?'board':'notebook';matEl('materialCaption').value='';await matAddFiles([file]);const status=matEl('materialsStatus').textContent||'';chat.busy=false;chatPush({from:'bot',text:status.includes('✓')?status:(status||'אין לך הרשאה להעלות חומרים. מורה יכול לסמן תלמיד כמעלה חומרים.')})}
  catch(e){chat.busy=false;chatPush({from:'bot',text:'הצילום לא נשמר: '+(e.message||e)})}
 }
-function assistantWelcome(){if(chat.history.length)return;chat.history.push({from:'bot',text:{teacher:'שלום! ספרו לי מה קרה בשיעור ומה שיעורי הבית, ואני אסדר הכול ואציג להורים ולתלמידים. אפשר גם לצלם את הלוח.',parent:'שלום! אפשר לשאול אותי מה צריך להכין, מה למדו, או לשלוח שאלה למורה.',child:'היי! שאלו אותי מה צריך להכין היום, או כתבו לי כשסיימתם משימה.',manager:'שלום! אני כאן לשאלות על הכיתות. את ההגדרות תמצאו בלשונית "ניהול".',admin:'שלום! אני כאן לשאלות. את ניהול המערכת תמצאו בלשונית "ניהול".'}[role]||'שלום!',at:Date.now()})}
-function renderAssistant(){if(!$a('assistantPanel'))return;const stu=(typeof activeStudent==='function'?activeStudent():null)?.name,cls=school.classes.find(c=>c.id===activeClassId())?.name;$a('assistantContext').textContent=[['parent','child'].includes(role)?stu:'',cls].filter(Boolean).join(' · ')||'בחירת כיתה';$a('assistantContext').onclick=()=>{if(typeof openMoreItem==='function')openMoreItem('classPickerPanel')};if(chat.loadedRole!==role){chatLoad();chat.pendingSubject=null;chat.pendingPhoto=null}assistantWelcome();chatDraw()}
+function assistantWelcome(){
+ const day=todayKey();if(chat.history.some(m=>m.daily===day))return;
+ let m;
+ if(role==='teacher'){const miss=missingSubjects(day);m=miss.length?{text:`בוקר טוב! היום עוד לא עודכנו: ${miss.join(', ')}. נעדכן?`,chips:['עדכון שיעור',...miss]}:{text:'הכול מעודכן להיום. אפשר לשאול אותי כל דבר, או לצלם את הלוח.',chips:['מה עודכן היום?']}}
+ else if(role==='parent'||role==='child'){const open=openSubjects();m=open.length?{text:`היי! ${open.length===1?'יש משימה אחת להכנה':'יש '+open.length+' משימות להכנה'}: ${open.join(', ')}. רוצים לראות את הפירוט?`,chips:['מה יש להכין היום?','מה למדו היום?']}:{text:'היי! אין משימות פתוחות כרגע. 🎉',chips:['מה למדו היום?']}}
+ else m={text:'שלום! אני כאן לשאלות על הכיתות. את ההגדרות תמצאו בלשונית "ניהול".',chips:['עזרה']};
+ chat.history.push({from:'bot',daily:day,at:Date.now(),...m});chatSave();
+}
+function renderAssistant(){if(!$a('assistantPanel'))return;const stu=(typeof activeStudent==='function'?activeStudent():null)?.name,cls=school.classes.find(c=>c.id===activeClassId())?.name;$a('assistantContext').textContent=[['parent','child'].includes(role)?stu:'',cls].filter(Boolean).join(' · ')||'בחירת כיתה';$a('assistantContext').onclick=()=>{if(typeof openMoreItem==='function')openMoreItem('classPickerPanel')};if(chat.loadedRole!==role){chatLoad();chat.flow=null;chat.pendingPhoto=null}assistantWelcome();chatDraw()}
 
 $a('chatForm').onsubmit=e=>{e.preventDefault();chatSend()};
 $a('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();chatSend()}});
