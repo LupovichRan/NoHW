@@ -1,9 +1,9 @@
 -- Run once, after class-materials.sql (or after managed-children.sql).
--- The class timetable: which lessons there are on each weekday (0 = Sunday ... 4 = Thursday).
+-- The class timetable: which lessons there are on each weekday (0 = Sunday ... 5 = Friday).
 create table public.school_timetable(
  id uuid primary key default gen_random_uuid(),
  class_id uuid not null references public.school_classes(id) on delete cascade,
- weekday integer not null check(weekday between 0 and 4),
+ weekday integer not null check(weekday between 0 and 5),
  start_time time not null,
  end_time time not null check(end_time>start_time),
  subject text not null check(length(subject) between 1 and 40),

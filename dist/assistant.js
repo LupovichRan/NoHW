@@ -7,11 +7,11 @@ const chat={history:[],busy:false,flow:null,awaitPhoto:null,pendingPhoto:null,la
 const $a=id=>document.getElementById(id);
 
 // ---------- dates ----------
-const dayIdx=()=>Math.min(new Date().getDay(),4);
+const dayIdx=()=>Math.min(new Date().getDay(),5);
 const todayKey=()=>key(dates[dayIdx()]);
 const dateKeyPlus=n=>key(new Date(Date.now()+n*864e5));
 function prettyDate(k){const d=new Date(k+'T12:00:00');return `${WEEKDAYS[d.getDay()]} ${d.getDate()}.${d.getMonth()+1}`}
-function dueOptions(){const out=[];for(let n=1;n<=9&&out.length<4;n++){const d=new Date(Date.now()+n*864e5);if(d.getDay()>=5)continue;const k=key(d);out.push({label:(out.length===0?'מחר, ':'')+prettyDate(k),value:k})}return out}
+function dueOptions(){const out=[];for(let n=1;n<=9&&out.length<4;n++){const d=new Date(Date.now()+n*864e5);if(d.getDay()===6)continue;const k=key(d);out.push({label:(out.length===0?'מחר, ':'')+prettyDate(k),value:k})}return out}
 
 // ---------- data helpers ----------
 const listWeekTasks=f=>classRecords().filter(r=>r.kind==='task'&&f(r));
@@ -20,13 +20,13 @@ function lessonLines(day){const out=[];for(const r of classRecords().filter(r=>r
 const expectedToday=()=>{const t=ttSubjectsToday().filter(s=>subjects.includes(s));return t.length?t:subjects};
 const missingSubjects=day=>{const have=new Set(classRecords().filter(r=>r.day===day).map(r=>r.subject));return (day===todayKey()?expectedToday():subjects).filter(s=>!have.has(s))};
 const openSubjects=()=>[...new Set(classRecords().filter(r=>r.kind==='task'&&!r.done).map(r=>r.subject))];
-// ---------- class timetable: which lessons there are on each weekday (0 = Sunday ... 4 = Thursday) ----------
-const DAY_NAMES=['ראשון','שני','שלישי','רביעי','חמישי'];
+// ---------- class timetable: which lessons there are on each weekday (0 = Sunday ... 5 = Friday) ----------
+const DAY_NAMES=['ראשון','שני','שלישי','רביעי','חמישי','שישי'];
 const TT_GRID=[['08:00','08:45'],['08:50','09:35'],['10:00','10:45'],['10:50','11:35'],['11:50','12:35'],['12:40','13:25']];
-const TT_SEED=[['חשבון','עברית','אנגלית','מדעים','חינוך'],['עברית','חשבון','חינוך גופני','אנגלית','אמנות'],['חשבון','מדעים','עברית','אנגלית','חינוך גופני'],['אנגלית','עברית','חשבון','אמנות','מדעים'],['חשבון','עברית','מדעים','אנגלית']];
+const TT_SEED=[['חשבון','עברית','אנגלית','מדעים','חינוך'],['עברית','חשבון','חינוך גופני','אנגלית','אמנות'],['חשבון','מדעים','עברית','אנגלית','חינוך גופני'],['אנגלית','עברית','חשבון','אמנות','מדעים'],['חשבון','עברית','מדעים','אנגלית'],['עברית','חשבון','חינוך']];
 const tt={classId:'',rows:[],at:0};
-function ttLocalAll(){try{return JSON.parse(localStorage.getItem('homework-timetable-v1'))||{}}catch{return{}}}
-function ttLocalSave(all){try{localStorage.setItem('homework-timetable-v1',JSON.stringify(all))}catch{}}
+function ttLocalAll(){try{return JSON.parse(localStorage.getItem('homework-timetable-v2'))||{}}catch{return{}}}
+function ttLocalSave(all){try{localStorage.setItem('homework-timetable-v2',JSON.stringify(all))}catch{}}
 function ttRowsFor(list,wd){return list.map((subject,i)=>({weekday:wd,start:TT_GRID[Math.min(i,TT_GRID.length-1)][0],end:TT_GRID[Math.min(i,TT_GRID.length-1)][1],subject}))}
 async function ttLoad(force){
  const cls=activeClassId();if(!cls)return;if(!force&&tt.classId===cls&&Date.now()-tt.at<20000)return;
@@ -36,7 +36,7 @@ async function ttLoad(force){
 }
 const ttDay=wd=>tt.classId===activeClassId()?tt.rows.filter(r=>r.weekday===wd).sort((a,b)=>a.start.localeCompare(b.start)):[];
 const ttLine=r=>`${r.start}–${r.end}  ${r.subject}`;
-const schoolWeekday=d=>d.getDay()<=4?d.getDay():null;
+const schoolWeekday=d=>d.getDay()<=5?d.getDay():null;
 const todayWeekday=()=>schoolWeekday(new Date());
 function ttSubjectsToday(){const wd=todayWeekday();return wd===null?[]:[...new Set(ttDay(wd).map(r=>r.subject))]}
 function ttTextForDay(wd,label){const rows=ttDay(wd);return rows.length?`${label} במערכת:\n`+rows.map(ttLine).join('\n'):`${label} אין שיעורים במערכת.`}
@@ -79,8 +79,8 @@ const FLOWS={
  timetable:{steps:[
   {key:'day',ask:()=>({text:'איזה יום להציג?',chips:['היום','מחר',...DAY_NAMES.map(n=>'יום '+n),'כל השבוע']}),accept:(d,t)=>{
    if(t==='כל השבוע')return {show:DAY_NAMES.map((n,i)=>`יום ${n}: `+(ttDay(i).map(r=>r.subject).join(', ')||'אין')).join('\n'),chips:menuLabels()};
-   if(t==='היום'){const wd=todayWeekday();return {show:wd===null?'היום אין לימודים (סוף שבוע).':ttTextForDay(wd,'היום (יום '+DAY_NAMES[wd]+')'),chips:menuLabels()}}
-   if(t==='מחר'){let n=1,w=null;while(n<=3){w=schoolWeekday(new Date(Date.now()+n*864e5));if(w!==null)break;n++}return {show:(n>1?'מחר אין לימודים. היום הבא: ':'')+ttTextForDay(w,'יום '+DAY_NAMES[w]),chips:menuLabels()}}
+   if(t==='היום'){const wd=todayWeekday();return {show:wd===null?'היום אין לימודים (שבת).':ttTextForDay(wd,'היום (יום '+DAY_NAMES[wd]+')'),chips:menuLabels()}}
+   if(t==='מחר'){let n=1,w=null;while(n<=3){w=schoolWeekday(new Date(Date.now()+n*864e5));if(w!==null)break;n++}return {show:(n>1?'מחר אין לימודים (שבת). היום הבא: ':'')+ttTextForDay(w,'יום '+DAY_NAMES[w]),chips:menuLabels()}}
    const i=DAY_NAMES.findIndex(n=>t==='יום '+n||t===n);if(i<0)return {error:'בחרו יום מהרשימה.'};return {show:ttTextForDay(i,'יום '+DAY_NAMES[i]),chips:menuLabels()}}},
  ]},
  ttEdit:{steps:[
