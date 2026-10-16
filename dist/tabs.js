@@ -2,8 +2,8 @@
    Existing sections are moved (same DOM nodes), so all of their logic keeps working.
    In the demo a header chip switches role. */
 const TAB_DEFS={home:['🏠','מחר'],assistant:['💬','עוזר'],today:['📅','השבוע'],manage:['⚙️','ניהול'],more:['☰','עוד']};
-const TABS_BY_ROLE={parent:['home','assistant','today','more'],child:['home','assistant','today','more'],teacher:['assistant','today','more'],manager:['assistant','manage','more'],admin:['assistant','manage','more']};
-const TAB_HOME={parent:'home',child:'home',teacher:'assistant',manager:'assistant',admin:'assistant'};
+const TABS_BY_ROLE={parent:['home','today','more'],child:['home','today','more'],teacher:['today','more'],manager:['manage','more'],admin:['manage','more']};
+const TAB_HOME={parent:'home',child:'home',teacher:'today',manager:'manage',admin:'manage'};
 const ROLE_CHOICES=[['parent','👪','הורה'],['child','🎒','ילד'],['teacher','📚','מורה'],['manager','🏫','מנהל בית ספר','מנהל'],['admin','🛡️','אדמין']];
 const MORE_ITEMS=[['classPickerPanel','בחירת כיתה ותלמיד',['parent','child','teacher','manager','admin'],'pick'],['questionsPanel','שאלות ותשובות',['parent','child','teacher']],['materialsPanel','חומרי כיתה (צילומי לוח ומחברת)',['parent','child','teacher']],['childrenManager','הילדים שלי',['parent']],['classAdministration','ניהול הכיתה',['teacher','manager','admin']],['joinManager','קוד הצטרפות לכיתה',['teacher','manager','admin']],['aside','התמונה היומית והתראות לפני השיעור',['parent','child','teacher']],['notificationPanel','התראות',['parent','child','teacher','manager','admin']]];
 const tabState={role:null,active:null,built:false,items:[]};
@@ -22,7 +22,7 @@ function buildTabs(){
  put('home',tabsEl('homePanel'));put('assistant',tabsEl('assistantPanel'));
  put('today',app.querySelector('.top'));put('today',app.querySelector('.stats'));put('today',layout);
  put('manage',tabsEl('managementConsole'));put('manage',tabsEl('adminDashboard'));
- const admin=tabsEl('classAdministration');if(admin)accordionize(admin,{lead:'הוספת בית ספר, כיתה, תלמיד ומורה',hideLead:true,open:['התקדמות תלמידי הכיתה']});
+ const admin=tabsEl('classAdministration');if(admin)accordionize(admin,{lead:'הוספת בית ספר, כיתה, תלמיד ומורה',hideLead:false,open:['התקדמות תלמידי הכיתה']});
  accordionize(tabsEl('adminDashboard'));
  segment(panes.manage,[['adminDashboard','הגדרת בית ספר'],['managementConsole','התראות ושימוש']]);
  // "more": one collapsible item per section
