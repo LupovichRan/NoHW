@@ -102,6 +102,9 @@ const FLOWS={
   {key:'class',ask:d=>({text:`לאיזו כיתה לחבר את ${d.personName}?`,chips:linkClasses(d).map(withCode)}),accept:(d,t)=>{const x=linkClasses(d).find(y=>withCode(y)===t||y.name===t);if(!x)return {error:'בחרו כיתה מהרשימה.'};d.classId=x.id;d.className=x.name;return null}},
   {key:'confirm',ask:d=>({text:`לחבר את ${d.personName} #${entityCode(d.personId)} לכיתה ${d.className}?`,chips:['חיבור','ביטול']}),accept:(d,t)=>t==='חיבור'?{commit:true}:{error:'בחרו חיבור או ביטול.'}},
  ],actions:d=>[{type:'link_person',who:d.who,personId:d.personId,classId:d.classId}]},
+ quick:{steps:[
+  {key:'text',ask:()=>({text:'כתבו מקצוע ושיעורי בית בשורה אחת, למשל:\nחשבון: עמוד 40 תרגילים 1-6\nאפשר גם "אנגלית: אין".',chips:[],free:true}),accept:(d,t)=>{const m=String(t).match(/^\s*([^:\-–—]+?)\s*[:\-–—]\s*(.+)$/s);if(!m)return {error:'כתבו בצורה: מקצוע: שיעורי בית.'};const sub=subjects.find(x=>m[1].trim()===x||x.startsWith(m[1].trim()));if(!sub)return {error:'לא זיהיתי את המקצוע. מקצועות: '+subjects.join(', ')};const rest=clip(m[2],600);d.subject=sub;d.kind=/^(אין|ללא)(\s|$|\.)/.test(rest)?'none':'task';d.details=d.kind==='none'?'':rest;return {commit:true}}},
+ ],actions:d=>[{type:'save_lesson',subject:d.subject,kind:d.kind,details:d.details,due:null,topic:'',summary:'',concepts:''}],followUp:'more'},
  photo:{steps:[
   {key:'subject',ask:()=>({text:'לאיזה מקצוע הצילום?',chips:subjects}),accept:(d,t)=>subjects.includes(t)?(d.subject=t,null):{error:'בחרו מקצוע מהרשימה.'}},
   {key:'shoot',ask:()=>({text:'מוכנים? לחצו על "צילום" ואפשר לצלם את הלוח או דף מהמחברת.',chips:['📷 צילום','ביטול']}),accept:(d,t)=>({awaitPhoto:d.subject})},
@@ -116,7 +119,7 @@ function lessonSummary(d){const l=[`• מקצוע: ${d.subject}`];if(d.learned)
 
 // ---------- menu per role ----------
 function menu(){
- if(role==='teacher')return [['lesson','עדכון שיעור'],['today','מה עודכן היום'],['timetable','מערכת השעות'],['ttEdit','עריכת מערכת השעות'],['people','הוספת אנשים'],['link','חיבור לכיתה נוספת'],['photo','צילום לוח או מחברת']];
+ if(role==='teacher')return [['quick','עדכון מהיר'],['lesson','עדכון שיעור'],['today','מה עודכן היום'],['timetable','מערכת השעות'],['ttEdit','עריכת מערכת השעות'],['people','הוספת אנשים'],['link','חיבור לכיתה נוספת'],['photo','צילום לוח או מחברת']];
  if(role==='parent'||role==='child'){const m=[['tasks','מה יש להכין'],['learned',role==='child'?'מה למדתי':'מה למדו'],['done','סימון הכנה'],['timetable','מערכת השעות'],['ask','שאלה למורה']];if(role==='parent')m.push(['people','הוספת ילד']);if(typeof matCanUpload==='function'&&matCanUpload())m.push(['photo','צילום לחומרי הכיתה']);return m}
  return [['people','הוספת אנשים'],['link','חיבור לכיתה נוספת'],['admin','איפה מגדירים כיתות ומורים?']];
 }
@@ -152,7 +155,7 @@ function botTurn(text){
  if(chat.flow)return flowAnswer(t0);
  if(t0==='פתיחת ניהול'){if(typeof showTab==='function')showTab('manage',true);return {reply:'פתחתי את לשונית הניהול.',chips:menuLabels()}}
  if(t0==='סימון הכנה')return startMenuItem('done');
- if(t0==='📋 העתקת הקישור'){try{navigator.clipboard.writeText(chat.lastInviteUrl||'')}catch{}return {reply:'הקישור הועתק. שלחו אותו למוזמן/ת.',chips:menuLabels()}}
+ if(t0==='📤 שליחה בווטסאפ'){if(chat.lastShare)window.open('https://wa.me/?text='+encodeURIComponent(chat.lastShare),'_blank');return {reply:'נפתח ווטסאפ עם ההודעה. בוחרים את קבוצת הכיתה ושולחים.',chips:menuLabels()}}
  if(t0==='📷 צילום'){$a('chatPhotoInput').click();return {reply:'',chips:menuLabels()}}
  const item=menu().find(m=>m[1]===t0||t0.startsWith(m[1]));
  if(item)return startMenuItem(item[0]);
@@ -170,6 +173,7 @@ async function saveLessonAction(a){
  const r={updatedAt:new Date().toISOString(),classId:activeClassId(),teacherId:school.teacherId,completions:{},lesson:lesson||original?.lesson||null,explanation:original?.explanation||null,day,subject,teacher:activeTeacher()?.name||'מורה',kind,details:kind==='none'?'':details,due:kind==='none'?day:due,dueTime:'08:00',audio:original?.audio||null,resources:original?.resources||[],photos:original?.photos||[],done:false};
  if(cloud.ready)await cloudSaveLesson(r);
  if(original&&original.kind===r.kind&&original.details===r.details){r.done=original.done;r.completedAt=original.completedAt||null;r.completions=original.completions||{}}
+  chat.lastShare=[`📚 ${subject} · ${school.classes.find(c=>c.id===r.classId)?.name||''}`,r.lesson?.summary?'נלמד: '+r.lesson.summary:'',kind==='task'?'שיעורי בית: '+r.details:'אין שיעורי בית',kind==='task'?'להכין עד: '+r.due:''].filter(Boolean).join('\n');
  const previous=records;records=records.filter(x=>!(x.classId===r.classId&&x.day===r.day&&x.subject===r.subject));records.push(r);
  if(!save()){records=previous;throw new Error('השמירה נכשלה.')}
  if(typeof emitLessonUpdate==='function')emitLessonUpdate(r);if(typeof trackUsage==='function')trackUsage('lesson_updated');
@@ -231,6 +235,7 @@ async function addPersonAction(a){
 }
 async function runActions(actions){
  const lines=[];let undoable=false;
+ chat.lastShare='';
  if(actions.some(a=>a.type==='save_lesson'))chat.lastSnapshot=JSON.stringify(records);
  for(const a of actions.slice(0,6)){
   try{
@@ -279,7 +284,7 @@ async function chatSend(raw){
   const result=botTurn(text);
   const {lines,undoable}=await runActions(result.actions||[]);
   chat.busy=false;
-  if(lines.some(l=>l.startsWith('קישור: ')))result.chips=['📋 העתקת הקישור',...menuLabels()];
+  if(chat.lastShare){result.chips=['📤 שליחה בווטסאפ',...menuLabels()]}
   const reply=result.reply||(lines.length?'סידרתי:':'');
   if(reply||lines.length)chatPush({from:'bot',text:reply,card:lines.length?lines:null,undo:undoable||undefined,chips:result.chips,free:result.free});
   if(result.followUp==='more'&&lines.some(l=>l.startsWith('✓'))){const miss=missingSubjects(todayKey());chatPush(miss.length?{from:'bot',text:'רוצים לעדכן גם מקצוע אחר?',chips:['עדכון שיעור','סיימתי']}:{from:'bot',text:'הכול מעודכן להיום. 🎉',chips:menuLabels()})}

@@ -1,0 +1,30 @@
+/* Calm layer: less decoration, more clarity. Loaded last; overrides only. */
+:root{--muted:#475569;--line:#d8dee9;--r:14px;--shadow:0 1px 2px #0f172a10;--shadow-lg:0 4px 14px #0f172a14}
+body{background:var(--bg)}
+h1{background:none;-webkit-text-fill-color:currentColor;color:var(--ink);letter-spacing:-.5px}
+.logo{background:var(--green);box-shadow:none}
+.button{background:var(--green);box-shadow:none}
+.button:hover{background:#0b5f59;box-shadow:none;transform:none;filter:none}
+.demo{background:#eef2f6;color:#334155;border-bottom:1px solid var(--line)}
+.stat:hover{transform:none;box-shadow:var(--shadow)}
+.avatar{background:#d7efe9;color:#0b4f49}
+button,.button,.secondary,select,input{min-height:44px}
+:focus-visible{outline:3px solid #1d4ed8;outline-offset:2px}
+/* home screen */
+#homePanel{padding:16px}
+.homeKids{display:flex;gap:8px;overflow-x:auto;margin-bottom:12px}
+.weekStrip{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:14px}
+.weekStrip .day{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);cursor:pointer;min-height:56px}
+.weekStrip .day.on{background:var(--green);border-color:var(--green);color:#fff}
+.weekStrip .dn{font-size:12px}.weekStrip .dd{font-size:18px;font-weight:700}
+.weekStrip .dot{position:absolute;top:2px;left:4px;min-width:18px;height:18px;border-radius:9px;background:#b91c1c;color:#fff;font-size:11px;line-height:18px;text-align:center}
+.homeTitle{margin:4px 0 8px;font-size:24px}
+.homePanel h3,#homePanel h3{margin:18px 0 8px;font-size:16px;color:var(--muted)}
+.homeBanner{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:12px;padding:10px 12px;font-weight:600}
+.taskRow,.lessonRow,.learned{display:flex;align-items:flex-start;gap:12px;padding:12px;margin:6px 0;background:var(--card);border:1px solid var(--line);border-inline-start:6px solid var(--sc,var(--green));border-radius:12px;font-size:17px;line-height:1.4}
+.taskRow input{width:26px;height:26px;min-height:0;margin-top:2px;flex:none;accent-color:var(--sc,var(--green))}
+.taskRow strong,.learned strong{color:var(--sc)}
+.lessonRow{align-items:center;font-size:16px}.lessonRow .t{color:var(--muted);font-variant-numeric:tabular-nums;min-width:48px}.lessonRow .s{font-weight:700;color:var(--sc)}
+.learned{display:block}
+.homeActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+@media (prefers-color-scheme:dark){:root{--muted:#a8b4c8}.homeBanner{background:#3a2412;border-color:#7c3a12;color:#fdba74}}
