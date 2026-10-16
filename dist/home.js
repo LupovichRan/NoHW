@@ -20,7 +20,7 @@ function hEl(tag,cls,text){const e=document.createElement(tag);if(cls)e.classNam
 // Demo data: make sure there is something to prepare for the next school day.
 function homeSeedDemo(){
  let done='';try{done=localStorage.getItem('hw-home-seed')||''}catch{}const due=hKey(nextSchoolDate());if(done===due)return;
- const mk=(classId,subject,details)=>({updatedAt:new Date().toISOString(),classId,teacherId:school.teacherId,completions:{},lesson:null,explanation:null,day:todayKey(),subject,teacher:'מיכל כהן',kind:'task',details,due,dueTime:'08:00',audio:null,resources:[],photos:[],done:false});
+ const mk=(classId,subject,details)=>({updatedAt:new Date().toISOString(),classId,teacherId:school.teacherId,completions:{},lesson:null,explanation:null,day:todayKey(),subject,teacher:'מיכל שפירא',kind:'task',details,due,dueTime:'08:00',audio:null,resources:[],photos:[],done:false});
  const add=[['d2','חשבון','עמוד 40 בחוברת, תרגילים 1–6'],['d2','עברית','לקרוא את הסיפור ״חברים בדרך״ ולענות על שאלה 1'],['d3','מדעים','להביא צנצנת לניסוי'],['second-d2','אנגלית','ללמוד 10 מילים מהרשימה']];
  let changed=false;for(const [c,sub,det] of add){if(!school.classes.some(x=>x.id===c))continue;if(records.some(r=>r.classId===c&&r.subject===sub&&r.due===due))continue;records.push(mk(c,sub,det));changed=true}
  if(changed)save();try{localStorage.setItem('hw-home-seed',due)}catch{}
