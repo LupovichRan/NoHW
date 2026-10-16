@@ -110,7 +110,7 @@ const FLOWS={
 const PEOPLE_BY_ROLE={admin:['בית ספר','מנהל בית ספר','מורה','הורה','תלמיד'],manager:['מורה','הורה','תלמיד'],teacher:['הורה','תלמיד'],parent:['ילד']};
 const PEOPLE_ALLOWED={'בית ספר':['admin'],'מנהל בית ספר':['admin'],'מורה':['admin','manager'],'הורה':['admin','manager','teacher'],'תלמיד':['admin','manager','teacher'],'ילד':['parent']};
 const studentsOfClass=()=>school.students.filter(s=>s.classIds.includes(activeClassId()));
-const personNeedsEmail=d=>cloud.ready&&(['מנהל בית ספר','מורה','הורה'].includes(d.who)||d.who==='תלמיד');
+const personNeedsEmail=()=>false; // email invitations are disabled for the demo
 function personSummary(d){const l=[`• ${d.who}: ${d.name}`];if(d.studentName)l.push(`• של התלמיד: ${d.studentName}`);if(d.email)l.push(`• אימייל: ${d.email}`);if(d.who==='תלמיד'||d.who==='ילד'){const c=school.classes.find(x=>x.id===activeClassId());if(c)l.push(`• כיתה: ${c.name}`)}return l.join('\n')}
 function lessonSummary(d){const l=[`• מקצוע: ${d.subject}`];if(d.learned)l.push(`• נלמד: ${d.learned}`);if(d.concepts)l.push(`• מושגים: ${d.concepts}`);l.push(d.kind==='task'?`• שיעורי בית: ${d.details}`:'• שיעורי בית: אין');if(d.kind==='task'&&d.due)l.push(`• להכין עד: ${prettyDate(d.due)}`);return l.join('\n')}
 
@@ -191,7 +191,8 @@ async function askTeacherAction(a){
  if(!await commitQuestions([...questions,q]))throw new Error('שליחת השאלה נכשלה.');
  renderQuestions();return `✓ השאלה נשלחה למורה (${subject})`;
 }
-async function createInvitation({invite_role,email,class_id,student_id,school_id}){
+async function createInvitation(){throw new Error('הזמנה באימייל מושבתת בשלב ההדגמה.')}
+async function createInvitationDisabled({invite_role,email,class_id,student_id,school_id}){
  const rec={school_id,class_id:class_id||null,student_id:student_id||null,invite_role,email,created_by:cloud.ready?cloud.user.id:adminId()};
  let token;
  if(cloud.ready){const row=await cloudResult(cloud.client.from('school_invitations').insert(rec).select('token').single());token=row.token}
