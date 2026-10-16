@@ -90,8 +90,8 @@ const FLOWS={
  ],actions:d=>[{type:'save_timetable',weekday:d.weekday,list:d.list}]},
  people:{steps:[
   {key:'who',ask:()=>({text:'את מי להוסיף?',chips:PEOPLE_BY_ROLE[role]||[]}),accept:(d,t)=>(PEOPLE_BY_ROLE[role]||[]).includes(t)?(d.who=t,null):{error:'בחרו מהרשימה.'}},
-  {key:'school',when:d=>d.who==='מנהל בית ספר',ask:()=>({text:'לאיזה בית ספר?',chips:school.schools.map(x=>x.name)}),accept:(d,t)=>{const x=school.schools.find(y=>y.name===t);if(!x)return {error:'בחרו בית ספר מהרשימה.'};d.schoolId=x.id;return null}},
-  {key:'student',when:d=>d.who==='הורה',ask:()=>({text:'ההורה של איזה תלמיד?',chips:studentsOfClass().map(x=>x.name)}),accept:(d,t)=>{const x=studentsOfClass().find(y=>y.name===t);if(!x)return {error:'בחרו תלמיד מהרשימה.'};d.studentId=x.id;d.studentName=x.name;return null}},
+  {key:'school',when:d=>d.who==='מנהל בית ספר',ask:()=>({text:'לאיזה בית ספר?',chips:school.schools.map(withCode)}),accept:(d,t)=>{const x=school.schools.find(y=>withCode(y)===t||y.name===t);if(!x)return {error:'בחרו בית ספר מהרשימה.'};d.schoolId=x.id;return null}},
+  {key:'student',when:d=>d.who==='הורה',ask:()=>({text:'ההורה של איזה תלמיד?',chips:studentsOfClass().map(withCode)}),accept:(d,t)=>{const x=studentsOfClass().find(y=>withCode(y)===t||y.name===t);if(!x)return {error:'בחרו תלמיד מהרשימה.'};d.studentId=x.id;d.studentName=x.name;return null}},
   {key:'name',ask:d=>({text:d.who==='בית ספר'?'מה שם בית הספר?':(d.who==='תלמיד'||d.who==='ילד')?'מה שם התלמיד?':'מה השם המלא?',chips:[],free:true}),accept:(d,t)=>{const v=clip(t,80);if(!v)return {error:'כתבו שם.'};d.name=v;return null}},
   {key:'email',when:d=>personNeedsEmail(d),ask:()=>({text:'מה כתובת האימייל? ההזמנה תהיה מוגבלת לכתובת הזו.',chips:[],free:true}),accept:(d,t)=>{const v=clip(t,120).toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))return {error:'כתובת האימייל אינה תקינה.'};d.email=v;return null}},
   {key:'confirm',ask:d=>({text:'להוסיף?\n'+personSummary(d),chips:['הוספה','ביטול']}),accept:(d,t)=>t==='הוספה'?{commit:true}:{error:'בחרו הוספה או ביטול.'}},
