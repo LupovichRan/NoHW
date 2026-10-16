@@ -87,3 +87,29 @@ header .brand{white-space:nowrap}
 .seg-off{display:none!important}
 @media(prefers-color-scheme:dark){.segment{background:#1a2440}.segment button[aria-pressed=true]{background:#263248;color:#5eead4}}
 #classAdministration>summary{display:none}
+
+/* ---- assistant chat ---- */
+#assistantPanel{display:flex;flex-direction:column;gap:10px;padding:14px;min-height:calc(100dvh - 230px)}
+.chatHead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.modeTag{font-size:12px;background:#e3f2ef;color:#0f766e;border-radius:999px;padding:2px 10px;margin-inline-start:6px}
+.ctxChip{border:1px solid var(--line,#e2e8f0);background:var(--card,#fff);color:var(--ink,#0f172a);border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer;min-height:36px}
+#chatLog{flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px;min-height:260px;max-height:calc(100dvh - 380px)}
+.bubble{max-width:88%;padding:10px 14px;border-radius:18px;line-height:1.5;font-size:16px;white-space:pre-wrap;word-break:break-word}
+.bubble p{margin:0;color:inherit}
+.bubble.me{align-self:flex-start;background:linear-gradient(135deg,#0f766e,#4f46e5);color:#fff;border-end-start-radius:6px}
+.bubble.bot{align-self:flex-end;background:var(--soft,#f1f5f9);color:var(--ink,#0f172a);border-end-end-radius:6px}
+.bubble.typing{opacity:.6;letter-spacing:3px}
+.botCard{margin-top:8px;display:flex;flex-direction:column;gap:6px;background:var(--card,#fff);border:1px solid var(--line,#e2e8f0);border-radius:12px;padding:10px 12px;font-size:15px}
+.undo{margin-top:8px;border:0;background:transparent;color:#0f766e;font-weight:700;text-decoration:underline;cursor:pointer;padding:4px 0;min-height:0}
+#chatChips{display:flex;gap:8px;overflow-x:auto;padding:2px 0}
+#chatChips button{flex:0 0 auto;border:1px solid var(--line,#e2e8f0);background:var(--card,#fff);color:var(--ink,#0f172a);border-radius:999px;padding:8px 14px;font-size:14px;cursor:pointer;white-space:nowrap;min-height:38px}
+#chatForm{display:flex;align-items:flex-end;gap:8px;margin:0}
+#chatInput{flex:1;resize:none;border-radius:22px;padding:11px 16px;max-height:140px;line-height:1.4;margin:0}
+#chatForm button{flex:0 0 auto;width:46px;height:46px;border-radius:50%;border:1px solid var(--line,#e2e8f0);background:var(--card,#fff);font-size:20px;cursor:pointer;padding:0}
+#chatSend{background:linear-gradient(135deg,#0f766e,#4f46e5)!important;color:#fff;border:0!important}
+#chatMic.on{background:#fee2e2!important;border-color:#ef4444!important}
+details.moreItem>.panel{border:0!important;box-shadow:none!important;background:none!important;padding:0!important;margin:0!important}
+details.moreItem .panel>h2:first-child,details.moreItem>.panel>b:first-child{display:none}
+@media(prefers-color-scheme:dark){.bubble.bot{background:#1a2440}.botCard{background:#121a2e}}
+
+@media(max-width:760px){#a11yToggle{bottom:auto!important;top:42%;inset-inline-start:auto!important;inset-inline-end:0;width:30px!important;height:46px!important;border-radius:0 12px 12px 0;font-size:18px!important}#a11yPanel{bottom:auto!important;top:20%;inset-inline-start:auto;inset-inline-end:42px}}
