@@ -96,6 +96,12 @@ const FLOWS={
   {key:'email',when:d=>personNeedsEmail(d),ask:()=>({text:'מה כתובת האימייל? ההזמנה תהיה מוגבלת לכתובת הזו.',chips:[],free:true}),accept:(d,t)=>{const v=clip(t,120).toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))return {error:'כתובת האימייל אינה תקינה.'};d.email=v;return null}},
   {key:'confirm',ask:d=>({text:'להוסיף?\n'+personSummary(d),chips:['הוספה','ביטול']}),accept:(d,t)=>t==='הוספה'?{commit:true}:{error:'בחרו הוספה או ביטול.'}},
  ],actions:d=>[{type:'add_person',who:d.who,name:d.name,email:d.email||'',schoolId:d.schoolId||null,studentId:d.studentId||null}]},
+ link:{steps:[
+  {key:'who',ask:()=>({text:'את מי לחבר לכיתה נוספת?',chips:role==='teacher'?['תלמיד']:['תלמיד','מורה']}),accept:(d,t)=>['תלמיד','מורה'].includes(t)&&(role!=='teacher'||t==='תלמיד')?(d.who=t,null):{error:'בחרו מהרשימה.'}},
+  {key:'code',ask:d=>({text:`מה הקוד המזהה (3 ספרות, ליד השם) של ה${d.who}?`,chips:[],free:true}),accept:(d,t)=>{const c=String(t).replace(/\D/g,'').padStart(3,'0');const list=linkPool(d.who).filter(x=>entityCode(x.id)===c);if(!list.length)return {error:'לא נמצא אדם עם הקוד הזה.'};if(list.length>1)return {error:'יש כמה אנשים עם הקוד הזה. כתבו את השם המלא.'};d.personId=list[0].id;d.personName=list[0].name;return null}},
+  {key:'class',ask:d=>({text:`לאיזו כיתה לחבר את ${d.personName}?`,chips:linkClasses(d).map(withCode)}),accept:(d,t)=>{const x=linkClasses(d).find(y=>withCode(y)===t||y.name===t);if(!x)return {error:'בחרו כיתה מהרשימה.'};d.classId=x.id;d.className=x.name;return null}},
+  {key:'confirm',ask:d=>({text:`לחבר את ${d.personName} #${entityCode(d.personId)} לכיתה ${d.className}?`,chips:['חיבור','ביטול']}),accept:(d,t)=>t==='חיבור'?{commit:true}:{error:'בחרו חיבור או ביטול.'}},
+ ],actions:d=>[{type:'link_person',who:d.who,personId:d.personId,classId:d.classId}]},
  photo:{steps:[
   {key:'subject',ask:()=>({text:'לאיזה מקצוע הצילום?',chips:subjects}),accept:(d,t)=>subjects.includes(t)?(d.subject=t,null):{error:'בחרו מקצוע מהרשימה.'}},
   {key:'shoot',ask:()=>({text:'מוכנים? לחצו על "צילום" ואפשר לצלם את הלוח או דף מהמחברת.',chips:['📷 צילום','ביטול']}),accept:(d,t)=>({awaitPhoto:d.subject})},
@@ -110,9 +116,9 @@ function lessonSummary(d){const l=[`• מקצוע: ${d.subject}`];if(d.learned)
 
 // ---------- menu per role ----------
 function menu(){
- if(role==='teacher')return [['lesson','עדכון שיעור'],['today','מה עודכן היום'],['timetable','מערכת השעות'],['ttEdit','עריכת מערכת השעות'],['people','הוספת אנשים'],['photo','צילום לוח או מחברת']];
+ if(role==='teacher')return [['lesson','עדכון שיעור'],['today','מה עודכן היום'],['timetable','מערכת השעות'],['ttEdit','עריכת מערכת השעות'],['people','הוספת אנשים'],['link','חיבור לכיתה נוספת'],['photo','צילום לוח או מחברת']];
  if(role==='parent'||role==='child'){const m=[['tasks','מה יש להכין'],['learned',role==='child'?'מה למדתי':'מה למדו'],['done','סימון הכנה'],['timetable','מערכת השעות'],['ask','שאלה למורה']];if(role==='parent')m.push(['people','הוספת ילד']);if(typeof matCanUpload==='function'&&matCanUpload())m.push(['photo','צילום לחומרי הכיתה']);return m}
- return [['people','הוספת אנשים'],['admin','איפה מגדירים כיתות ומורים?']];
+ return [['people','הוספת אנשים'],['link','חיבור לכיתה נוספת'],['admin','איפה מגדירים כיתות ומורים?']];
 }
 const menuLabels=()=>menu().map(m=>m[1]);
 function startMenuItem(id){
@@ -192,6 +198,15 @@ async function createInvitation({invite_role,email,class_id,student_id,school_id
  else{token=crypto.randomUUID();localInvitations.push({...rec,id:crypto.randomUUID(),token,status:'pending',expires_at:new Date(Date.now()+7*864e5).toISOString()});saveLocalInvites()}
  chat.lastInviteUrl=location.origin+location.pathname+'#invite='+token;return chat.lastInviteUrl;
 }
+const linkPool=who=>who==='מורה'?school.teachers:school.students;
+const linkClasses=d=>{const person=linkPool(d.who).find(x=>x.id===d.personId);const mine=role==='teacher'?(activeTeacher()?.classIds||[]):school.classes.map(c=>c.id);return school.classes.filter(c=>mine.includes(c.id)&&!(person?.classIds||[]).includes(c.id))};
+async function linkPersonAction(a){
+ if(!['admin','manager','teacher'].includes(role)||(a.who==='מורה'&&role==='teacher'))throw new Error('אין לך הרשאה לחבר '+a.who+'.');
+ const cls=school.classes.find(c=>c.id===a.classId);if(!cls)throw new Error('הכיתה לא נמצאה.');
+ if(cloud.ready){await cloudResult(cloud.client.rpc('link_person_to_class',{p_person:a.personId,p_class:a.classId}));await cloudRefresh()}
+ else{const p=linkPool(a.who).find(x=>x.id===a.personId);if(!p)throw new Error('האדם לא נמצא.');p.classIds=[...new Set([...(p.classIds||[]),a.classId])];saveSchool();render()}
+ return `✓ ${a.who==='מורה'?'המורה':'התלמיד'} חובר לכיתה ${cls.name}`;
+}
 async function addPersonAction(a){
  if(!(PEOPLE_ALLOWED[a.who]||[]).includes(role))throw new Error('אין לך הרשאה להוסיף '+a.who+'.');
  const name=clip(a.name,80);if(!name)throw new Error('חסר שם.');
@@ -214,6 +229,7 @@ async function runActions(actions){
    if(a.type==='save_lesson'){lines.push(await saveLessonAction(a));undoable=!cloud.ready}
    else if(a.type==='mark_done')lines.push(await markDoneAction(a));
    else if(a.type==='ask_teacher')lines.push(await askTeacherAction(a));
+   else if(a.type==='link_person'){lines.push(await linkPersonAction(a))}
    else if(a.type==='add_person'){const r=await addPersonAction(a);if(Array.isArray(r))lines.push(...r);else lines.push(r)}
    else if(a.type==='save_timetable'){if(role!=='teacher')throw new Error('רק מורה יכול לעדכן את מערכת השעות.');await ttSaveDay(a.weekday,(a.list||[]).map(x=>clip(x,40)).filter(Boolean));lines.push(`✓ מערכת יום ${DAY_NAMES[a.weekday]} נשמרה`)}
   }catch(e){lines.push('⚠ '+(e.message||e))}
