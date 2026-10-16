@@ -11,7 +11,7 @@ const tabsEl=id=>document.getElementById(id);
 
 // Long admin forms become collapsible groups: every direct <h3> starts a <details>.
 function accordionize(box,opts={}){if(!box)return;let group=null;const mk=(title,open,before)=>{const g=document.createElement('details');g.className='acc';g.open=!!open;const s=document.createElement('summary');s.textContent=title;g.append(s);box.insertBefore(g,before);return g};
- for(const node of Array.from(box.children)){if(node.tagName==='SUMMARY')continue;if(node.tagName==='H3'){group=mk(node.textContent,opts.open?.includes(node.textContent),node);node.remove()}else if(group)group.append(node);else if(opts.lead){group=mk(opts.lead,false,node);group.append(node)}}}
+ for(const node of Array.from(box.children)){if(node.tagName==='SUMMARY')continue;if(node.tagName==='H3'){group=mk(node.textContent,opts.open?.includes(node.textContent),node);node.remove()}else if(group)group.append(node);else if(opts.lead){group=mk(opts.lead,false,node);if(opts.hideLead)group.hidden=true;group.append(node)}}}
 // Two heavy panels in one pane: a segmented control shows one at a time (class toggle, so the panels' own hidden logic is untouched).
 function segment(pane,items){const bar=document.createElement('div');bar.className='segment';const apply=id=>{for(const [pid] of items)tabsEl(pid)?.classList.toggle('seg-off',pid!==id);for(const b of bar.children)b.setAttribute('aria-pressed',String(b.dataset.seg===id))};for(const [pid,label] of items){const b=document.createElement('button');b.type='button';b.dataset.seg=pid;b.textContent=label;b.onclick=()=>apply(pid);bar.append(b)}pane.prepend(bar);apply(items[0][0])}
 function buildTabs(){
@@ -22,7 +22,7 @@ function buildTabs(){
  put('assistant',tabsEl('assistantPanel'));
  put('today',app.querySelector('.top'));put('today',app.querySelector('.stats'));put('today',layout);
  put('manage',tabsEl('managementConsole'));put('manage',tabsEl('adminDashboard'));
- const admin=tabsEl('classAdministration');if(admin)accordionize(admin,{lead:'הוספת בית ספר, כיתה, תלמיד ומורה',open:['התקדמות תלמידי הכיתה']});
+ const admin=tabsEl('classAdministration');if(admin)accordionize(admin,{lead:'הוספת בית ספר, כיתה, תלמיד ומורה',hideLead:true,open:['התקדמות תלמידי הכיתה']});
  accordionize(tabsEl('adminDashboard'));
  segment(panes.manage,[['adminDashboard','הגדרת בית ספר'],['managementConsole','התראות ושימוש']]);
  // "more": one collapsible item per section

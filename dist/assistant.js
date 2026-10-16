@@ -88,18 +88,31 @@ const FLOWS={
   {key:'list',ask:d=>({text:`מה השיעורים ביום ${DAY_NAMES[d.weekday]}? כתבו לפי הסדר, מופרדים בפסיק (למשל: חשבון, עברית, אנגלית). השעות לפי הצלצולים הרגילים.${ttDay(d.weekday).length?'\n\nכרגע:\n'+ttDay(d.weekday).map(ttLine).join('\n'):''}`,chips:ttDay(d.weekday).length?['ללא שיעורים']:[],free:true}),accept:(d,t)=>{if(t==='ללא שיעורים'){d.list=[];return null}const list=t.split(/[,،\n]+/).map(x=>clip(x,40)).filter(Boolean).slice(0,TT_GRID.length);if(!list.length)return {error:'כתבו לפחות שיעור אחד.'};d.list=list;return null}},
   {key:'confirm',ask:d=>({text:`מערכת יום ${DAY_NAMES[d.weekday]}:\n`+(d.list.length?ttRowsFor(d.list,d.weekday).map(ttLine).join('\n'):'אין שיעורים')+'\n\nלשמור?',chips:['שמירה','התחלה מחדש','ביטול']}),accept:(d,t)=>t==='שמירה'?{commit:true}:t==='התחלה מחדש'?{restart:true}:{error:'בחרו שמירה, התחלה מחדש או ביטול.'}},
  ],actions:d=>[{type:'save_timetable',weekday:d.weekday,list:d.list}]},
+ people:{steps:[
+  {key:'who',ask:()=>({text:'את מי להוסיף?',chips:PEOPLE_BY_ROLE[role]||[]}),accept:(d,t)=>(PEOPLE_BY_ROLE[role]||[]).includes(t)?(d.who=t,null):{error:'בחרו מהרשימה.'}},
+  {key:'school',when:d=>d.who==='מנהל בית ספר',ask:()=>({text:'לאיזה בית ספר?',chips:school.schools.map(x=>x.name)}),accept:(d,t)=>{const x=school.schools.find(y=>y.name===t);if(!x)return {error:'בחרו בית ספר מהרשימה.'};d.schoolId=x.id;return null}},
+  {key:'student',when:d=>d.who==='הורה',ask:()=>({text:'ההורה של איזה תלמיד?',chips:studentsOfClass().map(x=>x.name)}),accept:(d,t)=>{const x=studentsOfClass().find(y=>y.name===t);if(!x)return {error:'בחרו תלמיד מהרשימה.'};d.studentId=x.id;d.studentName=x.name;return null}},
+  {key:'name',ask:d=>({text:d.who==='בית ספר'?'מה שם בית הספר?':(d.who==='תלמיד'||d.who==='ילד')?'מה שם התלמיד?':'מה השם המלא?',chips:[],free:true}),accept:(d,t)=>{const v=clip(t,80);if(!v)return {error:'כתבו שם.'};d.name=v;return null}},
+  {key:'email',when:d=>personNeedsEmail(d),ask:()=>({text:'מה כתובת האימייל? ההזמנה תהיה מוגבלת לכתובת הזו.',chips:[],free:true}),accept:(d,t)=>{const v=clip(t,120).toLowerCase();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v))return {error:'כתובת האימייל אינה תקינה.'};d.email=v;return null}},
+  {key:'confirm',ask:d=>({text:'להוסיף?\n'+personSummary(d),chips:['הוספה','ביטול']}),accept:(d,t)=>t==='הוספה'?{commit:true}:{error:'בחרו הוספה או ביטול.'}},
+ ],actions:d=>[{type:'add_person',who:d.who,name:d.name,email:d.email||'',schoolId:d.schoolId||null,studentId:d.studentId||null}]},
  photo:{steps:[
   {key:'subject',ask:()=>({text:'לאיזה מקצוע הצילום?',chips:subjects}),accept:(d,t)=>subjects.includes(t)?(d.subject=t,null):{error:'בחרו מקצוע מהרשימה.'}},
   {key:'shoot',ask:()=>({text:'מוכנים? לחצו על "צילום" ואפשר לצלם את הלוח או דף מהמחברת.',chips:['📷 צילום','ביטול']}),accept:(d,t)=>({awaitPhoto:d.subject})},
  ]},
 };
+const PEOPLE_BY_ROLE={admin:['בית ספר','מנהל בית ספר','מורה','הורה','תלמיד'],manager:['מורה','הורה','תלמיד'],teacher:['הורה','תלמיד'],parent:['ילד']};
+const PEOPLE_ALLOWED={'בית ספר':['admin'],'מנהל בית ספר':['admin'],'מורה':['admin','manager'],'הורה':['admin','manager','teacher'],'תלמיד':['admin','manager','teacher'],'ילד':['parent']};
+const studentsOfClass=()=>school.students.filter(s=>s.classIds.includes(activeClassId()));
+const personNeedsEmail=d=>['מנהל בית ספר','מורה','הורה'].includes(d.who)||(d.who==='תלמיד'&&cloud.ready);
+function personSummary(d){const l=[`• ${d.who}: ${d.name}`];if(d.studentName)l.push(`• של התלמיד: ${d.studentName}`);if(d.email)l.push(`• אימייל: ${d.email}`);if(d.who==='תלמיד'||d.who==='ילד'){const c=school.classes.find(x=>x.id===activeClassId());if(c)l.push(`• כיתה: ${c.name}`)}return l.join('\n')}
 function lessonSummary(d){const l=[`• מקצוע: ${d.subject}`];if(d.learned)l.push(`• נלמד: ${d.learned}`);if(d.concepts)l.push(`• מושגים: ${d.concepts}`);l.push(d.kind==='task'?`• שיעורי בית: ${d.details}`:'• שיעורי בית: אין');if(d.kind==='task'&&d.due)l.push(`• להכין עד: ${prettyDate(d.due)}`);return l.join('\n')}
 
 // ---------- menu per role ----------
 function menu(){
- if(role==='teacher')return [['lesson','עדכון שיעור'],['today','מה עודכן היום'],['timetable','מערכת השעות'],['ttEdit','עריכת מערכת השעות'],['photo','צילום לוח או מחברת']];
- if(role==='parent'||role==='child'){const m=[['tasks','מה יש להכין'],['learned',role==='child'?'מה למדתי':'מה למדו'],['done','סימון הכנה'],['timetable','מערכת השעות'],['ask','שאלה למורה']];if(typeof matCanUpload==='function'&&matCanUpload())m.push(['photo','צילום לחומרי הכיתה']);return m}
- return [['admin','איפה מגדירים כיתות ומורים?']];
+ if(role==='teacher')return [['lesson','עדכון שיעור'],['today','מה עודכן היום'],['timetable','מערכת השעות'],['ttEdit','עריכת מערכת השעות'],['people','הוספת אנשים'],['photo','צילום לוח או מחברת']];
+ if(role==='parent'||role==='child'){const m=[['tasks','מה יש להכין'],['learned',role==='child'?'מה למדתי':'מה למדו'],['done','סימון הכנה'],['timetable','מערכת השעות'],['ask','שאלה למורה']];if(role==='parent')m.push(['people','הוספת ילד']);if(typeof matCanUpload==='function'&&matCanUpload())m.push(['photo','צילום לחומרי הכיתה']);return m}
+ return [['people','הוספת אנשים'],['admin','איפה מגדירים כיתות ומורים?']];
 }
 const menuLabels=()=>menu().map(m=>m[1]);
 function startMenuItem(id){
@@ -109,7 +122,7 @@ function startMenuItem(id){
  if(id==='admin')return {reply:'את הגדרת הכיתות, המורים וההזמנות עושים בלשונית "ניהול". אפשר לפתוח אותה מכאן.',chips:['פתיחת ניהול']};
  if(id==='done'&&!openSubjects().length)return {reply:'אין משימות פתוחות כרגע. 🎉',chips:menuLabels()};
  if(id==='done'&&openSubjects().length===1){return {reply:'',actions:[{type:'mark_done',subject:openSubjects()[0]}]}}
- chat.flow={name:id,d:{},asked:{},cur:null};return flowNext();
+ chat.flow={name:id,d:id==='people'&&role==='parent'?{who:'ילד'}:{},asked:id==='people'&&role==='parent'?{who:true}:{},cur:null};return flowNext();
 }
 function flowNext(){
  const f=chat.flow,def=FLOWS[f.name];
@@ -133,6 +146,7 @@ function botTurn(text){
  if(chat.flow)return flowAnswer(t0);
  if(t0==='פתיחת ניהול'){if(typeof showTab==='function')showTab('manage',true);return {reply:'פתחתי את לשונית הניהול.',chips:menuLabels()}}
  if(t0==='סימון הכנה')return startMenuItem('done');
+ if(t0==='📋 העתקת הקישור'){try{navigator.clipboard.writeText(chat.lastInviteUrl||'')}catch{}return {reply:'הקישור הועתק. שלחו אותו למוזמן/ת.',chips:menuLabels()}}
  if(t0==='📷 צילום'){$a('chatPhotoInput').click();return {reply:'',chips:menuLabels()}}
  const item=menu().find(m=>m[1]===t0||t0.startsWith(m[1]));
  if(item)return startMenuItem(item[0]);
@@ -171,6 +185,27 @@ async function askTeacherAction(a){
  if(!await commitQuestions([...questions,q]))throw new Error('שליחת השאלה נכשלה.');
  renderQuestions();return `✓ השאלה נשלחה למורה (${subject})`;
 }
+async function createInvitation({invite_role,email,class_id,student_id,school_id}){
+ const rec={school_id,class_id:class_id||null,student_id:student_id||null,invite_role,email,created_by:cloud.ready?cloud.user.id:adminId()};
+ let token;
+ if(cloud.ready){const row=await cloudResult(cloud.client.from('school_invitations').insert(rec).select('token').single());token=row.token}
+ else{token=crypto.randomUUID();localInvitations.push({...rec,id:crypto.randomUUID(),token,status:'pending',expires_at:new Date(Date.now()+7*864e5).toISOString()});saveLocalInvites()}
+ chat.lastInviteUrl=location.origin+location.pathname+'#invite='+token;return chat.lastInviteUrl;
+}
+async function addPersonAction(a){
+ if(!(PEOPLE_ALLOWED[a.who]||[]).includes(role))throw new Error('אין לך הרשאה להוסיף '+a.who+'.');
+ const name=clip(a.name,80);if(!name)throw new Error('חסר שם.');
+ const classId=activeClassId(),cls=school.classes.find(c=>c.id===classId),schoolId=a.schoolId||cls?.schoolId||activeSchoolId();
+ const needClass=()=>{if(!classId)throw new Error('בחרו כיתה קודם (בלשונית "עוד").')};
+ const addLocalStudent=()=>{needClass();const id=crypto.randomUUID();school.students.push({id,name,classIds:[classId]});school.studentId=id;saveSchool();render()};
+ if(a.who==='בית ספר'){if(cloud.ready){await cloudResult(cloud.client.from('school_schools').insert({name,owner_teacher_id:cloud.user.id}));await cloudRefresh()}else{const id=crypto.randomUUID();school.schools.push({id,name,ownerId:adminId()});school.schoolId=id;school.classId='';school.studentId='';saveSchool();render()}return `✓ נוסף בית הספר ${name}`}
+ if(a.who==='ילד'){if(cloud.ready){await cloudResult(cloud.client.rpc('create_managed_child',{child_name:name}));await cloudRefresh()}else addLocalStudent();return `✓ נוסף ${name}. ${cloud.ready?'אפשר להצטרף לכיתה עם קוד מהמורה.':''}`.trim()}
+ if(a.who==='תלמיד'){if(!cloud.ready){addLocalStudent();return `✓ נוסף התלמיד ${name} לכיתה ${cls?.name||''}`}needClass();const url=await createInvitation({invite_role:'student',email:clip(a.email,120),class_id:classId,school_id:schoolId});return [`✓ נוצרה הזמנה לתלמיד ${name}`,'קישור: '+url]}
+ if(a.who==='הורה'){if(!a.studentId)throw new Error('חסר תלמיד.');const url=await createInvitation({invite_role:'parent',email:clip(a.email,120),class_id:classId,student_id:a.studentId,school_id:schoolId});return [`✓ נוצרה הזמנה להורה ${name}`,'קישור: '+url]}
+ if(a.who==='מורה'){const url=await createInvitation({invite_role:'teacher',email:clip(a.email,120),class_id:null,school_id:schoolId});return [`✓ נוצרה הזמנה למורה ${name}`,'קישור: '+url]}
+ if(a.who==='מנהל בית ספר'){const url=await createInvitation({invite_role:'manager',email:clip(a.email,120),class_id:null,school_id:schoolId});return [`✓ נוצרה הזמנה למנהל ${name}`,'קישור: '+url]}
+ throw new Error('סוג לא מוכר.');
+}
 async function runActions(actions){
  const lines=[];let undoable=false;
  if(actions.some(a=>a.type==='save_lesson'))chat.lastSnapshot=JSON.stringify(records);
@@ -179,6 +214,7 @@ async function runActions(actions){
    if(a.type==='save_lesson'){lines.push(await saveLessonAction(a));undoable=!cloud.ready}
    else if(a.type==='mark_done')lines.push(await markDoneAction(a));
    else if(a.type==='ask_teacher')lines.push(await askTeacherAction(a));
+   else if(a.type==='add_person'){const r=await addPersonAction(a);if(Array.isArray(r))lines.push(...r);else lines.push(r)}
    else if(a.type==='save_timetable'){if(role!=='teacher')throw new Error('רק מורה יכול לעדכן את מערכת השעות.');await ttSaveDay(a.weekday,(a.list||[]).map(x=>clip(x,40)).filter(Boolean));lines.push(`✓ מערכת יום ${DAY_NAMES[a.weekday]} נשמרה`)}
   }catch(e){lines.push('⚠ '+(e.message||e))}
  }
@@ -219,6 +255,7 @@ async function chatSend(raw){
   const result=botTurn(text);
   const {lines,undoable}=await runActions(result.actions||[]);
   chat.busy=false;
+  if(lines.some(l=>l.startsWith('קישור: ')))result.chips=['📋 העתקת הקישור',...menuLabels()];
   const reply=result.reply||(lines.length?'סידרתי:':'');
   if(reply||lines.length)chatPush({from:'bot',text:reply,card:lines.length?lines:null,undo:undoable||undefined,chips:result.chips,free:result.free});
   if(result.followUp==='more'&&lines.some(l=>l.startsWith('✓'))){const miss=missingSubjects(todayKey());chatPush(miss.length?{from:'bot',text:'רוצים לעדכן גם מקצוע אחר?',chips:['עדכון שיעור','סיימתי']}:{from:'bot',text:'הכול מעודכן להיום. 🎉',chips:menuLabels()})}
