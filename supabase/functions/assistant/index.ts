@@ -3,11 +3,11 @@
 // Secrets (Supabase dashboard -> Edge Functions -> Secrets):
 //   ANTHROPIC_API_KEY   required
 //   ASSISTANT_ENABLED   optional, set to "false" to switch the assistant off at once
-//   ASSISTANT_MODEL     optional, default claude-opus-5-5 (e.g. claude-haiku-5-5 for a cheaper demo)
+//   ASSISTANT_MODEL     optional, default claude-haiku-5-5 (cheap and fast; claude-opus-5-5 for the strongest Hebrew)
 //   ALLOWED_ORIGINS     optional, comma separated (default: any origin)
 import Anthropic from "npm:@anthropic-ai/sdk";
 
-const MODEL = Deno.env.get("ASSISTANT_MODEL") ?? "claude-opus-5-5";
+const MODEL = Deno.env.get("ASSISTANT_MODEL") ?? "claude-haiku-5-5";
 const ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "*").split(",").map((s) => s.trim());
 const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
 
