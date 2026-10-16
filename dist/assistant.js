@@ -17,8 +17,35 @@ function dueOptions(){const out=[];for(let n=1;n<=9&&out.length<4;n++){const d=n
 const listWeekTasks=f=>classRecords().filter(r=>r.kind==='task'&&f(r));
 const taskLine=r=>`• ${r.subject}: ${r.details}${r.due?' (עד '+prettyDate(r.due)+')':''} — ${r.done?'הוכן ✓':'ממתין'}`;
 function lessonLines(day){const out=[];for(const r of classRecords().filter(r=>r.day===day)){const l=r.lesson;if(l&&(l.summary||l.topic))out.push(`• ${r.subject}: ${l.topic||''}${l.summary&&l.summary!==l.topic?' — '+l.summary:''}`)}return out}
-const missingSubjects=day=>{const have=new Set(classRecords().filter(r=>r.day===day).map(r=>r.subject));return subjects.filter(s=>!have.has(s))};
+const expectedToday=()=>{const t=ttSubjectsToday().filter(s=>subjects.includes(s));return t.length?t:subjects};
+const missingSubjects=day=>{const have=new Set(classRecords().filter(r=>r.day===day).map(r=>r.subject));return (day===todayKey()?expectedToday():subjects).filter(s=>!have.has(s))};
 const openSubjects=()=>[...new Set(classRecords().filter(r=>r.kind==='task'&&!r.done).map(r=>r.subject))];
+// ---------- class timetable: which lessons there are on each weekday (0 = Sunday ... 4 = Thursday) ----------
+const DAY_NAMES=['ראשון','שני','שלישי','רביעי','חמישי'];
+const TT_GRID=[['08:00','08:45'],['08:50','09:35'],['10:00','10:45'],['10:50','11:35'],['11:50','12:35'],['12:40','13:25']];
+const TT_SEED=[['חשבון','עברית','אנגלית','מדעים','חינוך'],['עברית','חשבון','חינוך גופני','אנגלית','אמנות'],['חשבון','מדעים','עברית','אנגלית','חינוך גופני'],['אנגלית','עברית','חשבון','אמנות','מדעים'],['חשבון','עברית','מדעים','אנגלית']];
+const tt={classId:'',rows:[],at:0};
+function ttLocalAll(){try{return JSON.parse(localStorage.getItem('homework-timetable-v1'))||{}}catch{return{}}}
+function ttLocalSave(all){try{localStorage.setItem('homework-timetable-v1',JSON.stringify(all))}catch{}}
+function ttRowsFor(list,wd){return list.map((subject,i)=>({weekday:wd,start:TT_GRID[Math.min(i,TT_GRID.length-1)][0],end:TT_GRID[Math.min(i,TT_GRID.length-1)][1],subject}))}
+async function ttLoad(force){
+ const cls=activeClassId();if(!cls)return;if(!force&&tt.classId===cls&&Date.now()-tt.at<20000)return;
+ if(cloud.ready){try{const rows=await cloudResult(cloud.client.from('school_timetable').select('*').eq('class_id',cls));tt.rows=rows.map(r=>({weekday:r.weekday,start:r.start_time.slice(0,5),end:r.end_time.slice(0,5),subject:r.subject}))}catch{tt.rows=[]}}
+ else{const all=ttLocalAll();if(!all[cls]){all[cls]=TT_SEED.flatMap((l,wd)=>ttRowsFor(l,wd));ttLocalSave(all)}tt.rows=all[cls]}
+ tt.classId=cls;tt.at=Date.now();
+}
+const ttDay=wd=>tt.classId===activeClassId()?tt.rows.filter(r=>r.weekday===wd).sort((a,b)=>a.start.localeCompare(b.start)):[];
+const ttLine=r=>`${r.start}–${r.end}  ${r.subject}`;
+const schoolWeekday=d=>d.getDay()<=4?d.getDay():null;
+const todayWeekday=()=>schoolWeekday(new Date());
+function ttSubjectsToday(){const wd=todayWeekday();return wd===null?[]:[...new Set(ttDay(wd).map(r=>r.subject))]}
+function ttTextForDay(wd,label){const rows=ttDay(wd);return rows.length?`${label} במערכת:\n`+rows.map(ttLine).join('\n'):`${label} אין שיעורים במערכת.`}
+async function ttSaveDay(wd,list){
+ const cls=activeClassId(),rows=ttRowsFor(list,wd);
+ if(cloud.ready){await cloudResult(cloud.client.from('school_timetable').delete().eq('class_id',cls).eq('weekday',wd));if(rows.length)await cloudResult(cloud.client.from('school_timetable').insert(rows.map(r=>({class_id:cls,weekday:wd,start_time:r.start,end_time:r.end,subject:r.subject}))))}
+ else{const all=ttLocalAll();all[cls]=[...(all[cls]||[]).filter(r=>r.weekday!==wd),...rows];ttLocalSave(all)}
+ await ttLoad(true);
+}
 const clip=(v,n)=>typeof v==='string'?v.trim().slice(0,n):'';
 const ISO=/^\d{4}-\d{2}-\d{2}$/;
 
@@ -26,7 +53,7 @@ const ISO=/^\d{4}-\d{2}-\d{2}$/;
 const YES_NO=(q)=>({text:q,chips:['יש','אין']});
 const FLOWS={
  lesson:{steps:[
-  {key:'subject',ask:()=>{const open=missingSubjects(todayKey());return {text:'לאיזה מקצוע נעדכן?',chips:[...open,...subjects.filter(s=>!open.includes(s))]}},accept:(d,t)=>subjects.includes(t)?(d.subject=t,null):{error:'בחרו מקצוע מהרשימה.'}},
+  {key:'subject',ask:()=>{const open=missingSubjects(todayKey());const wd=todayWeekday();const line=wd!==null&&ttDay(wd).length?'\nהיום במערכת: '+[...new Set(ttDay(wd).map(r=>r.subject))].join(', '):'';return {text:'לאיזה מקצוע נעדכן?'+line,chips:[...open,...subjects.filter(s=>!open.includes(s))]}},accept:(d,t)=>subjects.includes(t)?(d.subject=t,null):{error:'בחרו מקצוע מהרשימה.'}},
   {key:'learned',ask:d=>({text:`מה למדו היום ב${d.subject}? אפשר לכתוב בקצרה, או לדלג.`,chips:['דלג'],free:true}),accept:(d,t)=>{d.learned=t==='דלג'?'':clip(t,1500);return null}},
   {key:'concepts',when:d=>!!d.learned,ask:()=>({text:'יש מושגים חדשים? כתבו אותם עם פסיקים, או לדלג.',chips:['דלג'],free:true}),accept:(d,t)=>{d.concepts=t==='דלג'?'':clip(t,300);return null}},
   {key:'hasHw',ask:d=>YES_NO(`יש שיעורי בית ב${d.subject}?`),accept:(d,t)=>t==='יש'?(d.kind='task',null):t==='אין'?(d.kind='none',null):{error:'בחרו "יש" או "אין".'}},
@@ -46,8 +73,21 @@ const FLOWS={
   {key:'when',ask:()=>({text:'לאיזה יום להציג?',chips:['מה שעוד ממתין','מחר','היום','כל השבוע']}),accept:(d,t)=>{
    const w={'מה שעוד ממתין':['מה עוד ממתין להכנה',r=>!r.done],'מחר':['מה צריך להכין למחר',r=>r.due===dateKeyPlus(1)],'היום':['שיעורי הבית שניתנו היום',r=>r.day===todayKey()],'כל השבוע':['שיעורי הבית של השבוע',()=>true]}[t];
    if(!w)return {error:'בחרו אחת מהאפשרויות.'};const rs=listWeekTasks(w[1]);const miss=missingSubjects(todayKey());
-   return {show:(rs.length?w[0]+':\n'+rs.map(taskLine).join('\n'):'אין משימות להצגה. 🎉')+(miss.length&&t!=='כל השבוע'?`\n\nעוד אין עדכון מהמורה ב: ${miss.join(', ')}.`:''),chips:openSubjects().length?['סימון הכנה',...menuLabels().filter(x=>x!=='סימון הכנה')]:[]}}},
+   const tm=t==='מחר'?(()=>{let n=1,wd=null;while(n<=3){wd=schoolWeekday(new Date(Date.now()+n*864e5));if(wd!==null)break;n++}return wd===null?'':'\n\nב'+(n===1?'מחר':'יום '+DAY_NAMES[wd])+' במערכת: '+([...new Set(ttDay(wd).map(r=>r.subject))].join(', ')||'אין שיעורים')})():'';
+   return {show:(rs.length?w[0]+':\n'+rs.map(taskLine).join('\n'):'אין משימות להצגה. 🎉')+tm+(miss.length&&t!=='כל השבוע'?`\n\nעוד אין עדכון מהמורה ב: ${miss.join(', ')}.`:''),chips:openSubjects().length?['סימון הכנה',...menuLabels().filter(x=>x!=='סימון הכנה')]:[]}}},
  ]},
+ timetable:{steps:[
+  {key:'day',ask:()=>({text:'איזה יום להציג?',chips:['היום','מחר',...DAY_NAMES.map(n=>'יום '+n),'כל השבוע']}),accept:(d,t)=>{
+   if(t==='כל השבוע')return {show:DAY_NAMES.map((n,i)=>`יום ${n}: `+(ttDay(i).map(r=>r.subject).join(', ')||'אין')).join('\n'),chips:menuLabels()};
+   if(t==='היום'){const wd=todayWeekday();return {show:wd===null?'היום אין לימודים (סוף שבוע).':ttTextForDay(wd,'היום (יום '+DAY_NAMES[wd]+')'),chips:menuLabels()}}
+   if(t==='מחר'){let n=1,w=null;while(n<=3){w=schoolWeekday(new Date(Date.now()+n*864e5));if(w!==null)break;n++}return {show:(n>1?'מחר אין לימודים. היום הבא: ':'')+ttTextForDay(w,'יום '+DAY_NAMES[w]),chips:menuLabels()}}
+   const i=DAY_NAMES.findIndex(n=>t==='יום '+n||t===n);if(i<0)return {error:'בחרו יום מהרשימה.'};return {show:ttTextForDay(i,'יום '+DAY_NAMES[i]),chips:menuLabels()}}},
+ ]},
+ ttEdit:{steps:[
+  {key:'day',ask:()=>({text:'לאיזה יום לעדכן את המערכת?',chips:DAY_NAMES.map(n=>'יום '+n)}),accept:(d,t)=>{const i=DAY_NAMES.findIndex(n=>t==='יום '+n||t===n);if(i<0)return {error:'בחרו יום מהרשימה.'};d.weekday=i;return null}},
+  {key:'list',ask:d=>({text:`מה השיעורים ביום ${DAY_NAMES[d.weekday]}? כתבו לפי הסדר, מופרדים בפסיק (למשל: חשבון, עברית, אנגלית). השעות לפי הצלצולים הרגילים.${ttDay(d.weekday).length?'\n\nכרגע:\n'+ttDay(d.weekday).map(ttLine).join('\n'):''}`,chips:ttDay(d.weekday).length?['ללא שיעורים']:[],free:true}),accept:(d,t)=>{if(t==='ללא שיעורים'){d.list=[];return null}const list=t.split(/[,،\n]+/).map(x=>clip(x,40)).filter(Boolean).slice(0,TT_GRID.length);if(!list.length)return {error:'כתבו לפחות שיעור אחד.'};d.list=list;return null}},
+  {key:'confirm',ask:d=>({text:`מערכת יום ${DAY_NAMES[d.weekday]}:\n`+(d.list.length?ttRowsFor(d.list,d.weekday).map(ttLine).join('\n'):'אין שיעורים')+'\n\nלשמור?',chips:['שמירה','התחלה מחדש','ביטול']}),accept:(d,t)=>t==='שמירה'?{commit:true}:t==='התחלה מחדש'?{restart:true}:{error:'בחרו שמירה, התחלה מחדש או ביטול.'}},
+ ],actions:d=>[{type:'save_timetable',weekday:d.weekday,list:d.list}]},
  photo:{steps:[
   {key:'subject',ask:()=>({text:'לאיזה מקצוע הצילום?',chips:subjects}),accept:(d,t)=>subjects.includes(t)?(d.subject=t,null):{error:'בחרו מקצוע מהרשימה.'}},
   {key:'shoot',ask:()=>({text:'מוכנים? לחצו על "צילום" ואפשר לצלם את הלוח או דף מהמחברת.',chips:['📷 צילום','ביטול']}),accept:(d,t)=>({awaitPhoto:d.subject})},
@@ -57,8 +97,8 @@ function lessonSummary(d){const l=[`• מקצוע: ${d.subject}`];if(d.learned)
 
 // ---------- menu per role ----------
 function menu(){
- if(role==='teacher')return [['lesson','עדכון שיעור'],['today','מה עודכן היום'],['photo','צילום לוח או מחברת']];
- if(role==='parent'||role==='child'){const m=[['tasks','מה יש להכין'],['learned',role==='child'?'מה למדתי':'מה למדו'],['done','סימון הכנה'],['ask','שאלה למורה']];if(typeof matCanUpload==='function'&&matCanUpload())m.push(['photo','צילום לחומרי הכיתה']);return m}
+ if(role==='teacher')return [['lesson','עדכון שיעור'],['today','מה עודכן היום'],['timetable','מערכת השעות'],['ttEdit','עריכת מערכת השעות'],['photo','צילום לוח או מחברת']];
+ if(role==='parent'||role==='child'){const m=[['tasks','מה יש להכין'],['learned',role==='child'?'מה למדתי':'מה למדו'],['done','סימון הכנה'],['timetable','מערכת השעות'],['ask','שאלה למורה']];if(typeof matCanUpload==='function'&&matCanUpload())m.push(['photo','צילום לחומרי הכיתה']);return m}
  return [['admin','איפה מגדירים כיתות ומורים?']];
 }
 const menuLabels=()=>menu().map(m=>m[1]);
@@ -139,6 +179,7 @@ async function runActions(actions){
    if(a.type==='save_lesson'){lines.push(await saveLessonAction(a));undoable=!cloud.ready}
    else if(a.type==='mark_done')lines.push(await markDoneAction(a));
    else if(a.type==='ask_teacher')lines.push(await askTeacherAction(a));
+   else if(a.type==='save_timetable'){if(role!=='teacher')throw new Error('רק מורה יכול לעדכן את מערכת השעות.');await ttSaveDay(a.weekday,(a.list||[]).map(x=>clip(x,40)).filter(Boolean));lines.push(`✓ מערכת יום ${DAY_NAMES[a.weekday]} נשמרה`)}
   }catch(e){lines.push('⚠ '+(e.message||e))}
  }
  return {lines,undoable};
@@ -194,8 +235,8 @@ async function chatPhotoSubject(subject){
 function assistantWelcome(){
  const day=todayKey();if(chat.history.some(m=>m.daily===day))return;
  let m;
- if(role==='teacher'){const miss=missingSubjects(day);m=miss.length?{text:`בוקר טוב! היום עוד לא עודכנו: ${miss.join(', ')}. נעדכן?`,chips:['עדכון שיעור','מה עודכן היום']}:{text:'הכול מעודכן להיום. מה תרצו לעשות?',chips:menuLabels()}}
- else if(role==='parent'||role==='child'){const open=openSubjects();m=open.length?{text:`היי! ${open.length===1?'יש משימה אחת להכנה':'יש '+open.length+' משימות להכנה'}: ${open.join(', ')}.`,chips:menuLabels()}:{text:'היי! אין משימות פתוחות כרגע. 🎉',chips:menuLabels()}}
+ if(role==='teacher'){const miss=missingSubjects(day),sub=ttSubjectsToday();m=miss.length?{text:`בוקר טוב! ${sub.length?'היום במערכת: '+sub.join(', ')+'. ':''}עוד לא עודכנו: ${miss.join(', ')}. נעדכן?`,chips:menuLabels()}:{text:'הכול מעודכן להיום. מה תרצו לעשות?',chips:menuLabels()}}
+ else if(role==='parent'||role==='child'){const open=openSubjects(),sub=ttSubjectsToday();m=open.length?{text:`היי! ${sub.length?'היום בכיתה: '+sub.join(', ')+'. ':''}${open.length===1?'יש משימה אחת להכנה':'יש '+open.length+' משימות להכנה'}: ${open.join(', ')}.`,chips:menuLabels()}:{text:'היי! אין משימות פתוחות כרגע. 🎉',chips:menuLabels()}}
  else m={text:'שלום! כאן אפשר לשאול איפה מגדירים כיתות ומורים.',chips:menuLabels()};
  chat.history.push({from:'bot',daily:day,at:Date.now(),...m});chatSave();
 }
@@ -205,7 +246,7 @@ function renderAssistant(){
  $a('assistantContext').textContent=[['parent','child'].includes(role)?stu:'',cls].filter(Boolean).join(' · ')||'בחירת כיתה';
  $a('assistantContext').onclick=()=>{if(typeof openMoreItem==='function')openMoreItem('classPickerPanel')};
  if(chat.loadedRole!==role){chatLoad();chat.flow=null;chat.pendingPhoto=null;chat.awaitPhoto=null}
- assistantWelcome();chatDraw();
+ chatDraw();ttLoad(false).then(()=>{assistantWelcome();chatDraw()});
 }
 
 $a('chatForm').onsubmit=e=>{e.preventDefault();chatSend()};
