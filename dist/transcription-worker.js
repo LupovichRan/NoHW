@@ -6,12 +6,12 @@ async function getTranscriber(id,model){
  loadedModel=model;
  if(!pipelinePromise){
   pipelinePromise=(async()=>{
-   const {pipeline,env}=await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
+   const {pipeline,env}=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1');
    env.allowLocalModels=false;
    env.useBrowserCache=true;
    env.backends.onnx.wasm.numThreads=1;
    return pipeline('automatic-speech-recognition',models[model],{
-    quantized:true,
+    dtype:'q8',
     progress_callback:p=>self.postMessage({id,type:'progress',file:p.file||'',progress:p.progress||0,status:p.status})
    });
   })().catch(e=>{pipelinePromise=null;throw e});
