@@ -1,0 +1,10 @@
+# No package manifest is committed (no package.json, lockfile, or other
+# ecosystem file). Third-party libraries are pinned jsDelivr URLs in dist/.
+# github-actions is included so workflow dependencies are updated when
+# Actions workflows are added.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
