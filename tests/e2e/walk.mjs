@@ -28,6 +28,17 @@ const pageErrors = [];
 page.on("pageerror", (error) => pageErrors.push(String(error)));
 page.on("request", (request) => hosts.add(new URL(request.url()).host));
 
+async function clickSheet(text) {
+  await page.waitForFunction((wanted) => [...document.querySelectorAll(".chatsheet button")].some((el) => (el.innerText || "").replace(/\s+/g, " ").includes(wanted)), text);
+  const found = await page.$$eval(".chatsheet button", (els, wanted) => {
+    const el = els.find((node) => (node.innerText || "").replace(/\s+/g, " ").includes(wanted));
+    if (!el) return "";
+    el.click();
+    return "yes";
+  }, text);
+  if (!found) throw new Error("missing sheet " + text);
+  await page.waitForTimeout(80);
+}
 async function clickText(text) {
   await page.waitForFunction((wanted) => [...document.querySelectorAll("button")].some((el) => (el.innerText || "").replace(/\s+/g, " ").includes(wanted)), text);
   const found = await page.$$eval("button", (els, wanted) => {
@@ -458,6 +469,51 @@ try {
   await layout("helper principal");
   await axe("helper principal");
   record("principal helper reports the class without child names", true);
+
+  await openScenario("הקמת בית ספר עם העוזר");
+  const setupFab = page.locator(".helperfab");
+  if ((await setupFab.count()) !== 1) throw new Error("setup fab");
+  if (!(await page.locator(".helperfab.setup, .setupcard").count())) throw new Error("setup ring");
+  await setupFab.click();
+  await page.waitForSelector(".chatsheet");
+  await clickSheet("בית ספר חדש");
+  await page.locator('.askbox input[name="q"]').fill("דקל");
+  await clickSheet("שאל");
+  await page.locator('.askbox input[name="q"]').fill("רן אור");
+  await clickSheet("שאל");
+  const adminAsk = await page.locator(".bubble.confirm").innerText();
+  if (!adminAsk.includes("דקל") || !adminAsk.includes("רן אור")) throw new Error(adminAsk);
+  await page.locator(".chatsheet").screenshot({ path: "/opt/cursor/artifacts/setup_admin.png" });
+  await clickSheet("כן");
+  const added = await page.locator(".bubble.bot").last().innerText();
+  if (!added.includes("דקל")) throw new Error(added);
+  await page.locator('[aria-label="סגירה"]').click();
+  await page.locator('[aria-label="החלפת דמות"]').click();
+  await clickText("רן");
+  if (!(await page.locator(".setupcard").innerText()).includes("0/3")) throw new Error("principal checklist");
+  await setupFab.click();
+  await clickSheet("כיתות חדשות");
+  await page.locator('.askbox input[name="q"]').fill("ד׳1-ד׳3");
+  await clickSheet("שאל");
+  const classAsk = await page.locator(".bubble.confirm").innerText();
+  if (!classAsk.includes("להוסיף 3 כיתות?")) throw new Error(classAsk);
+  await page.locator(".chatsheet").screenshot({ path: "/opt/cursor/artifacts/setup_principal.png" });
+  await clickSheet("כן");
+  await clickSheet("שיבוץ מורה");
+  await clickSheet("ד׳1");
+  await page.locator('.askbox input[name="q"]').fill("מיכל אביב");
+  await clickSheet("שאל");
+  await clickSheet("כן");
+  await page.locator('[aria-label="סגירה"]').click();
+  await page.locator('[aria-label="החלפת דמות"]').click();
+  await clickText("מיכל");
+  const teacherSetup = await page.locator(".setupcard").innerText();
+  if (!teacherSetup.includes("0/4") || !teacherSetup.includes("מערכת") || !teacherSetup.includes("ילדים")) throw new Error(teacherSetup);
+  if (!(await page.locator(".helperfab.setup").count())) throw new Error("teacher ring");
+  await page.screenshot({ path: "/opt/cursor/artifacts/setup_teacher.png" });
+  await layout("setup teacher");
+  await axe("setup teacher");
+  record("setup wizard", true);
 
   const manifest = await page.evaluate(async (root) => {
     const response = await fetch(new URL("manifest.webmanifest", root));

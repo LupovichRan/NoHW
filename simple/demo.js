@@ -431,7 +431,10 @@
           { id: "m-reply", text: "סיימתי את החשבון", from: "student", kidId: "k-omer", photo: "", voice: "", photos: [], voices: [], audience: "class", alert: false, at: 500, bump: 500, edited: false }
         ];
         return pack("helper", "שיחה עם עוזר הכיתה", "s-k-noa", corePeople(), [school("s-alon", "אלון", "דנה כהן", [built])], "🤖");
-      })()
+      })(),
+      pack("setup-school", "הקמת בית ספר עם העוזר", "admin", [
+        person("admin", "נועם גל", "🧔", "admin")
+      ], [], "🏗️")
     ];
   }
   function scopedLive(state, who, date) {

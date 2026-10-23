@@ -336,7 +336,8 @@ assert.equal(importedReply.kidId.includes("<b>"), true);
 assert.equal(S.messagesFor(replyPack.schools[0].classrooms[0], "student").length, 0);
 
 const sw = fs.readFileSync(path.join(__dirname, "..", "simple", "sw.js"), "utf8");
-assert.match(sw, /nohw-simple-v16/);
+assert.match(sw, /nohw-simple-v17/);
+assert.match(sw, /setup\.js/);
 assert.match(sw, /showNotification/);
 assert.match(app, /digest-go/);
 assert.match(app, /nohw-simple-assist/);

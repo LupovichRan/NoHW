@@ -174,7 +174,7 @@
     const room = {
       id: uid(random),
       name: textOf(input && input.className),
-      teacherName: textOf(input && input.teacherName),
+      teacherName: String(input && input.teacherName || "").trim().slice(0, 40),
       teacherCode: uniqueCode(state, random),
       homework: {},
       kids: []

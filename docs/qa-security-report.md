@@ -2,14 +2,14 @@
 
 Date: 23 October 2026. Build under test is the `simple` branch, the Hebrew PWA in `simple/`. Nothing was merged.
 
-The report covers the final build: the approved product changes (principal home, scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, profile photos) and the class assistant, עוזר הכיתה. The assistant organizes a short digest for each role and can remind them from the class data already on the device. It does not call a language model, use an API key, or open a network request. A reliable background push still needs a backend later; reminders fire while the app is open and are checked again on open.
+The report covers the final build: the approved product changes (principal home, scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, profile photos) and the class assistant, עוזר הכיתה. The assistant organizes a short digest for each role, can remind them from the class data already on the device, and walks an admin, a principal, and a teacher through setup. It does not call a language model, use an API key, or open a network request. A change waits for כן. A reliable background push still needs a backend later; reminders fire while the app is open and are checked again on open.
 
 ## How it was run
 
-- Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`, `node tests/assist.cjs`.
-- Browser walk at 390×844 in headless Chromium: `node tests/e2e/walk.mjs` against a local static server. 57 checks passed, 0 failed. WebKit is not installed in this environment, so that browser was not run.
+- Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`, `node tests/assist.cjs`, `node tests/setup.cjs`.
+- Browser walk at 390×844 in headless Chromium: `node tests/e2e/walk.mjs` against a local static server. 60 checks passed, 0 failed. WebKit is not installed in this environment, so that browser was not run.
 - axe-core on the start hub, the principal home, the timetable, a student day, the message list, the profile sheet, and the assistant chat as a student, a parent, and a principal. No serious or critical violations.
-- Lighthouse mobile, local server: performance 94, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA).
+- Lighthouse mobile, local server: performance 92, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA).
 - gitleaks 8.28.0 on the current tree, no leaks. `npm audit` in `tests/e2e` reported 0 vulnerabilities.
 
 ## Pass / fail
@@ -30,6 +30,7 @@ The report covers the final build: the approved product changes (principal home,
 | עדכון והקפצת הודעה | Pass |
 | הדגמה למנהל/ת – 3 דקות | Pass |
 | שיחה עם עוזר הכיתה | Pass |
+| הקמת בית ספר עם העוזר | Pass |
 | Character switching and the people filters | Pass |
 | Start screen: תרחישים, נתונים חיים, דמויות | Pass |
 | Scenario reset returns the seeded data | Pass |
@@ -47,7 +48,7 @@ The report covers the final build: the approved product changes (principal home,
 | RTL (`dir=rtl`) and no horizontal overflow on every scenario | Pass |
 | Manifest, service worker, and a reload while offline | Pass |
 | axe-core, no serious or critical issues | Pass |
-| Lighthouse performance / accessibility / best practices / PWA | 94 / 100 / 100 / 100 |
+| Lighthouse performance / accessibility / best practices / PWA | 92 / 100 / 100 / 100 |
 | WebKit | Not run. The browser is not installed here. |
 | XSS payloads in a school name, a student name, homework text, a transcript, and a custom subject stay as text | Pass |
 | Content-Security-Policy and referrer policy | Pass |
@@ -71,6 +72,10 @@ The report covers the final build: the approved product changes (principal home,
 | Reminder rules fire only for unfinished homework or unposted subjects, and a typed time creates a custom reminder | Pass |
 | The avatar badge counts unread digest items and clears once the card is opened | Pass |
 | An in-app reminder banner and a service-worker notification show for the demo trigger; the screen says background push needs a backend | Pass |
+| Setup wizards add a school, classes, a teacher, kids, a parent, and the class avatar only after כן | Pass |
+| A principal cannot add a school from the assistant, and a teacher cannot add a class | Pass |
+| A range such as ד׳1-ד׳3 and a pasted list of names become separate entities | Pass |
+| The avatar shows setup progress until the checklist is complete, then the daily digest returns | Pass |
 
 ## Bugs found and fixed
 
@@ -92,7 +97,7 @@ The report covers the final build: the approved product changes (principal home,
 | --- | --- | --- |
 | Web Speech may send audio to the browser's own speech service | Medium | The app does not upload homework or chat text. Recording, read-aloud, and the assistant microphone use the browser's speech APIs. The recording screen and the chat say the browser may use its own speech service. |
 | A `#pack=` link can still change the local demo | Low | The pack cannot run code or pollute prototypes. It can merge names and homework into the on-device demo, which has no accounts. |
-| Most of the page is drawn with `innerHTML` | Low | User-entered strings go through `esc()`. The assistant chat, digest, reminder banner, and notification card set questions, answers, and reminder text with `textContent`. A later edit that interpolates a field without `esc()` would be an XSS bug. The CSP blocks injected scripts. |
+| Most of the page is drawn with `innerHTML` | Low | User-entered strings go through `esc()`. The assistant chat, digest, reminder banner, notification card, and setup confirmations set questions, answers, and names with `textContent`. A later edit that interpolates a field without `esc()` would be an XSS bug. The CSP blocks injected scripts. |
 | Reminders do not arrive if the app is closed | Low | Times are stored on the device and checked with `setTimeout` while the app is open, plus a catch-up when it opens. The reminder settings and the demo script say a reliable background push needs a backend later. |
 | WebKit was not executed here | Low | Chromium at 390×844 passed, including the camera file input and the recording bar. A real iPhone pass is still the check for Safari's camera picker. |
 | The service worker caches later same-origin GETs inside its directory | Low | It does not cache other origins, and it does not cache the rest of `/NoHW/`. |
