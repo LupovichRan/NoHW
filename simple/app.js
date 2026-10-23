@@ -60,7 +60,7 @@ function saveStore() {
 }
 function render() {
   document.getElementById("app").innerHTML = html();
-  if (view.recording && heard) paintLive(heard);
+  if (view.recording) paintRecording();
   if (!focusSuggested) return;
   focusSuggested = false;
   const picked = document.querySelector(".person.on");
@@ -68,9 +68,14 @@ function render() {
 }
 function push(next) { stack.push(view); view = next; render(); }
 function actor() { return D.personActor(state, person); }
+function recordOverlay() {
+  if (!view.recording) return "";
+  return '<div class="recscrim"></div><div class="reclive" role="status"><div class="recbar"><div class="recrow"><span class="recdot" aria-hidden="true"></span><b data-rec-time>00:00</b><span>מקליט...</span></div><div class="meter" aria-hidden="true"><span data-rec-level></span></div><p class="said live" data-live-transcript></p><p class="warn" data-rec-warn hidden></p></div><button class="stop" type="button" data-act="record">⏹ עצור</button></div>';
+}
 function shell(head, body) {
   const note = toastText ? '<p class="toast" role="status">' + esc(toastText) + "</p>" : "";
-  return '<section class="app" lang="he" dir="rtl">' + head + body + note + "</section>";
+  const busy = view.recording ? " busy" : "";
+  return '<section class="app' + busy + '" lang="he" dir="rtl">' + head + body + recordOverlay() + note + "</section>";
 }
 function toast(text) {
   toastText = text;
@@ -426,6 +431,15 @@ function confirmHtml() {
 }
 let recorder = null;
 let micStream = null;
+let stopping = false;
+let recordStarted = 0;
+let warned = false;
+let clockTimer = 0;
+let audioCtx = null;
+let analyser = null;
+let levelBuf = null;
+const RECORD_WARN = 165000;
+const RECORD_LIMIT = 180000;
 function weekdayIndex(date) {
   const parts = String(date || "").split("-").map(Number);
   const day = new Date(parts[0], parts[1] - 1, parts[2]).getDay();
@@ -509,10 +523,9 @@ function pickButtons() {
 function voicePanel() {
   const list = view.voices || [];
   const missing = view.speechMissing ? '<p class="hint">תמלול לא זמין בדפדפן זה</p>' : "";
-  const live = view.recording ? '<p class="said live" data-live-transcript></p>' : "";
   const label = list.length ? "🎤 הקלטה נוספת" : "🎤 הקלטה";
-  const button = view.recording ? '<button class="ghost" type="button" data-act="record">עצירה</button>' : '<button class="ghost" type="button" data-act="record">' + label + "</button>";
-  return voiceClips(list, { edit: true }) + live + missing + button;
+  const button = view.recording ? "" : '<button class="ghost" type="button" data-act="record">' + label + "</button>";
+  return voiceClips(list, { edit: true }) + missing + button;
 }
 function postHtml() {
   noteSpeech();
@@ -650,6 +663,9 @@ function keepDraft() {
   });
 }
 function haltMic() {
+  stopping = false;
+  warned = false;
+  stopMeters();
   if (recognition) {
     try { recognition.onresult = null; recognition.onerror = null; recognition.onend = null; recognition.stop(); } catch (e) {}
     recognition = null;
@@ -708,6 +724,94 @@ function queueMedia(id) {
 function paintLive(text) {
   const node = document.querySelector("[data-live-transcript]");
   if (node) node.textContent = text || "";
+}
+function clockText(ms) {
+  const total = Math.max(0, Math.min(180, Math.floor(ms / 1000)));
+  const m = String(Math.floor(total / 60)).padStart(2, "0");
+  const s = String(total % 60).padStart(2, "0");
+  return m + ":" + s;
+}
+function paintRecording() {
+  paintLive(heard);
+  const node = document.querySelector("[data-rec-time]");
+  if (node) node.textContent = clockText(Date.now() - recordStarted);
+  if (!warned) return;
+  const warn = document.querySelector("[data-rec-warn]");
+  if (!warn) return;
+  warn.hidden = false;
+  warn.textContent = "עוד 15 שניות";
+}
+function buzz() {
+  try { if (navigator.vibrate) navigator.vibrate(40); } catch (e) {}
+}
+function stopMeters() {
+  if (clockTimer) clearInterval(clockTimer);
+  clockTimer = 0;
+  if (audioCtx) { try { audioCtx.close(); } catch (e) {} }
+  audioCtx = null;
+  analyser = null;
+  levelBuf = null;
+}
+function armMeter(stream) {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  try {
+    audioCtx = new Ctx();
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    if (audioCtx.resume) audioCtx.resume();
+  } catch (e) {
+    analyser = null;
+  }
+}
+function tickRecord() {
+  if (!view.recording) return;
+  const elapsed = Date.now() - recordStarted;
+  const node = document.querySelector("[data-rec-time]");
+  if (node) node.textContent = clockText(elapsed);
+  if (analyser) {
+    if (!levelBuf || levelBuf.length !== analyser.fftSize) levelBuf = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(levelBuf);
+    let sum = 0;
+    for (let i = 0; i < levelBuf.length; i++) {
+      const sample = (levelBuf[i] - 128) / 128;
+      sum += sample * sample;
+    }
+    const level = Math.min(1, Math.sqrt(sum / levelBuf.length) * 3.2);
+    const bar = document.querySelector("[data-rec-level]");
+    if (bar) bar.style.width = Math.round(level * 100) + "%";
+  }
+  if (elapsed >= RECORD_WARN) {
+    warned = true;
+    const warn = document.querySelector("[data-rec-warn]");
+    if (warn) {
+      warn.hidden = false;
+      warn.textContent = "עוד 15 שניות";
+    }
+  }
+  if (elapsed >= RECORD_LIMIT) stopRecording();
+}
+function micMessage(error) {
+  const name = error && error.name || "";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError" || name === "SecurityError") return "אין הרשאה למיקרופון";
+  return "אין מיקרופון";
+}
+function failMic(error) {
+  haltMic();
+  view.error = micMessage(error);
+  toast(view.error);
+}
+function stopRecording() {
+  if (!recorder || stopping) return;
+  stopping = true;
+  buzz();
+  if (recognition) { try { recognition.stop(); } catch (e) {} }
+  setTimeout(function () {
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    else stopping = false;
+  }, 200);
 }
 function speechCtor() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
@@ -821,19 +925,12 @@ function startSpeech() {
 function toggleRecord() {
   keepDraft();
   if (view.recording && recorder) {
-    const pending = recognition;
-    if (pending) {
-      try { pending.stop(); } catch (e) {}
-    }
-    setTimeout(function () {
-      if (recorder && recorder.state !== "inactive") recorder.stop();
-    }, 200);
+    stopRecording();
     return;
   }
   if ((view.voices || []).length >= 8) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) {
-    view.error = "אין מיקרופון";
-    render();
+    failMic();
     return;
   }
   navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
@@ -852,6 +949,9 @@ function toggleRecord() {
         recognition = null;
       }
       recorder = null;
+      stopping = false;
+      warned = false;
+      stopMeters();
       view.recording = false;
       const blob = new Blob(chunks, { type: (chunks[0] && chunks[0].type) || "audio/webm" });
       const id = mediaId("v");
@@ -861,20 +961,24 @@ function toggleRecord() {
         view.voices = view.voices || [];
         view.voices.push({ id: id, src: "", text: text });
         view.error = "";
-        render();
+        toast("נשמר ✓");
       }).catch(function () {
         toast("השמירה נכשלה");
       });
     };
+    armMeter(stream);
     startSpeech();
     recorder.start();
+    recordStarted = Date.now();
+    warned = false;
+    if (clockTimer) clearInterval(clockTimer);
+    clockTimer = setInterval(tickRecord, 200);
     view.recording = true;
     view.error = "";
+    buzz();
     render();
-  }).catch(function () {
-    haltMic();
-    view.error = "אין מיקרופון";
-    render();
+  }).catch(function (error) {
+    failMic(error);
   });
 }
 function messageById(id) {
@@ -935,6 +1039,7 @@ function onClick(event) {
   const el = event.target.closest("[data-act]");
   if (!el || (el.closest("form") && el.type === "submit")) return;
   const act = el.dataset.act;
+  if (view.recording && act !== "record") return;
   if (act === "go") {
     const name = el.dataset.to;
     if (name === "data" || name === "live" || name === "people") {
@@ -1096,6 +1201,7 @@ function onClick(event) {
 }
 function onSubmit(event) {
   event.preventDefault();
+  if (view.recording) return;
   const data = new FormData(event.target);
   if (view.name === "post") {
     try { keepDraft(); homeworkInput("post", data.get("text")); saveStore(); haltMic(); view = stack.pop() || { name: "homework" }; }
