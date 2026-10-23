@@ -80,7 +80,7 @@ button { cursor: pointer; }
 .card small, .sub { display: block; margin-top: 2px; color: var(--muted); font-size: 13px; font-weight: 500; }
 .top { display: flex; flex-direction: row; align-items: center; gap: 10px; min-height: 56px; }
 .titles, .who { flex: 1; min-width: 0; text-align: start; }
-.titles h1 { margin: 0; font-size: 22px; font-weight: 700; }
+.titles h1 { margin: 0; font-size: 22px; font-weight: 700; line-height: 1.25; }
 .titles p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
 .icon, .text {
   border: 1px solid var(--line);
@@ -106,6 +106,8 @@ button { cursor: pointer; }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .pair .primary, .pair .ghost { margin-top: 0; }
 .add, .wa { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.field { display: flex; flex-direction: column; gap: 6px; text-align: start; }
+.field span { font-size: 14px; font-weight: 700; }
 input {
   width: 100%;
   min-height: 56px;

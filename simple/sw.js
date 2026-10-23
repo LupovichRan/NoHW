@@ -1,4 +1,4 @@
-const CACHE = "nohw-simple-v7";
+const CACHE = "nohw-simple-v8";
 const SHELL = ["./","index.html","app.css","app.js","logic.js","demo.js","manifest.webmanifest","icon-192.png","icon-512.png"];
 
 self.addEventListener("install", function (event) {

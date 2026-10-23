@@ -205,6 +205,14 @@ function classesHtml(schoolId) {
 function dayButton(classId) {
   return S.canEdit(state, actor(), { kind: "homework", classId: classId }) ? '<button class="text" type="button" data-act="day">היום</button>' : "";
 }
+function linkParent(kidId, name) {
+  const text = String(name || "").trim().slice(0, 40);
+  if (!text || !kidId) return;
+  const existing = parentOf(kidId);
+  if (existing) { existing.name = text; return; }
+  const found = D.findKid(state, kidId);
+  people.push({ id: "par-" + kidId, name: text, emoji: "👪", role: "parent", kin: "הורה", kidIds: [kidId], schoolId: found ? found.school.id : "", classId: found ? found.room.id : "" });
+}
 function parentOf(kidId) {
   return people.find(function (item) { return item.role === "parent" && (item.kidIds || []).indexOf(kidId) >= 0; }) || null;
 }
@@ -264,41 +272,59 @@ function dayHtml(kidId, live) {
   const jump = live ? parentShortcut(kidId) : "";
   return shell(bar(found.kid.firstName, found.room.name), jump + weekStrip(date) + '<div class="list">' + dayRows(rows, live) + "</div>");
 }
-function formHtml() {
-  const add = view.add;
-  const title = add === "school" ? "בית ספר" : add === "class" ? "כיתה" : "ילד";
-  const fields = add === "school" ? [["a", "בית הספר", "בית הספר"], ["b", "שם המנהל", "שם המנהל"]] : add === "class" ? [["a", "כיתה", "ה'2"], ["b", "שם המורה", "שם המורה"]] : [["a", "שם פרטי", "שם פרטי"]];
-  return shell(bar(title), '<form class="stack">' + fields.map(function (field) {
-    return '<input name="' + field[0] + '" dir="rtl" maxlength="40" required placeholder="' + field[2] + '" aria-label="' + field[1] + '">';
-  }).join("") + err() + '<button class="primary" type="submit">יצירה</button></form>');
+const ENTITY = {
+  school: { icon: "🏫", noun: "בית ספר", add: "הוספת בית ספר", edit: "עריכת בית ספר", remove: "מחיקת בית ספר", fields: [["a", "שם בית ספר", "אלון"], ["b", "שם מנהל/ת", "דנה כהן"]] },
+  class: { icon: "🚪", noun: "כיתה", add: "הוספת כיתה", edit: "עריכת כיתה", remove: "מחיקת כיתה", fields: [["a", "שם כיתה", "ה'2"], ["b", "שם מורה", "מיכל אביב"]] },
+  kid: { icon: "🧒", noun: "תלמיד", add: "הוספת תלמיד", edit: "עריכת תלמיד", remove: "מחיקת תלמיד", fields: [["a", "שם תלמיד", "נועה"], ["b", "שם הורה", "יעל ברק", "👪"]] },
+  parent: { icon: "👪", noun: "הורה", add: "הוספת הורה", edit: "עריכת הורה", remove: "מחיקת הורה", fields: [["a", "שם הורה", "יעל ברק", "👪"]] }
+};
+function entityOf(kind) { return ENTITY[kind] || ENTITY.kid; }
+function entityHeading(item, name) {
+  return item.icon + " " + (name ? item.edit + " · " + name : item.add);
 }
-function editHtml() {
-  const kind = view.kind;
-  let fields = [];
-  let title = "";
+function fieldInput(field, value) {
+  const label = (field[3] ? field[3] + " " : "") + field[1];
+  return '<label class="field"><span>' + esc(label) + '</span><input name="' + field[0] + '" dir="rtl" maxlength="40" required value="' + esc(value || "") + '" placeholder="' + esc(field[2]) + '" aria-label="' + esc(field[1]) + '"></label>';
+}
+function formHtml() {
+  const item = entityOf(view.add);
+  const inputs = item.fields.map(function (field) { return fieldInput(field, ""); }).join("");
+  return shell(bar(entityHeading(item, "")), '<form class="stack">' + inputs + err() + '<button class="primary" type="submit">יצירה</button></form>');
+}
+function editValues(kind) {
   if (kind === "school") {
     const school = D.findSchool(state, view.id);
-    if (!school) return schoolsHtml();
-    title = school.name;
-    fields = [["a", "בית הספר", school.name], ["b", "שם המנהל", school.principalName]];
-  } else if (kind === "class") {
-    const found = D.findClass(state, view.id);
-    if (!found) return classesHtml(person && person.schoolId);
-    title = found.room.name;
-    fields = [["a", "כיתה", found.room.name], ["b", "שם המורה", found.room.teacherName]];
-  } else {
-    const found = D.findKid(state, view.id);
-    if (!found) return shell(bar("עריכה"), '<p class="empty">אין ילדים</p>');
-    title = found.kid.firstName;
-    fields = [["a", "שם פרטי", found.kid.firstName]];
+    return school ? [school.name, [school.name, school.principalName]] : null;
   }
-  const inputs = fields.map(function (field) {
-    return '<input name="' + field[0] + '" dir="rtl" maxlength="40" required value="' + esc(field[2]) + '" aria-label="' + field[1] + '">';
-  }).join("");
-  return shell(bar("עריכה", title), '<form class="stack fit">' + inputs + err() + '<button class="primary" type="submit">שמירה</button></form><div class="tools"><button class="ghost" type="button" data-act="ask" data-kind="' + kind + '" data-id="' + esc(view.id) + '">מחיקה</button></div>');
+  if (kind === "class") {
+    const found = D.findClass(state, view.id);
+    return found ? [found.room.name, [found.room.name, found.room.teacherName]] : null;
+  }
+  if (kind === "parent") {
+    const parent = people.find(function (item) { return item.id === view.id && item.role === "parent"; });
+    return parent ? [parent.name, [parent.name]] : null;
+  }
+  const found = D.findKid(state, view.id);
+  if (!found) return null;
+  const parent = parentOf(view.id);
+  return [found.kid.firstName, [found.kid.firstName, parent ? parent.name : ""]];
+}
+function editHtml() {
+  const item = entityOf(view.kind);
+  const values = editValues(view.kind);
+  if (!values) {
+    if (view.kind === "school") return schoolsHtml();
+    if (view.kind === "class") return classesHtml(person && person.schoolId);
+    return shell(bar(entityHeading(item, "")), '<p class="empty">אין ילדים</p>');
+  }
+  const inputs = item.fields.map(function (field, index) { return fieldInput(field, values[1][index]); }).join("");
+  const remove = view.kind === "parent" ? "" : '<div class="tools"><button class="ghost" type="button" data-act="ask" data-kind="' + view.kind + '" data-id="' + esc(view.id) + '">' + esc(item.remove) + "</button></div>";
+  return shell(bar(entityHeading(item, values[0])), '<form class="stack fit">' + inputs + err() + '<button class="primary" type="submit">שמירה</button></form>' + remove);
 }
 function confirmHtml() {
-  return shell(bar("מחיקה", view.title || ""), '<div class="confirm"><p class="ask">למחוק?</p><div class="pair"><button class="primary" type="button" data-act="delete">מחיקה</button><button class="ghost" type="button" data-act="back">ביטול</button></div></div>');
+  const item = entityOf(view.kind);
+  const name = view.title || item.noun;
+  return shell(bar(item.icon + " " + item.remove + " · " + name), '<div class="confirm"><p class="ask">למחוק את ' + esc(name) + '?</p><div class="pair"><button class="primary" type="button" data-act="delete">' + esc(item.remove) + '</button><button class="ghost" type="button" data-act="back">ביטול</button></div></div>');
 }
 function homeworkHtml() {
   const found = D.findClass(state, view.classId);
@@ -466,7 +492,15 @@ function onSubmit(event) {
   }
   if (view.name === "edit") {
     try {
-      S.rename(state, actor(), { kind: view.kind, id: view.id, name: data.get("a"), extra: data.get("b") });
+      if (view.kind === "parent") {
+        const parent = people.find(function (item) { return item.id === view.id && item.role === "parent"; });
+        if (!parent) throw new Error("missing");
+        parent.name = String(data.get("a") || "").trim().slice(0, 40);
+        if (!parent.name) throw new Error("missing");
+      } else {
+        S.rename(state, actor(), { kind: view.kind, id: view.id, name: data.get("a"), extra: data.get("b") });
+        if (view.kind === "kid") linkParent(view.id, data.get("b"));
+      }
       syncPeople();
       saveStore();
       view = stack.pop() || { name: "main" };
@@ -484,6 +518,8 @@ function onSubmit(event) {
     } else {
       const created = S.addKid(state, actor(), { classId: view.classId || currentClassId(), firstName: data.get("a") }, Math.random);
       remember("student", created.kidCode);
+      const added = S.identify(state, created.kidCode);
+      if (added && added.kid) linkParent(added.kid.id, data.get("b"));
     }
     saveStore();
     view = stack.pop() || { name: "main" };
