@@ -42,7 +42,7 @@ assert.deepEqual(yael.kidIds, ["k-noa", "k-tamar"]);
 assert.notEqual(D.findKid(cast.state, "k-noa").room.id, D.findKid(cast.state, "k-tamar").room.id);
 
 const packs = [cast].concat(D.scenarios(today));
-assert.equal(D.scenarios(today).length, 12);
+assert.equal(D.scenarios(today).length, 13);
 for (const pack of packs) {
   assert.equal(pack.state.v, 1);
   assert.ok(Array.isArray(pack.people) && pack.people.length > 0);
@@ -53,7 +53,22 @@ for (const pack of packs) {
 }
 
 const byId = Object.fromEntries(D.scenarios(today).map((pack) => [pack.id, pack]));
-for (const id of ["normal", "stale", "none", "two", "add-class", "add-school", "hidden", "empty", "week", "board", "parents-msg", "bump-msg"]) assert.ok(byId[id], id);
+for (const id of ["normal", "stale", "none", "two", "add-class", "add-school", "hidden", "empty", "week", "board", "parents-msg", "bump-msg", "principal-demo"]) assert.ok(byId[id], id);
+assert.equal(who(byId["principal-demo"], byId["principal-demo"].personId).role, "principal");
+assert.equal(byId["principal-demo"].state.schools[0].classrooms.length, 2);
+const demoLive = D.scopedLive(byId["principal-demo"].state, who(byId["principal-demo"], "p-s-alon"), today);
+assert.equal(demoLive.schools.length, 1);
+assert.equal(demoLive.schools[0].classes.length, 2);
+const teacherLive = D.scopedLive(byId.hidden.state, who(byId.hidden, "t-c-h2"), today);
+assert.equal(teacherLive.schools.length, 1);
+assert.equal(teacherLive.schools[0].classes.length, 1);
+assert.equal(teacherLive.schools[0].classes[0].id, "c-h2");
+const studentLive = D.scopedLive(byId.normal.state, who(byId.normal, "s-k-noa"), today);
+assert.equal(studentLive.schools[0].classes[0].kids.length, 1);
+assert.equal(studentLive.schools[0].classes[0].kids[0].id, "k-noa");
+const parentLive = D.scopedLive(byId.two.state, who(byId.two, "par-yael"), today);
+assert.equal(parentLive.schools[0].classes.length, 2);
+assert.equal(D.scopedLive(byId.hidden.state, null, today).schools.length, 2);
 
 const normalKid = D.findKid(byId.normal.state, "k-noa");
 const normalRows = S.rowsFor(normalKid.room, today, normalKid.kid);
@@ -236,7 +251,7 @@ assert.equal(who(byId.week, byId.week.personId).role, "parent");
 
 const appJs = fs.readFileSync(path.join(__dirname, "..", "simple", "app.js"), "utf8");
 assert.match(appJs, /scenarioById/);
-assert.match(appJs, /liveView/);
+assert.match(appJs, /scopedLive/);
 assert.match(appJs, /parentCaption/);
 assert.match(appJs, /לאפס/);
 assert.match(appJs, /פעיל/);

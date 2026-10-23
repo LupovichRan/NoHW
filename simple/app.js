@@ -2,7 +2,7 @@ const S = window.Nohw;
 const D = window.NohwDemo;
 const STORE = "nohw-simple-demo";
 const STATUS = { "not-updated": "לא עודכן", "no-homework": "אין שיעורים" };
-const ROLE_LABEL = { admin: "מנהל מערכת", principal: "מנהל", teacher: "מורה", student: "תלמיד", parent: "הורה" };
+const ROLE_LABEL = { admin: "מנהל מערכת", principal: "מנהל/ת בית ספר", teacher: "מורה", student: "תלמיד", parent: "הורה" };
 const ROLE_ORDER = { admin: 0, principal: 1, teacher: 2, student: 3, parent: 4 };
 const DAY_LABEL = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳"];
 const I = {
@@ -55,7 +55,8 @@ function saveStore() {
   try {
     localStorage.setItem(STORE, JSON.stringify({ scenarioId: scenarioId, scenarioTitle: scenarioTitle, personId: person && person.id || "", suggestedId: suggestedId, people: people, state: state }));
   } catch (e) {
-    toast("השמירה נכשלה");
+    const full = e && (e.name === "QuotaExceededError" || e.code === 22);
+    toast(full ? "האחסון מלא" : "השמירה נכשלה");
   }
 }
 function render() {
@@ -90,6 +91,7 @@ function castButton() {
   return '<button class="icon" type="button" data-act="cast" aria-label="החלפת דמות">' + ico(I.cast) + "</button>";
 }
 function liveButton() {
+  if (!person || person.role === "student" || person.role === "parent") return "";
   return '<button class="icon" type="button" data-act="live" aria-label="נתונים חיים">' + ico(I.live) + "</button>";
 }
 function bar(title, sub, extra) {
@@ -158,7 +160,7 @@ function peopleHtml() {
     ["student", "תלמידים", "🎒"],
     ["parent", "הורים", "👪"]
   ];
-  const filters = [["all", "הכל"], ["admin", "מערכת"], ["principal", "מנהל"], ["teacher", "מורה"], ["student", "תלמיד"], ["parent", "הורה"]];
+  const filters = [["all", "הכל"], ["admin", "מערכת"], ["principal", "מנהל/ת בית ספר"], ["teacher", "מורה"], ["student", "תלמיד"], ["parent", "הורה"]];
   const chips = '<div class="filters">' + filters.map(function (item) {
     const icon = groups.filter(function (group) { return group[0] === item[0]; })[0];
     return '<button class="filter' + (roleFilter === item[0] ? " on" : "") + '" type="button" data-act="filter" data-role="' + item[0] + '" aria-pressed="' + (roleFilter === item[0] ? "true" : "false") + '">' + (icon ? "<span>" + icon[2] + "</span>" : "") + esc(item[1]) + "</button>";
@@ -178,7 +180,7 @@ function peopleHtml() {
 }
 function startHtml() {
   const head = '<header class="top"><div class="titles"><h1>שיעורי בית</h1></div></header>';
-  const cards = [["data", "📂", "נתונים"], ["live", "📡", "נתונים חיים"], ["people", "👥", "דמויות"]].map(function (item) {
+  const cards = [["data", "📂", "תרחישים"], ["live", "📡", "נתונים חיים"], ["people", "👥", "דמויות"]].map(function (item) {
     return '<button class="choice" type="button" data-act="go" data-to="' + item[0] + '"><span class="avatar">' + item[1] + "</span><strong>" + esc(item[2]) + "</strong></button>";
   }).join("");
   return shell(head, '<div class="hub">' + cards + "</div>");
@@ -188,13 +190,13 @@ function dataHtml() {
     const on = item.id === scenarioId;
     return '<button class="scenario' + (on ? " on" : "") + '" type="button" data-act="scenario" data-id="' + esc(item.id) + '"' + (on ? ' aria-current="true"' : "") + '><span class="avatar">' + esc(item.emoji) + "</span><strong>" + esc(item.title) + "</strong>" + (on ? '<span class="mark">' + ico(I.check) + "<small>פעיל</small></span>" : "") + "</button>";
   }).join("");
-  return shell(bar("נתונים"), '<div class="list picks">' + rows + '</div><button class="ghost reset" type="button" data-act="reset">איפוס</button>');
+  return shell(bar("תרחישים"), '<div class="list picks">' + rows + '</div><button class="ghost reset" type="button" data-act="reset">איפוס</button>');
 }
 function stat(icon, value, label) {
   return '<span class="stat" aria-label="' + esc(label + " " + value) + '"><span class="emo">' + icon + "</span><b>" + value + "</b><small>" + esc(label) + "</small></span>";
 }
 function liveHtml() {
-  const tree = D.liveView(state, today());
+  const tree = D.scopedLive(state, person, today());
   const schools = tree.schools.map(function (school) {
     const classes = school.classes.map(function (room) {
       const kids = room.kids.map(function (kid) {
@@ -372,7 +374,7 @@ function dayHtml(kidId, live) {
   return shell(bar(found.kid.firstName, found.room.name), alertBanner() + inboxLink() + jump + weekStrip(date) + '<div class="list">' + dayRows(rows, live) + "</div>");
 }
 const ENTITY = {
-  school: { icon: "🏫", noun: "בית ספר", add: "הוספת בית ספר", edit: "עריכת בית ספר", remove: "מחיקת בית ספר", fields: [["a", "שם בית ספר", "אלון"], ["b", "שם מנהל/ת", "דנה כהן"]] },
+  school: { icon: "🏫", noun: "בית ספר", add: "הוספת בית ספר", edit: "עריכת בית ספר", remove: "מחיקת בית ספר", fields: [["a", "שם בית ספר", "אלון"], ["b", "שם מנהל/ת בית ספר", "דנה כהן"]] },
   class: { icon: "🚪", noun: "כיתה", add: "הוספת כיתה", edit: "עריכת כיתה", remove: "מחיקת כיתה", fields: [["a", "שם כיתה", "ה'2"], ["b", "שם מורה", "מיכל אביב"]] },
   kid: { icon: "🧒", noun: "תלמיד", add: "הוספת תלמיד", edit: "עריכת תלמיד", remove: "מחיקת תלמיד", fields: [["a", "שם תלמיד", "נועה"], ["b", "שם הורה", "יעל ברק", "👪"]] },
   parent: { icon: "👪", noun: "הורה", add: "הוספת הורה", edit: "עריכת הורה", remove: "מחיקת הורה", fields: [["a", "שם הורה", "יעל ברק", "👪"]] }
@@ -492,7 +494,7 @@ function inboxLink() {
 }
 function teacherHome() {
   const found = D.findClass(state, person.classId);
-  const tiles = [["homework", "📘", "שיעורי בית היום"], ["messages", "💬", "הודעות"], ["timetable", "🗓️", "מערכת"], ["students", "🧒", "תלמידים"]];
+  const tiles = [["homework", "📘", "לשיעור הבא"], ["messages", "💬", "הודעות"], ["timetable", "🗓️", "לו״ז שיעורים"], ["students", "🧒", "תלמידים"]];
   const count = visibleMessages(person).length;
   const body = tiles.map(function (item) {
     const badge = item[0] === "messages" && count ? '<b class="count">' + count + "</b>" : "";
@@ -512,7 +514,18 @@ function homeworkHtml() {
     const thumb = src ? '<img class="mini-thumb" alt="" src="' + esc(src) + '">' : "";
     return '<button class="choice subject" type="button" data-act="post" data-subject="' + esc(row.subject) + '"><span class="avatar">' + (shots.length ? "📷" : "📘") + '</span><span class="meta"><strong>' + esc(row.subject) + "</strong><small>" + esc(label) + "</small></span>" + thumb + "</button>";
   }).join("");
-  return shell(bar("שיעורי בית", found.room.name), '<div class="hub">' + body + "</div>");
+  const posted = rows.filter(function (row) { return row.status === "posted"; }).length;
+  return shell(bar("לשיעור הבא", found.room.name), '<p class="subhead">' + posted + "/" + rows.length + ' פורסמו</p><div class="hub">' + body + '</div><button class="ghost" type="button" data-act="none-day">אין שיעורים היום</button>');
+}
+function principalHome() {
+  const tree = D.scopedLive(state, person, today());
+  const school = tree.schools[0];
+  const cards = school && school.classes.length ? school.classes.map(function (room) {
+    const possible = room.posted * Math.max(room.kidCount, 1);
+    const pct = possible ? Math.round(100 * room.done / possible) : 0;
+    return '<button class="choice statcard" type="button" data-act="open" data-id="' + esc(room.id) + '"><span class="meta"><strong>' + esc(room.name) + '</strong><b class="pct">' + pct + '%</b></span><span class="stats">' + stat("📝", room.posted, "פורסם") + stat("⏳", room.notUpdated, "לא עודכן") + stat("🚫", room.none, "אין שיעורים") + stat("✅", room.done, "הוכן") + "</span></button>";
+  }).join("") : '<p class="empty">אין כיתות</p>';
+  return shell(bar(person.name, school ? school.name : "בית ספר"), '<p class="subhead">לשיעור הבא</p><div class="hub">' + cards + '</div><button class="primary" type="button" data-act="manage">ניהול כיתות</button>');
 }
 function noteSpeech() {
   if (!speechCtor()) view.speechMissing = true;
@@ -523,13 +536,14 @@ function pickButtons() {
 function voicePanel() {
   const list = view.voices || [];
   const missing = view.speechMissing ? '<p class="hint">תמלול לא זמין בדפדפן זה</p>' : "";
+  const speechNote = '<p class="hint">הדפדפן עשוי להשתמש בשירות דיבור משלו</p>';
   const label = list.length ? "🎤 הקלטה נוספת" : "🎤 הקלטה";
   const button = view.recording ? "" : '<button class="ghost" type="button" data-act="record">' + label + "</button>";
-  return voiceClips(list, { edit: true }) + missing + button;
+  return voiceClips(list, { edit: true }) + missing + speechNote + button;
 }
 function postHtml() {
   noteSpeech();
-  return shell(bar(view.subject || "שיעור", "שיעורי בית"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="80" value="' + esc(view.text || "") + '" placeholder="שיעורי בית" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, subject: view.subject }) + pickButtons() + voicePanel() + err() + '<button class="ghost" type="button" data-act="none">אין שיעורים</button><button class="primary" type="submit">שמירה</button></form>');
+  return shell(bar(view.subject || "שיעור", "לשיעור הבא"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="80" value="' + esc(view.text || "") + '" placeholder="שיעורי בית" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, subject: view.subject }) + pickButtons() + voicePanel() + err() + '<button class="ghost" type="button" data-act="none">אין שיעורים</button><div class="pair"><button class="ghost" type="button" data-act="save-next">שמור והבא</button><button class="primary" type="submit">שמירה</button></div></form>');
 }
 function chipSubjects(room) {
   const names = S.SUBJECTS.slice();
@@ -543,7 +557,7 @@ function chipSubjects(room) {
 }
 function timetableHtml() {
   const found = classFor(person);
-  if (!found) return shell(bar("מערכת"), '<p class="empty">אין כיתות</p>');
+  if (!found) return shell(bar("לו״ז שיעורים"), '<p class="empty">אין כיתות</p>');
   const day = Number.isInteger(view.day) ? view.day : weekdayIndex(D.schoolDay(today()));
   const lesson = Number.isInteger(view.lesson) ? view.lesson : 0;
   view.day = day;
@@ -559,7 +573,7 @@ function timetableHtml() {
   const chips = chipSubjects(found.room).map(function (name) {
     return '<button class="pick" type="button" data-act="slot" data-subject="' + esc(name) + '">' + esc(name) + "</button>";
   }).join("") + '<button class="pick" type="button" data-act="slot" data-subject="">ריק</button>';
-  return shell(bar("מערכת", found.room.name), '<div class="week">' + days + '</div><div class="list">' + lessons + '</div><div class="picks">' + chips + '</div><form class="stack"><label class="field"><span>מקצוע נוסף</span><input name="custom" dir="rtl" maxlength="40" placeholder="אמנות" aria-label="מקצוע נוסף"></label><button class="primary" type="submit">הוספה</button></form>');
+  return shell(bar("לו״ז שיעורים", found.room.name), '<div class="week">' + days + '</div><div class="list">' + lessons + '</div><div class="picks">' + chips + '</div><form class="stack"><label class="field"><span>מקצוע נוסף</span><input name="custom" dir="rtl" maxlength="40" placeholder="אמנות" aria-label="מקצוע נוסף"></label><button class="primary" type="submit">הוספה</button></form>');
 }
 function messageCard(msg, can) {
   const who = msg.audience === "parents" ? "הורים בלבד" : "כל הכיתה";
@@ -593,7 +607,7 @@ function home() {
   if (person.role === "student") return dayHtml(person.kidId, true);
   if (person.role === "parent") return person.kidIds.length === 1 ? dayHtml(person.kidIds[0], false) : parentKidsHtml();
   if (person.role === "teacher") return teacherHome();
-  if (person.role === "principal") return classesHtml(person.schoolId);
+  if (person.role === "principal") return principalHome();
   return schoolsHtml();
 }
 function html() {
@@ -639,8 +653,19 @@ function nodeTitle(kind, id) {
   const found = D.findKid(state, id);
   return found ? found.kid.firstName : "";
 }
+function explain(error) {
+  const message = error && error.message;
+  if (message === "forbidden") return "אין הרשאה";
+  if (message === "missing" && (view.name === "post" || view.name === "compose")) return "חסר תוכן";
+  if (message === "missing") return "חסר שם";
+  if (message === "too-big") return "הקובץ גדול מדי";
+  if (message === "bad-type") return "סוג קובץ לא נתמך";
+  if (message === "full") return "האחסון מלא";
+  if (message === "read") return "לא הצלחנו לקרוא את התמונה";
+  return "לא הצלחנו לשמור";
+}
 function fail(error) {
-  view.error = error && error.message === "forbidden" ? "אין הרשאה" : "חסר";
+  view.error = explain(error);
   render();
 }
 function photoRefs() {
@@ -885,8 +910,17 @@ function addPhotos(files) {
     });
   });
   chain.catch(function (error) {
-    toast(error && error.message === "read" ? "לא הצלחנו לקרוא את התמונה" : "השמירה נכשלה");
+    const full = error && (error.name === "QuotaExceededError" || error.code === 22 || error.message === "full");
+    toast(full ? "האחסון מלא" : (error && error.message === "read" ? "לא הצלחנו לקרוא את התמונה" : (error && error.message === "bad-type" ? "סוג קובץ לא נתמך" : "השמירה נכשלה")));
   });
+}
+function imageProblem(file) {
+  const type = String(file.type || "");
+  const name = String(file.name || "").toLowerCase();
+  const typed = type.indexOf("image/") === 0 || /\.(jpe?g|png|gif|webp|heic|heif)$/.test(name);
+  if (!typed) return "סוג קובץ לא נתמך";
+  if (file.size > 15 * 1024 * 1024) return "הקובץ גדול מדי";
+  return "";
 }
 function onFile(event) {
   const input = event.target;
@@ -894,6 +928,8 @@ function onFile(event) {
   const files = Array.from(input.files || []);
   input.value = "";
   if (!files.length || (view.name !== "post" && view.name !== "compose")) return;
+  const problem = files.map(imageProblem).find(Boolean);
+  if (problem) { toast(problem); return; }
   keepDraft();
   addPhotos(files);
 }
@@ -954,6 +990,9 @@ function toggleRecord() {
       stopMeters();
       view.recording = false;
       const blob = new Blob(chunks, { type: (chunks[0] && chunks[0].type) || "audio/webm" });
+      const kind = String(blob.type || "");
+      if (kind && kind.indexOf("audio/") !== 0 && kind !== "video/webm") { toast("סוג קובץ לא נתמך"); return; }
+      if (blob.size > 4 * 1024 * 1024) { toast("הקובץ גדול מדי"); return; }
       const id = mediaId("v");
       readyStore().then(function (store) { return store.put(id, blob); }).then(function () {
         urls[id] = URL.createObjectURL(blob);
@@ -962,8 +1001,9 @@ function toggleRecord() {
         view.voices.push({ id: id, src: "", text: text });
         view.error = "";
         toast("נשמר ✓");
-      }).catch(function () {
-        toast("השמירה נכשלה");
+      }).catch(function (error) {
+        const full = error && (error.name === "QuotaExceededError" || error.code === 22);
+        toast(full ? "האחסון מלא" : "השמירה נכשלה");
       });
     };
     armMeter(stream);
@@ -1186,9 +1226,39 @@ function onClick(event) {
       saveStore();
       render();
     } catch (e) { fail(e); }
+  } else if (act === "manage") push({ name: "classes", schoolId: person.schoolId });
+  else if (act === "none-day") {
+    try {
+      const found = classFor(person);
+      const date = D.schoolDay(today());
+      S.rowsFor(found.room, date, null).forEach(function (row) {
+        S.setHomework(state, actor(), { date: date, subject: row.subject, classId: found.room.id, mode: "none" });
+      });
+      saveStore();
+    } catch (e) { fail(e); return; }
+    render();
+  } else if (act === "save-next") {
+    const input = document.querySelector('form input[name="text"]');
+    try {
+      keepDraft();
+      homeworkInput("post", input ? input.value : view.text);
+      saveStore();
+      haltMic();
+      const found = classFor(person);
+      const rows = found ? S.rowsFor(found.room, D.schoolDay(today()), null) : [];
+      const index = rows.findIndex(function (row) { return row.subject === view.subject; });
+      let next = null;
+      for (let step = 1; step <= rows.length; step++) {
+        const row = rows[(index + step) % rows.length];
+        if (row && row.status === "not-updated") { next = row; break; }
+      }
+      if (!next) view = stack.pop() || { name: "homework" };
+      else view = { name: "post", classId: found.room.id, subject: next.subject, text: "", photos: [], voices: [], recording: false };
+    } catch (e) { view.error = explain(e); }
+    render();
   } else if (act === "none") {
     try { homeworkInput("none"); saveStore(); haltMic(); view = stack.pop() || { name: "homework" }; }
-    catch (e) { view.error = e.message === "forbidden" ? "אין הרשאה" : "חסר"; }
+    catch (e) { view.error = explain(e); }
     render();
   } else if (act === "date") { view.date = el.dataset.date; render(); }
   else if (act === "tick") {
@@ -1205,7 +1275,7 @@ function onSubmit(event) {
   const data = new FormData(event.target);
   if (view.name === "post") {
     try { keepDraft(); homeworkInput("post", data.get("text")); saveStore(); haltMic(); view = stack.pop() || { name: "homework" }; }
-    catch (e) { view.error = e.message === "forbidden" ? "אין הרשאה" : "חסר"; }
+    catch (e) { view.error = explain(e); }
     render();
     return;
   }
@@ -1293,6 +1363,12 @@ function boot() {
     suggestedId = "";
     stack = [];
     view = { name: "start" };
+  }
+  const hash = String(location.hash || "");
+  const packed = hash.match(/^#pack=([A-Za-z0-9_-]{1,100000})$/);
+  if (packed) {
+    try { S.importPack(state, S.decodePack(packed[1])); saveStore(); }
+    catch (e) { toast("הקובץ לא תקין"); }
   }
   const app = document.getElementById("app");
   app.addEventListener("click", onClick);

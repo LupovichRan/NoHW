@@ -200,11 +200,12 @@
   function subjectOf(value) {
     return String(value || "").trim().slice(0, 40);
   }
-  function mediaOf(value) {
+  function mediaOf(value, kind) {
     const text = String(value || "");
     if (/^[A-Za-z0-9_-]{1,48}$/.test(text)) return text;
     if (text.length > 400000) return "";
-    if (text.indexOf("data:image/") === 0 || text.indexOf("data:audio/") === 0) return text;
+    if ((!kind || kind === "image") && text.indexOf("data:image/") === 0) return text;
+    if ((!kind || kind === "audio") && text.indexOf("data:audio/") === 0) return text;
     return "";
   }
   function isData(value) { return String(value || "").indexOf("data:") === 0; }
@@ -212,24 +213,24 @@
     const raw = input && Array.isArray(input.photos) ? input.photos : [];
     const out = [];
     raw.forEach(function (item) {
-      const ref = mediaOf(item && typeof item === "object" ? (item.src || item.id) : item);
+      const ref = mediaOf(item && typeof item === "object" ? (item.src || item.id) : item, "image");
       if (ref && out.indexOf(ref) < 0) out.push(ref);
     });
     if (!out.length) {
-      const one = mediaOf(input && input.photo);
+      const one = mediaOf(input && input.photo, "image");
       if (one) out.push(one);
     }
     return out.slice(0, 8);
   }
   function voiceItem(item) {
     if (typeof item === "string") {
-      const ref = mediaOf(item);
+      const ref = mediaOf(item, "audio");
       if (!ref) return null;
       return { id: isData(ref) ? "" : ref, src: isData(ref) ? ref : "", text: "" };
     }
     if (!item || typeof item !== "object") return null;
-    const src = mediaOf(item.src);
-    const id = mediaOf(item.id);
+    const src = mediaOf(item.src, "audio");
+    const id = mediaOf(item.id, "audio");
     const text = String(item.text || "").trim().slice(0, 280);
     const dataSrc = isData(src) ? src : "";
     const dataId = id && !isData(id) ? id : "";
@@ -256,7 +257,7 @@
     if (!entry || entry.mode === "none" || (entry.mode && entry.mode !== "post")) return [];
     const list = Array.isArray(entry.photos) && entry.photos.length ? entry.photos : (entry.photo ? [entry.photo] : []);
     return list.map(function (item) {
-      const ref = mediaOf(item && typeof item === "object" ? (item.src || item.id) : item);
+      const ref = mediaOf(item && typeof item === "object" ? (item.src || item.id) : item, "image");
       if (!ref) return null;
       return { id: isData(ref) ? "" : ref, src: isData(ref) ? ref : "" };
     }).filter(Boolean);
@@ -526,11 +527,30 @@
     for (const byte of bytes) bin += String.fromCharCode(byte);
     return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
   }
+  function plain(value, depth) {
+    if (depth > 16) throw new Error("bad-pack");
+    if (value == null || typeof value === "boolean") return value;
+    if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+    if (typeof value === "string") return value.length > 400000 ? value.slice(0, 400000) : value;
+    if (Array.isArray(value)) {
+      if (value.length > 400) throw new Error("bad-pack");
+      return value.map(function (item) { return plain(item, depth + 1); });
+    }
+    if (typeof value !== "object") throw new Error("bad-pack");
+    const out = {};
+    Object.keys(value).forEach(function (key) {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") return;
+      out[key] = plain(value[key], depth + 1);
+    });
+    return out;
+  }
   function decodePack(token) {
-    const pad = token.length % 4 ? "=".repeat(4 - (token.length % 4)) : "";
-    const bin = atob(String(token).replace(/-/g, "+").replace(/_/g, "/") + pad);
+    const text = String(token || "");
+    if (!text || text.length > 100000 || !/^[A-Za-z0-9_-]+$/.test(text)) throw new Error("bad-pack");
+    const pad = text.length % 4 ? "=".repeat(4 - (text.length % 4)) : "";
+    const bin = atob(text.replace(/-/g, "+").replace(/_/g, "/") + pad);
     const bytes = Uint8Array.from(bin, function (ch) { return ch.charCodeAt(0); });
-    return JSON.parse(new TextDecoder().decode(bytes));
+    return plain(JSON.parse(new TextDecoder().decode(bytes)), 0);
   }
   function cleanHomework(homework) {
     const out = {};
@@ -618,8 +638,37 @@
       if (teacherCode) room.teacherCode = teacherCode;
     }
     room.homework = mergeHomework(room.homework, incoming.homework);
-    if (incoming.timetable && typeof incoming.timetable === "object") room.timetable = clone(incoming.timetable);
-    if (Array.isArray(incoming.messages)) room.messages = clone(incoming.messages);
+    if (incoming.timetable && typeof incoming.timetable === "object") {
+      const table = {};
+      Object.keys(incoming.timetable).forEach(function (key) {
+        if (!/^[0-5]$/.test(key) || !Array.isArray(incoming.timetable[key])) return;
+        table[key] = incoming.timetable[key].slice(0, 6).map(function (item) { return subjectOf(item); });
+      });
+      room.timetable = table;
+    }
+    if (Array.isArray(incoming.messages)) {
+      room.messages = incoming.messages.slice(0, 80).map(function (item) {
+        if (!item || typeof item !== "object") return null;
+        const text = messageText(item.text);
+        const photos = cleanPhotos(item);
+        const voices = cleanVoices(item);
+        if (!text && !photos.length && !voices.length) return null;
+        const at = stamp(item.at);
+        return {
+          id: String(item.id || "").slice(0, 40),
+          text: text,
+          photo: photos[0] || "",
+          voice: voices[0] ? (voices[0].src || voices[0].id) : "",
+          photos: photos,
+          voices: voices,
+          audience: audienceOf(item.audience),
+          alert: !!item.alert,
+          at: at,
+          bump: stamp(item.bump || at),
+          edited: !!item.edited
+        };
+      }).filter(Boolean);
+    }
     for (const kid of incoming.kids || []) mergeKid(room, kid);
   }
   function mergeSchool(state, incoming) {
@@ -644,6 +693,7 @@
     for (const room of incoming.classrooms || []) mergeRoom(school, room);
   }
   function importPack(state, pack) {
+    pack = plain(pack, 0);
     if (!pack || pack.v !== 1 || !Array.isArray(pack.schools)) throw new Error("bad-pack");
     for (const school of pack.schools) mergeSchool(state, school);
     return { role: pack.role || "", code: cleanCode(pack.code) };

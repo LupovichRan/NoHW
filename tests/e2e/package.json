@@ -1,0 +1,9 @@
+{
+  "name": "nohw-simple-e2e",
+  "private": true,
+  "description": "Playwright checks for the simple Hebrew PWA. Run with node walk.mjs after the static server is up.",
+  "devDependencies": {
+    "axe-core": "^4.10.3",
+    "playwright-core": "^1.49.0"
+  }
+}

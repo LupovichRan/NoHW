@@ -377,8 +377,51 @@
           { id: "m-new", text: "להביא ספר", photo: "", voice: "", audience: "class", alert: false, at: 3000, bump: 3000, edited: false }
         ];
         return pack("bump-msg", "עדכון והקפצת הודעה", "t-c-h2", corePeople(), [built], "📌");
+      })(),
+      (function () {
+        const h2 = room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה", normalDone(day)), kid("k-omer", "עומר")], normalHomework(day));
+        const d1work = {};
+        d1work[day] = {};
+        d1work[day][SUB[0]] = none();
+        const d1 = room("c-d1", "ד'1", "אור לוי", [kid("k-tamar", "תמר")], d1work);
+        const people = corePeople().concat([
+          person("t-c-d1", "אור לוי", "👨‍🏫", "teacher", { schoolId: "s-alon", classId: "c-d1" }),
+          person("s-k-tamar", "תמר", "🧒", "student", { schoolId: "s-alon", classId: "c-d1", kidId: "k-tamar" }),
+          person("par-tamar", "רותם ברק", "👩", "parent", { kidIds: ["k-tamar"], kin: "אמא" })
+        ]);
+        return pack("principal-demo", "הדגמה למנהל/ת – 3 דקות", "p-s-alon", people, [school("s-alon", "אלון", "דנה כהן", [h2, d1])], "📊");
       })()
     ];
+  }
+  function scopedLive(state, who, date) {
+    const tree = liveView(state, date);
+    if (!who || who.role === "admin") return tree;
+    function recount(school) {
+      school.classCount = school.classes.length;
+      school.kidCount = school.classes.reduce(function (sum, room) { return sum + room.kids.length; }, 0);
+      return school;
+    }
+    if (who.role === "principal") {
+      tree.schools = tree.schools.filter(function (school) { return school.id === who.schoolId; });
+      return tree;
+    }
+    if (who.role === "teacher") {
+      tree.schools = tree.schools.filter(function (school) { return school.id === who.schoolId; }).map(function (school) {
+        school.classes = school.classes.filter(function (room) { return room.id === who.classId; });
+        return recount(school);
+      });
+      return tree;
+    }
+    const ids = who.role === "student" ? [who.kidId] : (who.kidIds || []);
+    tree.schools = tree.schools.map(function (school) {
+      school.classes = school.classes.map(function (room) {
+        room.kids = room.kids.filter(function (kid) { return ids.indexOf(kid.id) >= 0; });
+        room.kidCount = room.kids.length;
+        return room;
+      }).filter(function (room) { return room.kids.length; });
+      return recount(school);
+    }).filter(function (school) { return school.classes.length; });
+    return tree;
   }
 
   function parentCaption(who, state) {
@@ -437,6 +480,7 @@
     scenarios: scenarios,
     scenarioById: scenarioById,
     liveView: liveView,
+    scopedLive: scopedLive,
     parentCaption: parentCaption,
     findSchool: findSchool,
     findClass: findClass,
