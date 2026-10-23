@@ -79,6 +79,7 @@ try {
   await axe("start");
 
   await clickText("תרחישים");
+  if (await page.locator('[aria-label="נתונים חיים"]').count()) throw new Error("all-schools live data is off the start screen");
   const titles = await page.$$eval("button.scenario strong", (els) => els.map((el) => el.innerText.trim()));
   const doc = fs.readFileSync(path.join(here, "..", "..", "docs", "simple-demo-scenarios.md"), "utf8");
   const missingDoc = titles.filter((title) => title && !doc.includes(title));
@@ -115,13 +116,20 @@ try {
   record("teacher cannot see another class", true);
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("נועה");
-  const studentLive = await page.locator('[aria-label="נתונים חיים"]').count();
-  if (studentLive) throw new Error("student has live data");
-  record("student has no global live data", true);
+  await page.locator('[aria-label="נתונים חיים"]').click();
+  await page.waitForTimeout(80);
+  const studentLive = await page.locator("body").innerText();
+  if (!studentLive.includes("נועה") || studentLive.includes("תמר") || studentLive.includes("עידו") || studentLive.includes("ברוש")) throw new Error("student live " + studentLive.slice(0, 240));
+  record("student live data is only their own", true);
+  await page.locator('[aria-label="חזרה"]').click();
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("יעל");
-  if (await page.locator('[aria-label="נתונים חיים"]').count()) throw new Error("parent has live data");
-  record("parent has no global live data", true);
+  await page.locator('[aria-label="נתונים חיים"]').click();
+  await page.waitForTimeout(80);
+  const parentLive = await page.locator("body").innerText();
+  if (!parentLive.includes("נועה") || !parentLive.includes("תמר") || parentLive.includes("עידו") || parentLive.includes("ברוש")) throw new Error("parent live " + parentLive.slice(0, 240));
+  record("parent live data is only their kids", true);
+  await page.locator('[aria-label="חזרה"]').click();
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("דנה");
   if (!(await page.locator("body").innerText()).includes("ה'2") || (await page.locator("body").innerText()).includes("ברוש")) throw new Error("principal scope");

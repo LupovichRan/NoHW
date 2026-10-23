@@ -34,7 +34,7 @@ The report covers the build after the approved product changes: a principal home
 | Scenario reset returns the seeded data | Pass |
 | Add, edit, and delete below the actor's level | Pass |
 | A teacher does not see another class; a principal does not see another school | Pass |
-| Students and parents have no live-data icon | Pass |
+| Student and parent live data shows only their own kid(s), not the all-schools tree | Pass |
 | Principal and teacher live data is limited to their school or class | Pass |
 | Presenter נתונים חיים on the start screen still shows every school | Pass |
 | Timetable (לו״ז שיעורים), including a custom subject | Pass |
@@ -60,7 +60,7 @@ The report covers the build after the approved product changes: a principal home
 
 ## Bugs found and fixed
 
-1. Live data inside a character showed every school, including to a student. The icon is now hidden for students and parents. An admin still sees every school, a principal sees their school, and a teacher sees their class. The all-schools view stays on the start screen.
+1. Live data inside a character showed every school. It is now scoped: an admin sees every school, a principal their school, a teacher their class, and a student or parent only their own kid(s). The all-schools view stays on the start screen, and it is not linked from the scenario list.
 2. A failed save, a bad file, and a missing name all said חסר. The screen now says אין הרשאה, חסר שם, חסר תוכן, הקובץ גדול מדי, סוג קובץ לא נתמך, or האחסון מלא.
 3. The page loaded Rubik from Google Fonts, and the service worker cached those responses. Rubik Hebrew and Latin woff2 files now live in `simple/fonts/` with `font-display: swap`. The worker ignores any other origin and any path outside its own directory (`/NoHW/simple/` on GitHub Pages).
 4. There was no Content-Security-Policy and no referrer policy. `index.html` now sets `default-src 'self'`, allows `data:` and `blob:` only for images and media, and sets `no-referrer`. There are no inline scripts.

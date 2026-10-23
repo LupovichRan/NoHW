@@ -91,7 +91,7 @@ function castButton() {
   return '<button class="icon" type="button" data-act="cast" aria-label="החלפת דמות">' + ico(I.cast) + "</button>";
 }
 function liveButton() {
-  if (!person || person.role === "student" || person.role === "parent") return "";
+  if (!person) return "";
   return '<button class="icon" type="button" data-act="live" aria-label="נתונים חיים">' + ico(I.live) + "</button>";
 }
 function bar(title, sub, extra) {
@@ -914,10 +914,10 @@ function addPhotos(files) {
     toast(full ? "האחסון מלא" : (error && error.message === "read" ? "לא הצלחנו לקרוא את התמונה" : (error && error.message === "bad-type" ? "סוג קובץ לא נתמך" : "השמירה נכשלה")));
   });
 }
-function imageProblem(file) {
+function imageProblem(file, fromCamera) {
   const type = String(file.type || "");
   const name = String(file.name || "").toLowerCase();
-  const typed = type.indexOf("image/") === 0 || /\.(jpe?g|png|gif|webp|heic|heif)$/.test(name);
+  const typed = type.indexOf("image/") === 0 || /\.(jpe?g|png|gif|webp|heic|heif)$/.test(name) || (fromCamera && !type);
   if (!typed) return "סוג קובץ לא נתמך";
   if (file.size > 15 * 1024 * 1024) return "הקובץ גדול מדי";
   return "";
@@ -928,7 +928,8 @@ function onFile(event) {
   const files = Array.from(input.files || []);
   input.value = "";
   if (!files.length || (view.name !== "post" && view.name !== "compose")) return;
-  const problem = files.map(imageProblem).find(Boolean);
+  const fromCamera = input.id === "cam";
+  const problem = files.map(function (file) { return imageProblem(file, fromCamera); }).find(Boolean);
   if (problem) { toast(problem); return; }
   keepDraft();
   addPhotos(files);
