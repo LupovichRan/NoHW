@@ -1,5 +1,5 @@
-const CACHE = "nohw-simple-v4";
-const SHELL = ["./","index.html","app.css","app.js","logic.js","manifest.webmanifest","icon-192.png","icon-512.png"];
+const CACHE = "nohw-simple-v5";
+const SHELL = ["./","index.html","app.css","app.js","logic.js","demo.js","manifest.webmanifest","icon-192.png","icon-512.png"];
 
 self.addEventListener("install", function (event) {
   event.waitUntil(caches.open(CACHE).then(function (cache) { return cache.addAll(SHELL); }));

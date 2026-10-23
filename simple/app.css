@@ -41,7 +41,7 @@ button { cursor: pointer; }
   color: inherit;
   text-align: start;
 }
-.role:active, .who:active, .icon:active, .primary:active, .ghost:active { transform: scale(0.985); }
+.role:active, .who:active, .icon:active, .primary:active, .ghost:active, .person:active, .scenario:active, .dow:active, button.card:active { transform: scale(0.985); }
 .badge {
   width: 48px;
   height: 48px;
@@ -168,6 +168,56 @@ svg.mirror { transform: scaleX(-1); }
 .empty, .err { font-weight: 600; }
 .empty { margin: auto; color: var(--muted); font-size: 18px; text-align: center; }
 .err { color: var(--accent); margin: 0; text-align: start; }
+.cast { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
+.person {
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  color: inherit;
+}
+.avatar { font-size: 24px; line-height: 1.1; }
+.person strong { font-size: 15px; font-weight: 700; line-height: 1.2; }
+.tag {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+.scenario {
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  color: inherit;
+  text-align: start;
+  font-size: 16px;
+  font-weight: 600;
+}
+.reset { margin-top: 12px; }
+.week { display: flex; gap: 6px; margin-top: 8px; }
+.dow {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 700;
+}
+.dow.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .toast {
   position: fixed;
   z-index: 2;
