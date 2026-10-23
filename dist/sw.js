@@ -1,10 +1,10 @@
 /* Offline app shell and the CDN libraries used for teacher voice and OCR.
    There is no push handler: reminders are local, while the app is open or installed. */
 /* Shell paths are relative to this script, so a worker at /NoHW/sw.js stays inside /NoHW/. */
-const CACHE='nohomework-v1.4.1';
+const CACHE='nohomework-v1.5.1';
 const SHELL=[
  './','./index.html','./privacy.html','./accessibility.html','./manifest.webmanifest',
- './theme.css','./a11y.css','./mobile.css','./calm.css','./pilot.css',
+ './theme.css','./a11y.css','./mobile.css','./calm.css','./pilot.css','./light.css',
  './version.js','./translations.js','./translations-extra.js','./translations-pilot.js','./i18n.js',
  './poc-config.js','./cloud-stub.js','./classes.js','./lesson-summary.js','./ai-explanation.js','./ai-explanation-worker.js',
  './resources.js','./app.js','./ocr.js','./questions.js','./school-notifications.js','./admin.js','./materials.js',
@@ -16,7 +16,7 @@ const CDN=[
  'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
  'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/+esm',
  'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/+esm',
- 'https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap'
+ 'https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap'
 ];
 const CDN_HOSTS=new Set(['cdn.jsdelivr.net','fonts.googleapis.com','fonts.gstatic.com']);
 

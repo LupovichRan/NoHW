@@ -1,12 +1,12 @@
 # Nohomework
 
-Nohomework is a Hebrew-first homework board for one school. The student checks the evening list and marks work done. The parent sees the week. The teacher posts homework for a subject, or marks that subject as having no homework. A subject with no post stays "not updated" and is never shown as "no homework".
+Nohomework is a Hebrew-first homework board. One admin looks after many schools. Each school has a principal, and each class has a teacher. The student checks the evening list and marks work done. The parent sees the week. The teacher posts homework for a subject, or marks that subject as having no homework. A subject with no post stays "not updated" and is never shown as "no homework".
 
 This branch is a local-first pilot: a static PWA in `dist/`, with no database, no accounts, and no email. Data stays in the browser. People in the demo (נועם לוי, מיכל שפירא, and the rest) are fictional. The license is MIT. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 # Nohomework — פיילוט מקומי
 
-אפליקציית שיעורי בית בעברית, לטלפון, לבית ספר אחד (כיתות ה׳–ו׳). זו אפליקציית דפדפן שאפשר להתקין למסך הבית. אין שרת, אין חשבון ואין אימייל. כל הנתונים נשמרים במכשיר (localStorage). מעבר בין מכשירים נעשה בקובץ או בקישור, לא בבסיס נתונים.
+אפליקציית שיעורי בית בעברית, לטלפון. אדמין אחד מנהל כמה בתי ספר. לכל בית ספר יש מנהל, ולכל כיתה יש מורה. זו אפליקציית דפדפן שאפשר להתקין למסך הבית. אין שרת, אין חשבון ואין אימייל. כל הנתונים נשמרים במכשיר (localStorage). מעבר בין מכשירים נעשה בקובץ או בקישור, לא בבסיס נתונים.
 
 התלמיד הוא המשתמש העיקרי. ההורה רואה את השבוע. המורה מפרסם לכל מקצוע: יש שיעורי בית, או סימון מפורש שאין. מקצוע בלי עדכון נשאר **לא עודכן** — הוא אף פעם לא מוצג כ«אין שיעורי בית».
 
@@ -26,8 +26,11 @@ for t in tests/*.cjs; do node "$t" || exit 1; done
 
 ## מה יש בפיילוט
 
-- בורר עץ מתקפל: ארגון › בית ספר › כיתה, עם חיפוש ואחרונים. בחירה קובעת את ההיקף של שיעורי הבית, הסטטיסטיקה וההזמנות. ארגון הוא רשות. בית ספר אחד עובד בלעדיו.
-- הקמת בית ספר בלי אימות אימייל: ארגון (אפשר לדלג), שם בית הספר ובעלות, כיתות מתבנית (ברירת מחדל ה׳–ו׳ × 3), הזמנת מורה בקוד או בוואטסאפ עם מקצועות והרשאות לכיתה, ושיתוף קוד כיתה.
+- עץ ניווט: אדמין › בית ספר › כיתה › תלמיד והורה. לחיצה על צומת פותחת את הלוח של אותה רמה, ופירורי לחם מחזירים למעלה. כל תפקיד רואה רק את התת-עץ שלו.
+- לוח אדמין: כל בתי הספר. הוספה ועריכה של בית ספר, ומינוי מנהל. כרטיסי סטטיסטיקה ופסים: שיעור עדכון, חלק «לא עודכן», ותלמידים פעילים — לכל בית ספר ולכולם.
+- לוח מנהל: הכיתות של בית הספר שלו. הוספת כיתה ומינוי מורה, עם אותם פסים לכל כיתה.
+- לוח מורה: התלמידים וההורים של הכיתה. הוספה, קוד כיתה וקוד הורה בוואטסאפ, ופסים לכל מקצוע (פורסם / הוכן) ולכל תלמיד.
+- תלמיד והורה נשארים במסך הערב ובמסך השבוע, בלי לוח ניהול.
 - תלמיד מצטרף עם קוד כיתה ושם פרטי בלבד. אין מספר זהות. הורה מתקשר עם קוד הורה, אחרי סימון הסכמה.
 - מסך ערב לתלמיד עם סימון «הוכן», ומסך שבוע להורה.
 - תמלול קולי (Whisper) וזיהוי טקסט מצילום נשארים אצל המורה. הסבר AI לתלמיד כבוי בכיתות ד׳–ז׳.

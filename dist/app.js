@@ -3,7 +3,7 @@ const symbols={'חשבון':'∑','עברית':'א','אנגלית':'Aa','מדע�
 const base=new Date();base.setHours(12,0,0,0);base.setDate(base.getDate()-base.getDay());
 const dates=Array.from({length:6},(_,i)=>{let d=new Date(base);d.setDate(d.getDate()+i);return d});
 const key=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-let selected=Math.min(new Date().getDay(),5),role='parent',records=[];
+let selected=Math.min(new Date().getDay(),5),role='admin',records=[];
 try{records=JSON.parse(localStorage.getItem('homework-v1'))||[]}catch{}
 if(!records.length){records=[{day:key(dates[selected]),subject:'חשבון',teacher:'מיכל שפירא',details:'עמוד 42 בחוברת — תרגילים 1–6. שימו לב לדרך הפתרון.',kind:'task',done:false,due:key(dates[Math.min(selected+1,4)])},{day:key(dates[selected]),subject:'עברית',teacher:'יעל גולן',details:'לקרוא את הסיפור ״חברים בדרך״ ולענות על שאלות 1–3 במחברת.',kind:'task',done:true,due:key(dates[Math.min(selected+1,4)])},{day:key(dates[selected]),subject:'אנגלית',teacher:'דנה רוזן',kind:'none',done:false,due:key(dates[selected])}];save()}
 for(const r of records){r.classId=r.classId||DEFAULT_CLASS;if(!r.completions)r.completions={'noam-demo':{done:!!r.done,completedAt:r.completedAt||null}}}save();

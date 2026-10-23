@@ -1,6 +1,7 @@
 /* Pilot screens on top of the local demo. No accounts and no server. */
 const treeOpen=new Set();
 let treeReady=false;
+let addOpen=null;
 const wiz={step:0,orgId:null,schoolId:null};
 
 function pilotEl(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!=null)node.textContent=text;return node}
@@ -12,7 +13,7 @@ function consentGiven(){return pilotRead('homework-parent-consent')==='1'}
 function pageBase(){return appDirectory(document.baseURI)}
 function activeClassGrade(){const row=school.classes.find(item=>item.id===school.classId);if(!row)return null;if(row.grade!=null&&row.grade!=='')return Number(row.grade);return gradeFromName(row.name)}
 function pilotPersona(){return {role,teacherId:school.teacherId,parentId:school.parentId,childId:school.childId,managerId:school.managerId}}
-function canSetupSchool(){return role==='admin'||role==='manager'||role==='teacher'}
+function canShareClass(){return role==='admin'||role==='manager'||role==='teacher'}
 
 function ensurePilotShape(){
  school.organizations=school.organizations||[];
@@ -33,62 +34,82 @@ function ensurePilotShape(){
  }
  const parentTaken=new Set(school.students.map(row=>row.parentCode).filter(Boolean));
  for(const row of school.students)if(!row.parentCode){row.parentCode=makeJoinCode('parent:'+row.id,parentTaken);parentTaken.add(row.parentCode)}
- if(!school.scope||!school.scope.type){
-  const current=school.schools.find(row=>row.id===school.schoolId);
-  school.scope={type:'class',orgId:current?.orgId||null,schoolId:school.schoolId,classId:school.classId,nodeId:school.classId?'class:'+school.classId:null,label:''};
- }
+ if(!school.scope||!school.scope.type)school.scope={type:'root',nodeId:'root',orgId:null,schoolId:school.schoolId,classId:school.classId,label:'Nohomework'};
  saveSchool();
 }
 
 function selectTreeNode(node){
- const scope=scopeOf(node);
- school.scope=scope;
- if(node.type==='organization'){
-  const first=school.schools.find(row=>row.orgId===node.orgId);
-  if(first){school.schoolId=first.id;const classroom=school.classes.find(row=>row.schoolId===first.id);if(classroom)school.classId=classroom.id}
- }else if(node.type==='school'){
-  school.schoolId=node.schoolId;const classroom=school.classes.find(row=>row.schoolId===node.schoolId);if(classroom)school.classId=classroom.id;
- }else{school.schoolId=node.schoolId;school.classId=node.classId}
+ school.scope=scopeOf(node);
+ if(node.schoolId)school.schoolId=node.schoolId;
+ if(node.classId)school.classId=node.classId;
+ if(node.studentId){school.studentId=node.studentId;if(role==='child')school.childId=node.studentId}
+ if(node.type==='school'){const classroom=school.classes.find(row=>row.schoolId===node.schoolId);if(classroom)school.classId=classroom.id}
  writeRecent(rememberRecent(readRecent(),node.id));
  saveSchool();render();
+ if(typeof showTab==='function')showTab(role==='parent'||role==='child'?'home':'tree',false);
 }
 
+const TREE_ICON={root:'⌂',school:'▣',class:'○',student:'•',parent:'◦'};
 function renderTree(root,nodes,query){
  root.textContent='';
  const shown=searchTree(nodes,query);
- if(!shown.length){root.append(pilotEl('p','','אין תוצאות'));return}
- if(!treeReady){for(const node of nodes)if(node.type!=='class')treeOpen.add(node.id);treeReady=true}
- const open=query?new Set(shown.filter(node=>node.type!=='class').map(node=>node.id)):treeOpen;
+ if(!shown.length){const empty=pilotEl('p','emptyState','אין תוצאות');root.append(empty);return}
+ if(!treeReady){for(const node of nodes)if(node.type!=='student'&&node.type!=='parent')treeOpen.add(node.id);treeReady=true}
+ const open=query?new Set(shown.filter(node=>node.type!=='student'&&node.type!=='parent').map(node=>node.id)):treeOpen;
  const kids=new Map();
  for(const node of shown){const key=node.parentId||'';if(!kids.has(key))kids.set(key,[]);kids.get(key).push(node)}
  const draw=(parentId,depth)=>{
   const wrap=pilotEl('div','treeLevel');
   for(const node of kids.get(parentId)||[]){
    const row=pilotEl('div','treeRow'+(school.scope?.nodeId===node.id?' is-on':''));
-   row.style.paddingInlineStart=(depth*14)+'px';
+   row.style.paddingInlineStart=(depth*16)+'px';
    const children=kids.get(node.id)||[];
-   if(children.length){
+   if(children.length||node.canAdd){
     const twist=pilotEl('button','twisty',open.has(node.id)?'▾':'▸');
     twist.type='button';twist.setAttribute('aria-expanded',String(open.has(node.id)));twist.setAttribute('aria-label',node.label);
     twist.onclick=()=>{if(treeOpen.has(node.id))treeOpen.delete(node.id);else treeOpen.add(node.id);renderPilot()};
     row.append(twist);
    }else row.append(pilotEl('span','twisty spacer','·'));
+   const icon=pilotEl('span','treeIcon',TREE_ICON[node.type]||'·');icon.setAttribute('aria-hidden','true');
    const button=pilotEl('button','treeLabel',node.label);
    button.type='button';button.setAttribute('data-user-content','');
    button.onclick=()=>selectTreeNode(node);
-   row.append(button);wrap.append(row);
+   row.append(icon,button);
+   wrap.append(row);
    if(children.length&&open.has(node.id))wrap.append(draw(node.id,depth+1));
   }
   return wrap};
  root.append(draw('',0));
 }
+function field(label,opts={}){const wrap=pilotEl('label','miniField',label);const input=document.createElement('input');input.maxLength=opts.max||40;input.required=!!opts.required;if(opts.value)input.value=opts.value;wrap.append(input);return {wrap,input}}
+function addForm(node){
+ const form=document.createElement('form');form.className='addForm';form.style.paddingInlineStart='36px';
+ const status=pilotEl('p','');status.setAttribute('role','status');
+ let first;
+ if(node.canAdd==='school'){
+  const schoolName=field('בית ספר',{required:true,max:80});const principal=field('מנהל',{required:true});
+  first=schoolName.input;form.append(schoolName.wrap,principal.wrap);
+  form.onsubmit=event=>{event.preventDefault();const result=addManagedSchool(school,{role,name:schoolName.input.value,principalName:principal.input.value});status.textContent=result.ok?'':(result.error||'');if(!result.ok)return;school.schoolId=result.school.id;addOpen=null;saveSchool();render()};
+ }else if(node.canAdd==='class'){
+  const className=field('כיתה',{required:true,max:40});const teacher=field('מורה',{required:true});
+  first=className.input;form.append(className.wrap,teacher.wrap);
+  form.onsubmit=event=>{event.preventDefault();const result=addManagedClass(school,{role,schoolId:node.schoolId,name:className.input.value,teacherName:teacher.input.value,managerId:school.managerId});status.textContent=result.ok?'':(result.error||'');if(!result.ok)return;school.classId=result.class.id;school.schoolId=node.schoolId;addOpen=null;saveSchool();render()};
+ }else{
+  const student=field('תלמיד',{required:true});const parent=field('הורה');
+  const info=pilotEl('button','infoBtn','i');info.type='button';info.title='שם פרטי בלבד, בלי מספר זהות';info.setAttribute('aria-label','שם פרטי בלבד, בלי מספר זהות');
+  first=student.input;form.append(student.wrap,parent.wrap,info);
+  form.onsubmit=event=>{event.preventDefault();const result=addManagedPeople(school,{role,classId:node.classId,studentName:student.input.value,parentName:parent.input.value,teacherId:school.teacherId});status.textContent=result.ok?'':(result.error||'');if(!result.ok)return;addOpen=null;saveSchool();render()};
+ }
+ const submit=pilotEl('button','button','הוספה');submit.type='submit';form.append(submit,status);
+ queueMicrotask(()=>first&&first.focus());
+ return form}
 
 function shareWhatsApp(text){window.open(whatsAppUrl(text),'_blank','noopener')}
 function copyText(text,status){const done=()=>{if(status)status.textContent='הקישור הועתק'};if(navigator.clipboard?.writeText)navigator.clipboard.writeText(text).then(done).catch(()=>status&&(status.textContent=text));else if(status)status.textContent=text}
 
 function renderClassShare(box){
  box.textContent='';
- if(!canSetupSchool()||!school.classId)return;
+ if(!canShareClass()||!school.classId)return;
  const classroom=school.classes.find(row=>row.id===school.classId);if(!classroom)return;
  const schoolName=school.schools.find(row=>row.id===classroom.schoolId)?.name||'';
  const link=pageBase()+'#join='+classroom.joinCode;
@@ -119,31 +140,161 @@ function renderPilot(){
  let bar=document.getElementById('pilotBar');
  if(!bar){
   bar=pilotEl('section','panel');bar.id='pilotBar';
-  bar.innerHTML='<div class="pilotHead"><div><div class="pilotKicker">מצב מקומי · בלי שרת</div><b>ארגון › בית ספר › כיתה</b></div><span id="pilotScopeLabel" class="scopeTag"></span></div><input id="pilotSearch" type="search" placeholder="חיפוש בית ספר או כיתה" aria-label="חיפוש בית ספר או כיתה"><div id="pilotRecent" class="pilotRecent"></div><div id="pilotTree" role="tree"></div><p id="pilotStats" class="pilotStats"></p><div id="pilotShare"></div><p id="pilotNote" role="status"></p><div class="pilotActions"><button type="button" class="button" id="openOwnerSetup">הקמת בית ספר</button><button type="button" class="secondary" id="openJoin">הצטרפות עם קוד</button><button type="button" class="secondary" id="openPack">שיתוף בין מכשירים</button><button type="button" class="secondary" id="openIosGuide">הוספה למסך הבית</button></div>';
-  app.prepend(bar);
+  bar.innerHTML='<div class="pilotHead"><div><b>עץ</b></div><button type="button" class="infoBtn" id="treeInfo" title="אדמין מוסיף בית ספר. מנהל מוסיף כיתה. מורה מוסיף תלמיד והורה." aria-label="אדמין מוסיף בית ספר. מנהל מוסיף כיתה. מורה מוסיף תלמיד והורה.">i</button></div><nav id="pilotCrumbs" aria-label="ניווט מעלה"></nav><input id="pilotSearch" type="search" placeholder="חיפוש" aria-label="חיפוש בית ספר או כיתה"><div id="pilotTree" role="tree"></div><p id="pilotNote" role="status"></p><section id="levelPanel"></section><div class="pilotActions"><button type="button" class="iconBtn" id="openJoin" title="הצטרפות עם קוד" aria-label="הצטרפות עם קוד">⌗</button><button type="button" class="iconBtn" id="openPack" title="שיתוף בין מכשירים" aria-label="שיתוף בין מכשירים">↗</button><button type="button" class="iconBtn" id="openIosGuide" title="הוספה למסך הבית" aria-label="הוספה למסך הבית">＋</button></div>';
+  const host=document.querySelector('[data-pane="tree"]')||app;
+  host.prepend(bar);
   bar.querySelector('#pilotSearch').oninput=()=>renderPilot();
-  bar.querySelector('#openOwnerSetup').onclick=openOwnerSetup;
   bar.querySelector('#openJoin').onclick=()=>openJoin('student','');
   bar.querySelector('#openPack').onclick=openPack;
   bar.querySelector('#openIosGuide').onclick=()=>window.showIosAlertsGuide&&window.showIosAlertsGuide();
  }
- const nodes=treeNodes(school,pilotPersona());
+ let nodes=managedTree(school,pilotPersona());
+ if(!nodes.some(node=>node.id===school.scope?.nodeId)){
+  const home=nodes.find(node=>node.type===(role==='admin'?'root':role==='manager'?'school':'class'))||nodes[0];
+  if(home)school.scope=scopeOf(home);
+ }
  const query=document.getElementById('pilotSearch')?.value||'';
  renderTree(document.getElementById('pilotTree'),nodes,query);
- const recent=document.getElementById('pilotRecent');recent.textContent='';
- const byId=Object.fromEntries(nodes.map(node=>[node.id,node]));
- const recents=readRecent().map(id=>byId[id]).filter(Boolean).slice(0,5);
- if(recents.length)recent.append(pilotEl('span','','אחרונים'));
- for(const node of recents){const button=pilotEl('button','chip',node.label);button.type='button';button.setAttribute('data-user-content','');button.onclick=()=>selectTreeNode(node);recent.append(button)}
- const scope=school.scope||{};
- const scopeNode=nodes.find(node=>node.id===scope.nodeId);
- document.getElementById('pilotScopeLabel').textContent=scopeNode?scopeNode.label:(scope.type==='school'?'בית ספר':scope.type==='organization'?'ארגון':'כיתה');
- const summary=scopeSummary(school,records,scope.classId||scope.schoolId||scope.orgId?scope:{type:'class',classId:school.classId},dayKeySelected());
- document.getElementById('pilotStats').textContent=`בהיקף שנבחר: ${summary.classes} כיתות · ${summary.notUpdated} לא עודכן · ${summary.none} אין שיעורי בית · ${summary.homework} יש שיעורי בית`;
- renderClassShare(document.getElementById('pilotShare'));
- document.getElementById('openOwnerSetup').hidden=!canSetupSchool();
+ renderLevelPanel(nodes);
  renderTeacherBoard();
  syncAiGate();
+}
+function crumbTrail(nodes,node){const out=[];let current=node;const byId=Object.fromEntries(nodes.map(item=>[item.id,item]));while(current){out.unshift(current);current=current.parentId?byId[current.parentId]:null}return out}
+function meter(ratio,tone){const bar=pilotEl('div','meter');if(tone)bar.dataset.tone=tone;const fill=pilotEl('div','meterFill');fill.style.width=Math.round(Math.max(0,Math.min(1,ratio||0))*100)+'%';bar.append(fill);return bar}
+function statCard(label,value,ratio,tone){const card=pilotEl('article','statCard');card.append(pilotEl('span','statLabel',label),pilotEl('strong','',value));if(ratio!=null)card.append(meter(ratio,tone));return card}
+function statLine(label,hint,ratio,tone){const row=pilotEl('div','statLine');const top=pilotEl('div','statLineTop');top.append(pilotEl('span','',label),pilotEl('span','statHint',hint));row.append(top);if(ratio!=null)row.append(meter(ratio,tone));return row}
+function panelHead(title,user){const head=pilotEl('div','panelHead');const h=pilotEl('h2','',title);if(user)h.setAttribute('data-user-content','');head.append(h);return head}
+function renderLevelPanel(nodes){
+ const panel=document.getElementById('levelPanel');const crumbs=document.getElementById('pilotCrumbs');
+ if(!panel||!crumbs)return;
+ const simple=role==='parent'||role==='child';
+ panel.hidden=simple;crumbs.hidden=simple;
+ crumbs.textContent='';panel.textContent='';
+ if(simple)return;
+ const node=nodes.find(item=>item.id===school.scope?.nodeId)||nodes.find(item=>item.type==='root')||nodes[0];
+ if(!node){panel.append(pilotEl('p','emptyState','אין נתונים'));return}
+ for(const crumb of crumbTrail(nodes,node)){
+  const button=pilotEl('button','crumb',crumb.label);button.type='button';button.setAttribute('data-user-content','');
+  if(crumb.id===node.id)button.setAttribute('aria-current','page');
+  button.onclick=()=>selectTreeNode(crumb);
+  crumbs.append(button);
+ }
+ const day=dayKeySelected();
+ if(node.type==='root')renderAdminPanel(panel,day);
+ else if(node.type==='school')renderSchoolPanel(panel,node,day);
+ else if(node.type==='class'||node.type==='student'||node.type==='parent')renderClassPanel(panel,node.classId?node:nodes.find(item=>item.classId===school.classId&&item.type==='class'),day,node.studentId);
+ else panel.append(pilotEl('p','emptyState','אין נתונים'));
+}
+function renderAdminPanel(panel,day){
+ const stats=adminPanelStats(school,records,day);
+ panel.append(panelHead('בתי ספר'));
+ const cards=pilotEl('div','statGrid');
+ cards.append(statCard('עדכון',Math.round(stats.updateRate*100)+'%',stats.updateRate),statCard('לא עודכן',Math.round(stats.notUpdatedShare*100)+'%',stats.notUpdatedShare,'not_updated'),statCard('תלמידים',String(stats.students)));
+ panel.append(cards);
+ if(role==='admin'){
+  const setup=pilotEl('form','setupBox');setup.append(pilotEl('h3','','הוספה'));
+  const name=field('בית ספר',{required:true,max:80});const principal=field('מנהל',{required:true});
+  const status=pilotEl('p','');status.setAttribute('role','status');
+  setup.onsubmit=event=>{event.preventDefault();const result=addManagedSchool(school,{role,name:name.input.value,principalName:principal.input.value});status.textContent=result.ok?'':(result.error||'');if(!result.ok)return;school.schoolId=result.school.id;saveSchool();render()};
+  const go=pilotEl('button','button','+');go.type='submit';go.setAttribute('aria-label','הוספת בית ספר');
+  setup.append(name.wrap,principal.wrap,go,status);panel.append(setup);
+ }
+ const list=pilotEl('div','statList');
+ if(!stats.perSchool.length)list.append(pilotEl('p','emptyState','אין בתי ספר'));
+ for(const row of stats.perSchool){
+  const block=pilotEl('div','setupRow');
+  const title=pilotEl('button','treeLabel',row.name);title.type='button';title.setAttribute('data-user-content','');
+  title.onclick=()=>{const target=managedTree(school,pilotPersona()).find(item=>item.type==='school'&&item.schoolId===row.id);if(target)selectTreeNode(target)};
+  const who=pilotEl('span','statHint',row.principal||'');who.setAttribute('data-user-content','');
+  block.append(title,who,statLine('עדכון',Math.round(row.updateRate*100)+'%',row.updateRate),statLine('לא עודכן',Math.round(row.notUpdatedShare*100)+'%',row.notUpdatedShare,'not_updated'),statLine('תלמידים',String(row.students)));
+  if(role==='admin'){
+   const edit=document.createElement('form');edit.className='inlineEdit';
+   const schoolName=field('שם',{value:row.name,max:80});const who=field('מנהל',{value:row.principal,max:40});
+   edit.onsubmit=event=>{event.preventDefault();const renamed=editManagedSchool(school,{role,schoolId:row.id,name:schoolName.input.value});if(!renamed.ok)return;if(who.input.value.trim()){const assigned=assignPrincipal(school,{role,schoolId:row.id,principalName:who.input.value});if(!assigned.ok)return}saveSchool();render()};
+   const save=pilotEl('button','secondary','✓');save.type='submit';save.setAttribute('aria-label','שמירה');
+   edit.append(schoolName.wrap,who.wrap,save);block.append(edit);
+  }
+  list.append(block);
+ }
+ panel.append(list);
+}
+function renderSchoolPanel(panel,node,day){
+ const stats=schoolPanelStats(school,records,node.schoolId,day);
+ panel.append(panelHead(node.label,true));
+ const cards=pilotEl('div','statGrid');
+ cards.append(statCard('עדכון',Math.round(stats.updateRate*100)+'%',stats.updateRate),statCard('לא עודכן',Math.round(stats.notUpdatedShare*100)+'%',stats.notUpdatedShare,'not_updated'),statCard('תלמידים',String(stats.students)));
+ panel.append(cards);
+ const owns=role==='manager'&&(school.managers.find(item=>item.id===school.managerId)?.schoolIds||[]).includes(node.schoolId);
+ if(owns){
+  const setup=pilotEl('form','setupBox');setup.append(pilotEl('h3','','הוספה'));
+  const name=field('כיתה',{required:true,max:40});const teacher=field('מורה',{required:true});
+  const status=pilotEl('p','');status.setAttribute('role','status');
+  setup.onsubmit=event=>{event.preventDefault();const result=addManagedClass(school,{role,schoolId:node.schoolId,name:name.input.value,teacherName:teacher.input.value,managerId:school.managerId});status.textContent=result.ok?'':(result.error||'');if(!result.ok)return;school.classId=result.class.id;school.schoolId=node.schoolId;saveSchool();render()};
+  const go=pilotEl('button','button','+');go.type='submit';go.setAttribute('aria-label','הוספת כיתה');
+  setup.append(name.wrap,teacher.wrap,go,status);panel.append(setup);
+ }
+ const list=pilotEl('div','statList');
+ if(!stats.perClass.length)list.append(pilotEl('p','emptyState','אין כיתות'));
+ for(const row of stats.perClass){
+  const block=pilotEl('div','setupRow');
+  const title=pilotEl('button','treeLabel',row.name);title.type='button';title.setAttribute('data-user-content','');
+  title.onclick=()=>{const target=managedTree(school,pilotPersona()).find(item=>item.type==='class'&&item.classId===row.id);if(target)selectTreeNode(target)};
+  const who=pilotEl('span','statHint',row.teacher||'');who.setAttribute('data-user-content','');
+  block.append(title,who,statLine('עדכון',Math.round(row.updateRate*100)+'%',row.updateRate),statLine('לא עודכן',Math.round(row.notUpdatedShare*100)+'%',row.notUpdatedShare,'not_updated'),statLine('תלמידים',String(row.students)));
+  if(owns){
+   const edit=document.createElement('form');edit.className='inlineEdit';
+   const who=field('מורה',{value:row.teacher});
+   edit.onsubmit=event=>{event.preventDefault();const result=assignClassTeacher(school,{role,classId:row.id,teacherName:who.input.value,managerId:school.managerId});if(!result.ok)return;saveSchool();render()};
+   const save=pilotEl('button','secondary','✓');save.type='submit';save.setAttribute('aria-label','שמירת מורה');
+   edit.append(who.wrap,save);block.append(edit);
+  }
+  list.append(block);
+ }
+ panel.append(list);
+}
+function renderClassPanel(panel,node,day,focusId){
+ if(!node){panel.append(pilotEl('p','emptyState','אין כיתה'));return}
+ const stats=classPanelStats(school,records,node.classId,day);
+ const classroom=school.classes.find(row=>row.id===node.classId);
+ panel.append(panelHead(classroom?.name||node.label,true));
+ const cards=pilotEl('div','statGrid');
+ cards.append(statCard('פורסם',String(stats.homework),stats.homework?stats.updateRate:0,'homework'),statCard('הוכן',stats.posted?Math.round(stats.doneRate*100)+'%':'0%',stats.doneRate,'homework'),statCard('לא עודכן',Math.round(stats.notUpdatedShare*100)+'%',stats.notUpdatedShare,'not_updated'));
+ panel.append(cards);
+ const mine=role==='teacher'&&(school.teachers.find(row=>row.id===school.teacherId)?.classIds||[]).includes(node.classId);
+ if(mine&&classroom){
+  const setup=pilotEl('form','setupBox');setup.append(pilotEl('h3','','הוספה'));
+  const student=field('תלמיד',{required:true});const parent=field('הורה');
+  const info=pilotEl('button','infoBtn','i');info.type='button';info.title='שם פרטי בלבד, בלי מספר זהות';info.setAttribute('aria-label','שם פרטי בלבד, בלי מספר זהות');
+  const status=pilotEl('p','');status.setAttribute('role','status');
+  setup.onsubmit=event=>{event.preventDefault();const result=addManagedPeople(school,{role,classId:node.classId,studentName:student.input.value,parentName:parent.input.value,teacherId:school.teacherId});status.textContent=result.ok?'':(result.error||'');if(!result.ok)return;saveSchool();render()};
+  const go=pilotEl('button','button','+');go.type='submit';go.setAttribute('aria-label','הוספת תלמיד');
+  const code=pilotEl('code','joinCode ltr',classroom.joinCode);code.dir='ltr';code.title='קוד כיתה';
+  const share=pilotEl('button','secondary','וואטסאפ');share.type='button';share.setAttribute('aria-label','שליחה בוואטסאפ');
+  share.onclick=event=>{event.preventDefault();shareWhatsApp(classShareText({schoolName:school.schools.find(row=>row.id===classroom.schoolId)?.name||'',className:classroom.name,code:classroom.joinCode,link:pageBase()+'#join='+classroom.joinCode}))};
+  setup.append(student.wrap,parent.wrap,info,code,go,share,status);panel.append(setup);
+ }
+ const subjects=pilotEl('div','statList');
+ for(const row of stats.perSubject){
+  const ratio=row.status==='homework'?row.doneRate:row.status==='no_homework'?1:0;
+  subjects.append(statLine(row.subject,statusLabel(row.status),ratio,row.status));
+ }
+ const people=pilotEl('div','statList');
+ if(!stats.perStudent.length)people.append(pilotEl('p','emptyState','אין תלמידים'));
+ for(const row of stats.perStudent){
+  const line=statLine(row.name+(row.parents.length?' · '+row.parents.join(', '):''),row.posted?row.done+'/'+row.posted:'—',row.doneRate,'homework');
+  if(row.id===focusId)line.classList.add('is-on');
+  line.querySelector('span').setAttribute('data-user-content','');
+  if(mine){
+   const student=school.students.find(item=>item.id===row.id);
+   if(student?.parentCode){
+    const share=pilotEl('button','iconBtn','↗');share.type='button';share.setAttribute('aria-label','שיתוף קוד הורה');
+    share.onclick=()=>shareWhatsApp(parentShareText({studentName:student.name,code:student.parentCode,link:pageBase()+'#parent='+student.parentCode}));
+    line.querySelector('.statLineTop').append(share);
+   }
+  }
+  people.append(line);
+ }
+ panel.append(subjects,people);
 }
 
 function renderTeacherBoard(){
@@ -155,9 +306,8 @@ function renderTeacherBoard(){
  if(board.hidden)return;
  const classroom=school.classes.find(row=>row.id===school.classId);
  board.textContent='';
- board.append(pilotEl('h2','','עדכון להיום'));
- board.append(pilotEl('p','','לכל מקצוע: שיעורי בית, או סימון מפורש שאין. בלי עדכון המסך נשאר «לא עודכן».'));
- if(!classroom){board.append(pilotEl('p','','בחרו כיתה בבורר למעלה.'));return}
+ board.append(pilotEl('h2','','עדכון'));
+ if(!classroom){board.append(pilotEl('p','emptyState','בחרו כיתה'));return}
  const day=dayKeySelected();
  let subjects=classroom.subjects||PILOT_SUBJECTS;
  try{const lessons=ttDayFor(classroom.id,new Date(day+'T12:00:00').getDay());if(lessons.length)subjects=[...new Set(lessons.map(row=>row.subject))]}catch{}
@@ -217,9 +367,8 @@ function installAiGate(){
 function appendConsent(box){
  if(consentGiven())return;
  const card=pilotEl('section','notice');card.id='consentCard';
- card.append(pilotEl('b','','הסכמת הורה'));
- card.append(pilotEl('p','','הפיילוט נשמר במכשיר הזה. אין חשבון ואין אימייל. נשמר שם פרטי, בלי מספר זהות. '));
- const link=pilotEl('a','','מדיניות הפרטיות');link.href='privacy.html';card.lastChild.append(link);
+ const head=pilotEl('div','consentHead');head.append(pilotEl('b','','הסכמת הורה'));
+ const link=pilotEl('a','','מדיניות הפרטיות');link.href='privacy.html';head.append(link);card.append(head);
  const label=pilotEl('label','');
  const boxInput=document.createElement('input');boxInput.type='checkbox';boxInput.id='consentTick';
  label.append(boxInput,document.createTextNode(' קראתי את מדיניות הפרטיות ואני מסכים/ה לשמור במכשיר הזה שם פרטי של הילד, בלי מספר זהות.'));
@@ -232,8 +381,7 @@ function appendEveningBoard(box,classId,day){
  const classroom=school.classes.find(row=>row.id===classId);
  let subjects=classroom?.subjects||PILOT_SUBJECTS.slice();
  try{const lessons=ttDayFor(classId,new Date(day+'T12:00:00').getDay());if(lessons.length)subjects=[...new Set(lessons.map(row=>row.subject))]}catch{}
- box.append(pilotEl('h3','','לפי מקצוע'));
- box.append(pilotEl('p','meta','מקצוע בלי עדכון הוא «לא עודכן». רק סימון מפורש של המורה הוא «אין שיעורי בית».'));
+ box.append(pilotEl('h3','','ערב'));
  const kid=typeof activeStudentId==='function'?activeStudentId():school.studentId;
  for(const subject of subjects){
   const info=eveningStatus(records,{classId,subject,day});
@@ -254,7 +402,7 @@ function appendParentWeek(box){
  const kid=school.studentId;
  const classId=school.students.find(row=>row.id===kid)?.classIds?.[0];
  if(!classId)return;
- box.append(pilotEl('h3','','השבוע להורה'));
+ box.append(pilotEl('h3','','שבוע'));
  const wrap=pilotEl('div','');wrap.id='parentWeek';
  const base=new Date();base.setDate(base.getDate()-base.getDay());
  const names=['ראשון','שני','שלישי','רביעי','חמישי','שישי'];
@@ -336,7 +484,7 @@ function ownerIdentity(){
  return {id:'owner-'+makeJoinCode('owner|'+school.schools.length),name:''};
 }
 function openOwnerSetup(){
- if(!canSetupSchool())return;
+ return;
  const dialog=dialogShell('ownerDialog','הקמת בית ספר');
  const steps=['ארגון','בית ספר','כיתות','מורים','קודי כיתה'];
  const nav=pilotEl('div','wizardSteps');steps.forEach((label,index)=>nav.append(pilotEl('span',index===wiz.step?'on':'',String(index+1)+'. '+label)));

@@ -86,6 +86,78 @@ function searchTree(nodes,query){
   keep.add(node.id);let parent=node.parentId;while(parent){keep.add(parent);parent=byId[parent]?.parentId}addDesc(node.id)}
  return nodes.filter(node=>keep.has(node.id))}
 
+function mayAdd(role,kind){return kind==='school'&&role==='admin'||kind==='class'&&role==='manager'||kind==='person'&&role==='teacher'}
+function managedTree(school,ctx){
+ ensureLists(school);
+ const role=ctx?.role||'admin';
+ const base=treeNodes(school,role==='admin'?{role:'admin'}:ctx).filter(node=>node.type!=='organization');
+ const nodes=[];
+ if(role==='admin')nodes.push({id:'root',type:'root',label:'Nohomework',parentId:null,orgId:null,schoolId:null,classId:null,canAdd:'school'});
+ for(const node of base){
+  const copy={...node,canAdd:null};
+  if(role==='admin'&&copy.type==='school')copy.parentId='root';
+  if(role!=='admin'&&copy.type==='school')copy.parentId=null;
+  if(mayAdd(role,'class')&&copy.type==='school')copy.canAdd='class';
+  if(mayAdd(role,'person')&&copy.type==='class')copy.canAdd='person';
+  nodes.push(copy);
+  if(copy.type!=='class')continue;
+  for(const student of school.students.filter(row=>(row.classIds||[]).includes(copy.classId))){
+   if(role==='child'&&student.id!==ctx?.childId)continue;
+   if(role==='parent'&&!(school.parents.find(row=>row.id===ctx?.parentId)?.studentIds||[]).includes(student.id))continue;
+   const studentNode={id:'student:'+student.id+':'+copy.classId,type:'student',label:student.name,parentId:copy.id,orgId:copy.orgId,schoolId:copy.schoolId,classId:copy.classId,studentId:student.id,canAdd:null};
+   nodes.push(studentNode);
+   if(role==='child')continue;
+   for(const parent of school.parents.filter(row=>(row.studentIds||[]).includes(student.id))){
+    if(role==='parent'&&parent.id!==ctx?.parentId)continue;
+    nodes.push({id:'parent:'+parent.id+':'+student.id+':'+copy.classId,type:'parent',label:parent.name,parentId:studentNode.id,orgId:copy.orgId,schoolId:copy.schoolId,classId:copy.classId,studentId:student.id,canAdd:null});
+   }
+  }
+ }
+ return nodes}
+function addManagedSchool(school,{role,name,principalName}={}){
+ ensureLists(school);
+ if(!mayAdd(role,'school'))return {ok:false,error:'רק אדמין מוסיף בית ספר'};
+ const principal=validatePersonName(principalName);if(!principal.ok)return {ok:false,error:principal.error==='צריך שם פרטי'?'צריך מנהל':principal.error};
+ const existing=school.managers.find(row=>row.name===principal.name);
+ const ownerId=existing?existing.id:'mgr-'+makeJoinCode(principal.name+'|'+school.managers.length,new Set(school.managers.map(row=>row.id)));
+ const claimed=claimSchool(school,{name,orgId:null,ownerId,ownerName:principal.name});
+ if(!claimed.ok)return claimed;
+ return {ok:true,school:claimed.school,managerId:ownerId}}
+function addManagedClass(school,{role,schoolId,name,teacherName,managerId}={}){
+ ensureLists(school);
+ if(!mayAdd(role,'class'))return {ok:false,error:'רק מנהל מוסיף כיתה'};
+ const clean=String(name||'').trim();if(!clean)return {ok:false,error:'צריך שם כיתה'};
+ const teacherNameCheck=validatePersonName(teacherName);if(!teacherNameCheck.ok)return {ok:false,error:teacherNameCheck.error==='צריך שם פרטי'?'צריך מורה':teacherNameCheck.error};
+ if(!school.schools.some(row=>row.id===schoolId))return {ok:false,error:'בית הספר לא נמצא'};
+ const manager=school.managers.find(row=>row.id===managerId);
+ const owns=!!manager&&((manager.schoolIds||[]).includes(schoolId)||school.schools.some(row=>row.id===schoolId&&row.ownerId===managerId));
+ if(!owns)return {ok:false,error:'אין הרשאה לבית הספר'};
+ if(school.classes.some(row=>row.schoolId===schoolId&&row.name===clean))return {ok:false,error:'הכיתה כבר קיימת'};
+ const taken=new Set(school.classes.map(row=>row.joinCode).filter(Boolean));
+ const id='cls-'+makeJoinCode(schoolId+'|'+clean+'|'+school.classes.length);
+ const row={id,name:clean,schoolId,grade:gradeFromName(clean),joinCode:makeJoinCode('join|'+id,taken),subjects:PILOT_SUBJECTS.slice()};
+ school.classes.push(row);
+ let teacher=school.teachers.find(item=>item.name===teacherNameCheck.name);
+ if(!teacher){teacher={id:'tch-'+makeJoinCode(teacherNameCheck.name+'|'+school.teachers.length),name:teacherNameCheck.name,classIds:[id],subjects:PILOT_SUBJECTS.slice()};school.teachers.push(teacher)}
+ else if(!teacher.classIds.includes(id))teacher.classIds.push(id);
+ row.ownerId=teacher.id;
+ if(!school.staff.some(item=>item.schoolId===schoolId&&item.userId===teacher.id&&item.role==='teacher'))school.staff.push({schoolId,userId:teacher.id,role:'teacher'});
+ return {ok:true,class:row,teacher}}
+function addManagedPeople(school,{role,classId,studentName,parentName,teacherId}={}){
+ ensureLists(school);
+ if(!mayAdd(role,'person'))return {ok:false,error:'רק מורה מוסיף תלמיד'};
+ const classroom=school.classes.find(row=>row.id===classId);
+ if(!classroom)return {ok:false,error:'הכיתה לא נמצאה'};
+ const teacher=school.teachers.find(row=>row.id===teacherId);
+ if(!teacher||!(teacher.classIds||[]).includes(classId))return {ok:false,error:'אין הרשאה לכיתה'};
+ const joined=joinStudent(school,{code:classroom.joinCode,firstName:studentName});
+ if(!joined.ok)return joined;
+ let parent=null;
+ if(String(parentName||'').trim()){
+  const linked=linkParent(school,{code:joined.student.parentCode,name:parentName});
+  if(!linked.ok)return linked;
+  parent=linked.parent}
+ return {ok:true,student:joined.student,parent,class:classroom}}
 function rememberRecent(list,id,limit=6){return [id,...(list||[]).filter(item=>item!==id)].slice(0,limit)}
 function scopeOf(node){return {type:node.type,orgId:node.orgId||null,schoolId:node.schoolId||null,classId:node.classId||null,nodeId:node.id,label:node.label}}
 function classIdsInScope(school,scope){
@@ -116,6 +188,81 @@ function scopeSummary(school,records,scope,day){
  const ids=classIdsInScope(school,scope);let notUpdated=0,none=0,homework=0;
  for(const classId of ids)for(const subject of subjectsForClass(school,classId)){const status=subjectDayStatus(records,{classId,day,subject});if(status==='not_updated')notUpdated++;else if(status==='no_homework')none++;else homework++}
  return {classes:ids.length,notUpdated,none,homework}}
+function rate(part,whole){return whole?part/whole:0}
+function tallyScope(school,records,classIds,day){
+ const students=new Set();let slots=0,updated=0,notUpdated=0,homework=0,none=0,done=0,posted=0;
+ for(const classId of classIds){
+  const kids=school.students.filter(row=>(row.classIds||[]).includes(classId));
+  for(const kid of kids)students.add(kid.id);
+  for(const subject of subjectsForClass(school,classId)){
+   slots++;
+   const info=eveningStatus(records,{classId,subject,day});
+   if(info.status==='not_updated')notUpdated++;
+   else{updated++;if(info.status==='homework'){homework++;posted+=kids.length;done+=kids.filter(kid=>info.record?.completions?.[kid.id]?.done).length}else none++}
+  }
+ }
+ return {slots,updated,notUpdated,homework,none,students:students.size,done,posted,updateRate:rate(updated,slots),notUpdatedShare:rate(notUpdated,slots),doneRate:rate(done,posted)}}
+function classPanelStats(school,records,classId,day){
+ ensureLists(school);
+ const kids=school.students.filter(row=>(row.classIds||[]).includes(classId));
+ const subjects=subjectsForClass(school,classId);
+ const perSubject=subjects.map(subject=>{
+  const info=eveningStatus(records,{classId,subject,day});
+  const done=kids.filter(kid=>info.record?.completions?.[kid.id]?.done).length;
+  return {subject,status:info.status,posted:info.status==='homework'?1:0,done,students:kids.length,doneRate:rate(done,info.status==='homework'?kids.length:0)};
+ });
+ const perStudent=kids.map(kid=>{
+  let posted=0,done=0,missing=0;
+  for(const subject of subjects){const info=eveningStatus(records,{classId,subject,day});if(info.status==='not_updated')missing++;if(info.status==='homework'){posted++;if(info.record?.completions?.[kid.id]?.done)done++}}
+  return {id:kid.id,name:kid.name,posted,done,missing,doneRate:rate(done,posted),parents:school.parents.filter(row=>(row.studentIds||[]).includes(kid.id)).map(row=>row.name)};
+ });
+ return {...tallyScope(school,records,[classId],day),perSubject,perStudent}}
+function schoolPanelStats(school,records,schoolId,day){
+ ensureLists(school);
+ const classes=school.classes.filter(row=>row.schoolId===schoolId);
+ const perClass=classes.map(row=>({id:row.id,name:row.name,teacher:school.teachers.find(item=>(item.classIds||[]).includes(row.id))?.name||'',...tallyScope(school,records,[row.id],day)}));
+ return {...tallyScope(school,records,classes.map(row=>row.id),day),perClass}}
+function adminPanelStats(school,records,day){
+ ensureLists(school);
+ const perSchool=school.schools.map(row=>{
+  const ids=school.classes.filter(item=>item.schoolId===row.id).map(item=>item.id);
+  const principal=school.managers.find(item=>(item.schoolIds||[]).includes(row.id));
+  return {id:row.id,name:row.name,principal:principal?.name||'',...tallyScope(school,records,ids,day)};
+ });
+ return {...tallyScope(school,records,school.classes.map(row=>row.id),day),schools:school.schools.length,perSchool}}
+function editManagedSchool(school,{role,schoolId,name}={}){
+ ensureLists(school);
+ if(role!=='admin')return {ok:false,error:'רק אדמין עורך בית ספר'};
+ const row=school.schools.find(item=>item.id===schoolId);if(!row)return {ok:false,error:'בית הספר לא נמצא'};
+ const clean=String(name||'').trim();if(!clean)return {ok:false,error:'צריך שם'};
+ row.name=clean;return {ok:true,school:row}}
+function assignPrincipal(school,{role,schoolId,principalName}={}){
+ ensureLists(school);
+ if(role!=='admin')return {ok:false,error:'רק אדמין ממנה מנהל'};
+ const row=school.schools.find(item=>item.id===schoolId);if(!row)return {ok:false,error:'בית הספר לא נמצא'};
+ const person=validatePersonName(principalName);if(!person.ok)return {ok:false,error:person.error==='צריך שם פרטי'?'צריך מנהל':person.error};
+ let manager=school.managers.find(item=>item.name===person.name);
+ if(!manager){manager={id:'mgr-'+makeJoinCode(person.name+'|'+school.managers.length,new Set(school.managers.map(item=>item.id))),name:person.name,schoolIds:[]};school.managers.push(manager)}
+ for(const other of school.managers)if(other.id!==manager.id)other.schoolIds=(other.schoolIds||[]).filter(id=>id!==schoolId);
+ if(!manager.schoolIds.includes(schoolId))manager.schoolIds.push(schoolId);
+ row.ownerId=manager.id;
+ school.staff=school.staff.filter(item=>!(item.schoolId===schoolId&&item.role==='manager'&&item.userId!==manager.id));
+ if(!school.staff.some(item=>item.schoolId===schoolId&&item.userId===manager.id&&item.role==='manager'))school.staff.push({schoolId,userId:manager.id,role:'manager'});
+ return {ok:true,manager}}
+function assignClassTeacher(school,{role,classId,teacherName,managerId}={}){
+ ensureLists(school);
+ if(!mayAdd(role,'class'))return {ok:false,error:'רק מנהל ממנה מורה'};
+ const classroom=school.classes.find(row=>row.id===classId);if(!classroom)return {ok:false,error:'הכיתה לא נמצאה'};
+ const manager=school.managers.find(row=>row.id===managerId);
+ if(!manager||!(manager.schoolIds||[]).includes(classroom.schoolId))return {ok:false,error:'אין הרשאה לבית הספר'};
+ const person=validatePersonName(teacherName);if(!person.ok)return {ok:false,error:person.error==='צריך שם פרטי'?'צריך מורה':person.error};
+ let teacher=school.teachers.find(row=>row.name===person.name);
+ if(!teacher){teacher={id:'tch-'+makeJoinCode(person.name+'|'+school.teachers.length),name:person.name,classIds:[classId],subjects:PILOT_SUBJECTS.slice()};school.teachers.push(teacher)}
+ else if(!teacher.classIds.includes(classId))teacher.classIds.push(classId);
+ for(const other of school.teachers)if(other.id!==teacher.id)other.classIds=(other.classIds||[]).filter(id=>id!==classId);
+ classroom.ownerId=teacher.id;
+ if(!school.staff.some(item=>item.schoolId===classroom.schoolId&&item.userId===teacher.id&&item.role==='teacher'))school.staff.push({schoolId:classroom.schoolId,userId:teacher.id,role:'teacher'});
+ return {ok:true,teacher,class:classroom}}
 
 function createOrganization(school,name){
  ensureLists(school);const clean=String(name||'').trim();if(!clean)return {ok:false,error:'צריך שם'};

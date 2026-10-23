@@ -1,0 +1,70 @@
+/* Light panels: one accent, stone neutrals, short labels, stat cards and bars. */
+@import url('https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap');
+:root{--green:#4f46e5;--green-2:#4f46e5;--accent:#4f46e5;--ink:#1c1917;--muted:#78716c;--line:#e7e5e4;--bg:#f7f7f5;--card:#ffffff;--soft:#f5f5f4;--shadow:0 1px 2px #1c19170a;--r:18px}
+body{background:var(--bg);color:var(--ink);font-family:Rubik,Heebo,Arial,sans-serif}
+h1{background:none;-webkit-text-fill-color:currentColor;color:var(--ink);letter-spacing:-.04em}
+.logo,.button,.day.selected,.weekStrip .day.on{background:var(--accent);box-shadow:none}
+.button:hover{background:#4338ca;box-shadow:none;transform:none;filter:none}
+.demo{background:#f5f5f4;color:#44403c;border-bottom:1px solid var(--line)}
+header{background:#fffc;box-shadow:none}
+.roles .active{color:var(--accent)}
+.progress div{background:var(--accent)}
+#tabNav{background:#fffc;border-color:var(--line);box-shadow:0 -1px 0 var(--line)}
+#tabNav button[aria-current=true]{background:#eef2ff;color:var(--accent)}
+#pilotBar{background:transparent;border:0;box-shadow:none;padding:4px 0 24px}
+.pilotHead b{font-size:15px;font-weight:650;letter-spacing:-.02em}
+#pilotSearch{background:#fff;border-color:var(--line);border-radius:14px}
+.treeRow{min-height:40px}
+.treeLabel{font-weight:550;border-radius:12px}
+.treeRow.is-on .treeLabel{background:#eef2ff;color:var(--accent)}
+.treeIcon{color:var(--muted);font-size:13px}
+#pilotCrumbs{display:flex;flex-wrap:wrap;align-items:center;gap:2px;margin:2px 0 10px}
+.crumb{border:0;background:transparent;color:var(--muted);font:inherit;padding:4px 2px;min-height:36px}
+.crumb[aria-current=page]{color:var(--ink);font-weight:650}
+#pilotCrumbs .crumb+.crumb::before{content:'/';color:#d6d3d1;margin-inline:4px}
+.panelHead{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:2px 0 8px}
+.panelHead h2,.setupBox h3{margin:0;font-size:18px;font-weight:650;letter-spacing:-.03em}
+.statGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 16px}
+.statCard{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.statCard strong{font-size:22px;font-weight:650;letter-spacing:-.04em;line-height:1}
+.statLabel,.statHint{color:var(--muted);font-size:12px;font-weight:500}
+.statList{display:flex;flex-direction:column;gap:4px;margin:8px 0 16px}
+.setupRow{display:flex;flex-direction:column;align-items:stretch;gap:2px;padding:12px 0;border-bottom:1px solid var(--line)}
+.setupRow .treeLabel{width:100%;padding-inline:0;font-size:16px;text-align:start}
+.setupRow>.statHint{margin-bottom:4px}
+.statLine{margin:7px 0}
+.statLineTop{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;margin-bottom:4px}
+.statLine.is-on{background:#eef2ff;border-radius:12px;padding:6px 8px}
+.meter{height:6px;border-radius:99px;background:#e7e5e4;overflow:hidden}
+.meterFill{height:100%;width:0;border-radius:99px;background:var(--accent)}
+.meter[data-tone=not_updated] .meterFill{background:#d6d3d1}
+.meter[data-tone=no_homework] .meterFill{background:#a8a29e}
+.meter[data-tone=homework] .meterFill{background:var(--accent)}
+.setupBox,.inlineEdit{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+.setupBox{padding:12px;margin:4px 0 14px;border:1px dashed #d6d3d1;border-radius:16px;background:#fafaf9}
+.inlineEdit{margin-top:8px}
+.miniField{display:flex;flex-direction:column;gap:4px;flex:1 1 120px;min-width:0;font-size:12px;color:var(--muted)}
+.miniField input{min-height:44px;background:#fff}
+.setupBox .button,.inlineEdit .secondary,.setupBox .secondary{min-height:44px}
+.iconBtn,.infoBtn{width:36px;height:36px;min-height:36px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:0}
+.pilotActions{gap:8px}
+.emptyState{color:var(--muted);margin:8px 0}
+code.joinCode{font-size:13px;letter-spacing:.08em;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.eveningRow,.teacherRow{border-radius:16px;border-color:var(--line)}
+.eveningRow input{accent-color:var(--accent)}
+@media(min-width:880px){
+ #pilotBar{display:grid;grid-template-columns:minmax(240px,300px) minmax(0,1fr);column-gap:28px;align-items:start}
+ .pilotHead,#pilotSearch,#pilotTree,#pilotNote,.pilotActions{grid-column:1}
+ #pilotCrumbs,#levelPanel{grid-column:2}
+ #levelPanel{position:sticky;top:84px}
+}
+@media(max-width:359px){.statGrid{grid-template-columns:1fr}.statCard strong{font-size:20px}}
+@media(prefers-color-scheme:dark){
+ :root{--ink:#f5f5f4;--muted:#a8a29e;--line:#44403c;--bg:#1c1917;--card:#292524;--soft:#44403c}
+ body,header,#tabNav{background:var(--bg)}
+ .demo{background:#292524;color:#d6d3d1;border-color:var(--line)}
+ .statCard,.setupBox,.miniField input,code.joinCode,.iconBtn,.infoBtn{background:var(--card);color:var(--ink);border-color:var(--line)}
+ .meter{background:#44403c}
+ .meter[data-tone=not_updated] .meterFill{background:#57534e}
+ #tabNav button[aria-current=true],.treeRow.is-on .treeLabel,.statLine.is-on{background:#312e81;color:#e0e7ff}
+}
