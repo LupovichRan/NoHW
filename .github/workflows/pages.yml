@@ -3,7 +3,7 @@ name: Deploy GitHub Pages
 on:
   push:
     branches:
-      - simple
+      - main
   workflow_dispatch:
 
 permissions:
@@ -28,8 +28,18 @@ jobs:
         run: |
           rm -rf _site
           mkdir -p _site/simple
-          cp -a dist/. _site/
-          cp -a simple/. _site/simple/
+          cp -a simple/. _site/
+          # Old /NoHW/simple/ links land on the root app. No sw.js here, so
+          # the old /simple/ service worker unregisters itself on update.
+          cat > _site/simple/index.html <<'HTML'
+          <!doctype html>
+          <html lang="he" dir="rtl"><head><meta charset="utf-8">
+          <meta http-equiv="refresh" content="0; url=../">
+          <link rel="canonical" href="../">
+          <script>location.replace("../" + location.search + location.hash);</script>
+          <title>Nohomework</title></head>
+          <body><a href="../">Nohomework</a></body></html>
+          HTML
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload site
