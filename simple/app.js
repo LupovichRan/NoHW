@@ -4,7 +4,7 @@ const ADMIN = "nohw-simple-admin";
 const SES = "nohw-simple-session";
 const STATUS = { "not-updated": "לא עודכן", "no-homework": "אין שיעורים" };
 const ROLES = [
-  ["admin", "אדמין", "M12 3l7 3v6c0 4.2-3.1 7.4-7 8.8C8.1 19.4 5 16.2 5 12V6l7-3z"],
+  ["admin", "מנהל מערכת", "M12 3l7 3v6c0 4.2-3.1 7.4-7 8.8C8.1 19.4 5 16.2 5 12V6l7-3z"],
   ["principal", "מנהל", "M4 20h16M6 20V5h12v15M9 8h2M13 8h2M9 12h2M13 12h2M10 20v-4h4v4"],
   ["teacher", "מורה", "M15.2 8.2a3.2 3.2 0 1 1-6.4 0 3.2 3.2 0 0 1 6.4 0zM6 19.2c1.1-2.7 3.2-4 6-4s4.9 1.3 6 4"],
   ["student", "תלמיד", ["M4.5 5.5h6A2.5 2.5 0 0 1 13 8v11H7A2.5 2.5 0 0 1 4.5 16.5z", "M13 8h6.5V19H13"]],
