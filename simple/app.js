@@ -281,10 +281,56 @@ function speakAnswer(text) {
   if (!view.readAloud || !window.speechSynthesis || !text) return;
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "he-IL";
+  const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+  const hebrew = (voices || []).filter(function (item) { return /^he([-_]|$)/i.test(item.lang || ""); })[0];
+  if (hebrew) utter.voice = hebrew;
   const face = document.querySelector(".chatsheet .helperface");
   utter.onstart = function () { if (face) face.classList.add("talking"); };
   utter.onend = function () { if (face) face.classList.remove("talking"); };
   try { window.speechSynthesis.speak(utter); } catch (e) {}
+}
+function talkLines(text) {
+  return String(text || "").split(/\n+/).map(function (line) { return line.trim(); }).filter(Boolean);
+}
+function typingNode() {
+  const row = document.createElement("div");
+  row.className = "typing";
+  row.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 3; i++) row.appendChild(document.createElement("i"));
+  return row;
+}
+function miniFace(kind) {
+  const face = document.createElement("span");
+  face.className = "miniface";
+  face.setAttribute("aria-hidden", "true");
+  face.insertAdjacentHTML("beforeend", faceSvg(kind || "sun"));
+  return face;
+}
+function buildTurn(kind, lines, opts) {
+  opts = opts || {};
+  const turn = document.createElement("div");
+  turn.className = "turn " + kind + (opts.confirm ? " confirm" : "");
+  turn.lang = "he";
+  turn.dir = "rtl";
+  if (kind === "bot") turn.appendChild(miniFace(opts.face));
+  const stack = document.createElement("div");
+  stack.className = "bubbles";
+  if (kind === "bot") stack.appendChild(typingNode());
+  const list = lines && lines.length ? lines : [""];
+  list.forEach(function (line, index) {
+    const last = index === list.length - 1;
+    const bubble = document.createElement("div");
+    bubble.className = "bubble " + kind + (last ? " tail" : "") + (opts.confirm && index === 0 ? " confirm" : "");
+    if (line) {
+      const text = document.createElement("p");
+      text.textContent = line;
+      bubble.appendChild(text);
+    }
+    if (last && opts.fill) opts.fill(bubble);
+    stack.appendChild(bubble);
+  });
+  turn.appendChild(stack);
+  return turn;
 }
 function trimChat() {
   if (chatLog.length > 40) chatLog.splice(0, chatLog.length - 40);
@@ -509,57 +555,57 @@ function paintChat() {
   const log = document.createElement("div");
   log.className = "chatlog";
   log.tabIndex = 0;
+  log.lang = "he";
+  log.dir = "rtl";
   const card = currentDigest();
   lastDigest = card;
   if (settingUp) log.appendChild(buildSetupCard(setupStatus(), false));
   else if (card) log.appendChild(buildDigest(card));
-  if (!chatLog.length) {
-    const hello = document.createElement("p");
-    hello.className = "bubble bot";
-    hello.textContent = settingUp ? "נמשיך בהקמה." : "שלום, שואלים אותי על הכיתה.";
-    log.appendChild(hello);
+  if (!chatLog.length && !settingUp && !(card && card.greeting)) {
+    log.appendChild(buildTurn("bot", ["היי, אפשר לשאול על הכיתה."], { face: helper.face }));
   }
   chatLog.forEach(function (turn) {
-    const bubble = document.createElement("div");
-    bubble.className = "bubble " + (turn.role === "me" ? "me" : "bot") + (turn.confirm ? " confirm" : "");
-    const text = document.createElement("p");
-    text.textContent = turn.text || "";
-    bubble.appendChild(text);
-    (turn.photos || []).forEach(function (item) {
-      const src = srcOf(item);
-      if (!src && item.id) queueMedia(item.id);
-      if (!src) return;
-      const img = document.createElement("img");
-      img.alt = "תמונה";
-      img.src = src;
-      bubble.appendChild(img);
-    });
-    (turn.voices || []).forEach(function (item) {
-      const src = srcOf(item) || item.src || item.id || "";
-      if (!src && item.id) queueMedia(item.id);
-      const play = document.createElement("button");
-      play.type = "button";
-      play.className = "play";
-      play.dataset.act = "play";
-      play.dataset.voice = src;
-      play.setAttribute("aria-label", "השמעה");
-      play.textContent = "🎤 השמעה";
-      bubble.appendChild(play);
-      if (item.text) {
-        const said = document.createElement("p");
-        said.className = "said";
-        said.textContent = item.text;
-        bubble.appendChild(said);
+    const kind = turn.role === "me" ? "me" : "bot";
+    log.appendChild(buildTurn(kind, talkLines(turn.text), {
+      face: helper.face,
+      confirm: !!turn.confirm,
+      fill: function (bubble) {
+        (turn.photos || []).forEach(function (item) {
+          const src = srcOf(item);
+          if (!src && item.id) queueMedia(item.id);
+          if (!src) return;
+          const img = document.createElement("img");
+          img.alt = "תמונה";
+          img.src = src;
+          bubble.appendChild(img);
+        });
+        (turn.voices || []).forEach(function (item) {
+          const src = srcOf(item) || item.src || item.id || "";
+          if (!src && item.id) queueMedia(item.id);
+          const play = document.createElement("button");
+          play.type = "button";
+          play.className = "play";
+          play.dataset.act = "play";
+          play.dataset.voice = src;
+          play.setAttribute("aria-label", "השמעה");
+          play.textContent = "🎤 השמעה";
+          bubble.appendChild(play);
+          if (item.text) {
+            const said = document.createElement("p");
+            said.className = "said";
+            said.textContent = item.text;
+            bubble.appendChild(said);
+          }
+        });
+        if (turn.draft) {
+          const open = document.createElement("button");
+          open.type = "button";
+          open.dataset.act = "helper-draft";
+          open.textContent = "פתח בטיוטה";
+          bubble.appendChild(open);
+        }
       }
-    });
-    if (turn.draft) {
-      const open = document.createElement("button");
-      open.type = "button";
-      open.dataset.act = "helper-draft";
-      open.textContent = "פתח בטיוטה";
-      bubble.appendChild(open);
-    }
-    log.appendChild(bubble);
+    }));
   });
   const chips = document.createElement("div");
   const inFlow = wizardOn();
@@ -623,9 +669,12 @@ function paintChat() {
   const hint = document.createElement("p");
   hint.className = "hint";
   hint.textContent = speechCtor() ? "הדפדפן עשוי להשתמש בשירות דיבור משלו" : "הדיבור לא זמין בדפדפן זה";
+  const botTurns = log.querySelectorAll(".turn.bot");
+  const lastBot = botTurns.length ? botTurns[botTurns.length - 1].querySelector(".bubbles") : null;
+  if (lastBot) lastBot.appendChild(chips);
+  else log.appendChild(chips);
   sheet.appendChild(head);
   sheet.appendChild(log);
-  sheet.appendChild(chips);
   sheet.appendChild(form);
   sheet.appendChild(tools);
   sheet.appendChild(hint);
@@ -679,61 +728,83 @@ function currentDigest() {
 function buildDigest(card) {
   const box = document.createElement("section");
   box.className = "digest";
-  const greet = document.createElement("p");
-  greet.className = "digestgreet";
-  greet.textContent = card.greeting || "";
-  box.appendChild(greet);
-  (card.items || []).forEach(function (item, index) {
-    const row = document.createElement("div");
-    row.className = "digestitem";
-    const body = item.go ? document.createElement("button") : document.createElement("div");
-    if (item.go) {
-      body.type = "button";
-      body.dataset.act = "digest-go";
-      body.dataset.index = String(index);
-    }
-    const title = document.createElement("strong");
-    title.textContent = item.title || "";
-    const text = document.createElement("span");
-    text.textContent = item.text || "";
-    body.appendChild(title);
-    body.appendChild(text);
-    if (item.progress && item.progress.total) {
-      const meter = document.createElement("span");
-      meter.className = "meter";
-      const fill = document.createElement("span");
-      const pct = Math.max(0, Math.min(100, Math.round(100 * item.progress.done / item.progress.total)));
-      fill.style.width = pct + "%";
-      meter.appendChild(fill);
-      const label = document.createElement("small");
-      label.textContent = item.progress.done + " מתוך " + item.progress.total + " הוכנו";
-      body.appendChild(meter);
-      body.appendChild(label);
-    }
-    row.appendChild(body);
-    (item.photos || []).slice(0, 1).forEach(function (photo) {
-      const src = srcOf(photo);
-      if (!src && photo.id) queueMedia(photo.id);
-      if (!src) return;
-      const img = document.createElement("img");
-      img.alt = "תמונה";
-      img.src = src;
-      row.appendChild(img);
+  box.lang = "he";
+  box.dir = "rtl";
+  const face = helperLook(helperContext()).face;
+  const turn = document.createElement("div");
+  turn.className = "turn bot";
+  turn.appendChild(miniFace(face));
+  const stack = document.createElement("div");
+  stack.className = "bubbles";
+  stack.appendChild(typingNode());
+  if (card.greeting) {
+    const hello = document.createElement("div");
+    hello.className = "bubble bot";
+    const text = document.createElement("p");
+    text.textContent = card.greeting;
+    hello.appendChild(text);
+    stack.appendChild(hello);
+  }
+  const items = card.items || [];
+  items.forEach(function (item, index) {
+    const lines = talkLines((item.title ? item.title + "\n" : "") + (item.text || ""));
+    const chunks = lines.length ? lines : [""];
+    chunks.forEach(function (line, lineIndex) {
+      const last = index === items.length - 1 && lineIndex === chunks.length - 1;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble bot" + (last ? " tail" : "");
+      const row = item.go ? document.createElement("button") : document.createElement("div");
+      if (item.go) {
+        row.type = "button";
+        row.className = "row";
+        row.dataset.act = "digest-go";
+        row.dataset.index = String(index);
+      }
+      const text = document.createElement("span");
+      text.textContent = line;
+      row.appendChild(text);
+      if (lineIndex === chunks.length - 1 && item.progress && item.progress.total) {
+        const meter = document.createElement("span");
+        meter.className = "meter";
+        const fill = document.createElement("span");
+        const pct = Math.max(0, Math.min(100, Math.round(100 * item.progress.done / item.progress.total)));
+        fill.style.width = pct + "%";
+        meter.appendChild(fill);
+        const label = document.createElement("small");
+        label.textContent = item.progress.done + " מתוך " + item.progress.total + " הוכנו";
+        row.appendChild(meter);
+        row.appendChild(label);
+      }
+      bubble.appendChild(row);
+      if (lineIndex === chunks.length - 1) {
+        (item.photos || []).slice(0, 1).forEach(function (photo) {
+          const src = srcOf(photo);
+          if (!src && photo.id) queueMedia(photo.id);
+          if (!src) return;
+          const img = document.createElement("img");
+          img.alt = "תמונה";
+          img.src = src;
+          bubble.appendChild(img);
+        });
+        (item.voices || []).slice(0, 1).forEach(function (voice) {
+          const src = srcOf(voice) || voice.src || voice.id || "";
+          if (!src && voice.id) queueMedia(voice.id);
+          const play = document.createElement("button");
+          play.type = "button";
+          play.className = "play";
+          play.dataset.act = "play";
+          play.dataset.voice = src;
+          play.setAttribute("aria-label", "השמעה");
+          play.textContent = "השמעה";
+          bubble.appendChild(play);
+        });
+      }
+      stack.appendChild(bubble);
     });
-    (item.voices || []).slice(0, 1).forEach(function (voice) {
-      const src = srcOf(voice) || voice.src || voice.id || "";
-      if (!src && voice.id) queueMedia(voice.id);
-      const play = document.createElement("button");
-      play.type = "button";
-      play.className = "play";
-      play.dataset.act = "play";
-      play.dataset.voice = src;
-      play.setAttribute("aria-label", "השמעה");
-      play.textContent = "השמעה";
-      row.appendChild(play);
-    });
-    box.appendChild(row);
   });
+  if (!stack.querySelector(".tail") && stack.querySelector(".bubble")) stack.querySelector(".bubble:last-child").classList.add("tail");
+  turn.appendChild(stack);
+  box.appendChild(turn);
   return box;
 }
 function loadAssist() {
@@ -880,18 +951,19 @@ function buildReminderSettings() {
 function mountAssist() {
   const host = document.querySelector(".app");
   if (!host) return;
+  const faceKind = helperLook(helperContext()).face;
   if (activeReminder) {
     const bar = document.createElement("div");
     bar.className = "remindbar";
     bar.setAttribute("role", "status");
-    const text = document.createElement("p");
-    text.textContent = activeReminder.body || "";
+    bar.lang = "he";
+    bar.dir = "rtl";
+    bar.appendChild(buildTurn("bot", talkLines(activeReminder.body), { face: faceKind }));
     const close = document.createElement("button");
     close.type = "button";
     close.dataset.act = "dismiss-remind";
     close.setAttribute("aria-label", "סגירת תזכורת");
     close.textContent = "✕";
-    bar.appendChild(text);
     bar.appendChild(close);
     host.appendChild(bar);
   }
@@ -899,12 +971,9 @@ function mountAssist() {
     const note = document.createElement("div");
     note.className = "sysnote";
     note.setAttribute("role", "status");
-    const title = document.createElement("strong");
-    title.textContent = sysNote.title || "עוזר הכיתה";
-    const body = document.createElement("p");
-    body.textContent = sysNote.body || "";
-    note.appendChild(title);
-    note.appendChild(body);
+    note.lang = "he";
+    note.dir = "rtl";
+    note.appendChild(buildTurn("bot", talkLines((sysNote.title || "עוזר הכיתה") + "\n" + (sysNote.body || "")), { face: faceKind }));
     host.appendChild(note);
   }
   if (!helperVisible()) return;
@@ -920,22 +989,22 @@ function mountAssist() {
 function buildSetupCard(status, withButton) {
   const box = document.createElement("section");
   box.className = "setupcard";
-  const title = document.createElement("p");
-  title.className = "digestgreet";
-  title.textContent = "הקמה " + status.progress.done + "/" + status.progress.total;
-  box.appendChild(title);
+  box.lang = "he";
+  box.dir = "rtl";
+  const lines = ["היי, נמשיך בהקמה.", "הקמה " + status.progress.done + "/" + status.progress.total];
   (status.items || []).forEach(function (item) {
-    const line = document.createElement("p");
-    line.textContent = (item.done ? "✓ " : "○ ") + item.title;
-    box.appendChild(line);
+    lines.push((item.done ? "✓ " : "○ ") + item.title);
   });
-  if (withButton) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.act = "helper";
-    button.textContent = "המשך הקמה";
-    box.appendChild(button);
-  }
+  box.appendChild(buildTurn("bot", lines, {
+    face: helperLook(helperContext()).face,
+    fill: withButton ? function (bubble) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "helper";
+      button.textContent = "המשך הקמה";
+      bubble.appendChild(button);
+    } : null
+  }));
   return box;
 }
 function goDigest(item) {

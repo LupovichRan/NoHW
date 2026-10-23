@@ -223,7 +223,7 @@
       const msgs = S.messagesFor(room, "student").slice(0, 5);
       msgs.forEach(function (msg) { takeMessage(msg, photos, voices); });
       if (!msgs.length) return answer("אין הודעות חדשות.");
-      return answer("המורה שלחה:\n" + msgs.map(function (msg) { return msg.text || "הודעה"; }).join("\n"), photos, voices);
+      return answer("מהמורה:\n" + msgs.map(function (msg) { return msg.text || "הודעה"; }).join("\n"), photos, voices);
     }
     if (intent === "streak") {
       const dates = weekDates(today).filter(function (item) { return item <= today; }).reverse();
@@ -310,7 +310,7 @@
       const lines = unfinished(room, today);
       if (intent === "remind") {
         const draft = lines.length ? "תזכורת: עוד לא הוכן — " + lines.join("; ") + "." : "תזכורת: כל מה שפורסם הוכן. כל הכבוד!";
-        return answer("הכנתי טיוטה. היא ממתינה בשדה ההודעה, ואת השליחה עושים ידנית.\n" + draft, [], [], draft);
+        return answer("הכנתי טיוטה.\nהשליחה נשארת אצלך, ידנית.\n" + draft, [], [], draft);
       }
       if (!lines.length) return answer("כולם סיימו את מה שפורסם.");
       return answer("עוד לא סיימו:\n" + lines.join("\n"));
@@ -425,7 +425,7 @@
     if (posted.length && !left.length) {
       items.push(cardItem("cheer", "כל הכבוד", "כל הכבוד, הכול הוכן היום", null, { progress: { done: posted.length, total: posted.length } }));
     }
-    return { greeting: "שלום, הנה מה שחשוב לך עכשיו.", items: items };
+    return { greeting: "היי, זה מה שחשוב עכשיו.", items: items };
   }
   function parentDigest(kids, today) {
     const items = [];
@@ -453,11 +453,11 @@
       }
       items.push(cardItem("kid:" + found.kid.id + ":week", "השבוע", weekLine(found, today), { name: "day", kidId: found.kid.id, date: today }));
     });
-    return { greeting: "שלום, הנה מה שחשוב לילדים.", items: items };
+    return { greeting: "היי, ככה נראה היום.", items: items };
   }
   function teacherDigest(room, today) {
     const items = [];
-    if (!room) return { greeting: "שלום, הנה מה שמחכה לכיתה.", items: items };
+    if (!room) return { greeting: "היי, זה מה שמחכה בכיתה.", items: items };
     const missing = notUpdated(room, today);
     if (missing.length) {
       items.push(cardItem("unposted", subjectPhrase(missing.length), missing.map(function (row) { return row.subject; }).join("\n"), { name: "homework", classId: room.id }));
@@ -468,7 +468,7 @@
     if (replies.length) items.push(cardItem("replies", "תגובות", replies.map(function (msg) { return msg.text || "הודעה"; }).join("\n"), { name: "messages" }));
     const draft = remindDraft(room, today);
     items.push(cardItem("draft", "טיוטה", draft, { name: "compose", classId: room.id, text: draft, fillDraft: true }));
-    return { greeting: "שלום, הנה מה שמחכה לכיתה.", items: items };
+    return { greeting: "היי, זה מה שמחכה בכיתה.", items: items };
   }
   function schoolDigest(schools, today, wide) {
     const items = [];
@@ -503,14 +503,14 @@
     if (!state || !who || !today) return { greeting: "", items: [] };
     if (role === "student") {
       const kids = scopedKids(state, who);
-      return kids.length ? studentDigest(kids[0], today) : { greeting: "שלום, הנה מה שחשוב לך עכשיו.", items: [] };
+      return kids.length ? studentDigest(kids[0], today) : { greeting: "היי, זה מה שחשוב עכשיו.", items: [] };
     }
     if (role === "parent") return parentDigest(scopedKids(state, who), today);
     if (role === "teacher") return teacherDigest(findClass(state, who.classId), today);
-    if (role === "principal") return { greeting: "שלום, הנה מצב בית הספר.", items: schoolDigest(schoolsFor(state, who), today, false) };
+    if (role === "principal") return { greeting: "היי, זה מצב בית הספר.", items: schoolDigest(schoolsFor(state, who), today, false) };
     if (role === "admin") {
       const wide = !who.schoolId;
-      return { greeting: wide ? "שלום, הנה בתי הספר שצריכים תשומת לב." : "שלום, הנה מצב בית הספר.", items: schoolDigest(schoolsFor(state, who), today, wide) };
+      return { greeting: wide ? "היי, אלה בתי הספר שמחכים." : "היי, זה מצב בית הספר.", items: schoolDigest(schoolsFor(state, who), today, wide) };
     }
     return { greeting: "", items: [] };
   }
@@ -531,7 +531,7 @@
       if (!kids.length) return null;
       const left = postedToday(kids[0].room, today, kids[0].kid).filter(function (row) { return !row.done; });
       if (!left.length) return null;
-      return { id: "student:" + today + ":" + time, title: "תזכורת ערב", body: "עוד לא הוכן: " + left.map(function (row) { return row.subject + (row.text ? " " + row.text : ""); }).join(", "), time: time };
+      return { id: "student:" + today + ":" + time, title: "תזכורת ערב", body: "רק תזכורת. עוד נשאר: " + left.map(function (row) { return row.subject + (row.text ? " " + row.text : ""); }).join(", "), time: time };
     }
     if (role === "parent") {
       const lines = [];
@@ -540,14 +540,14 @@
         if (left.length) lines.push(found.kid.firstName + ": " + left.map(function (row) { return row.subject + (row.text ? " " + row.text : ""); }).join(", "));
       });
       if (!lines.length) return null;
-      return { id: "parent:" + today + ":" + time, title: "תזכורת ערב", body: "עוד לא הוכן: " + lines.join("; "), time: time };
+      return { id: "parent:" + today + ":" + time, title: "תזכורת ערב", body: "רק תזכורת. עוד נשאר: " + lines.join("; "), time: time };
     }
     if (role === "teacher") {
       const room = findClass(state, who.classId);
       if (!room) return null;
       const missing = notUpdated(room, today);
       if (!missing.length) return null;
-      return { id: "teacher:" + today + ":" + time, title: "תזכורת", body: "עוד לא פורסם: " + missing.map(function (row) { return row.subject; }).join(", "), time: time };
+      return { id: "teacher:" + today + ":" + time, title: "תזכורת", body: "רק תזכורת. עוד לא פורסם: " + missing.map(function (row) { return row.subject; }).join(", "), time: time };
     }
     return null;
   }
@@ -614,7 +614,7 @@
       const room = findClass(state, who.classId);
       if (room && intent === "remind") {
         const draft = remindDraft(room, today);
-        built = answer("הכנתי טיוטה. היא ממתינה בשדה ההודעה, ואת השליחה עושים ידנית.\n" + draft, [], [], draft);
+        built = answer("הכנתי טיוטה.\nהשליחה נשארת אצלך, ידנית.\n" + draft, [], [], draft);
       } else built = teacherAnswer(room, intent, today);
     }
     else if (role === "principal" || role === "admin") {

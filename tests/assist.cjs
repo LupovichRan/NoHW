@@ -336,12 +336,15 @@ assert.equal(importedReply.kidId.includes("<b>"), true);
 assert.equal(S.messagesFor(replyPack.schools[0].classrooms[0], "student").length, 0);
 
 const sw = fs.readFileSync(path.join(__dirname, "..", "simple", "sw.js"), "utf8");
-assert.match(sw, /nohw-simple-v17/);
+assert.match(sw, /nohw-simple-v18/);
 assert.match(sw, /setup\.js/);
 assert.match(sw, /showNotification/);
 assert.match(app, /digest-go/);
 assert.match(app, /nohw-simple-assist/);
 assert.match(app, /textContent/);
+assert.match(app, /he-IL/);
+assert.match(app, /className = "turn "/);
+assert.match(app, /typing/);
 assert.equal(/localStorage\.setItem\([\s\S]{0,80}chatLog/.test(app), false);
 
 console.log("assist ok");

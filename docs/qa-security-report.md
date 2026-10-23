@@ -2,14 +2,14 @@
 
 Date: 23 October 2026. Build under test is the `simple` branch, the Hebrew PWA in `simple/`. Nothing was merged.
 
-The report covers the final build: the approved product changes (principal home, scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, profile photos) and the class assistant, עוזר הכיתה. The assistant organizes a short digest for each role, can remind them from the class data already on the device, and walks an admin, a principal, and a teacher through setup. It does not call a language model, use an API key, or open a network request. A change waits for כן. A reliable background push still needs a backend later; reminders fire while the app is open and are checked again on open.
+The report covers the final build: the approved product changes (principal home, scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, profile photos) and the class assistant, עוזר הכיתה. The assistant organizes a short digest for each role, can remind them from the class data already on the device, and walks an admin, a principal, and a teacher through setup. Every reply is an RTL Hebrew chat: the avatar's bubbles sit by the face with a tail, the person's replies sit on the other side, a short typing indicator plays before the avatar speaks, and a long answer is several short bubbles. Read-aloud uses he-IL. It does not call a language model, use an API key, or open a network request. A change waits for כן. A reliable background push still needs a backend later; reminders fire while the app is open and are checked again on open.
 
 ## How it was run
 
 - Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`, `node tests/assist.cjs`, `node tests/setup.cjs`.
 - Browser walk at 390×844 in headless Chromium: `node tests/e2e/walk.mjs` against a local static server. 60 checks passed, 0 failed. WebKit is not installed in this environment, so that browser was not run.
-- axe-core on the start hub, the principal home, the timetable, a student day, the message list, the profile sheet, and the assistant chat as a student, a parent, and a principal. No serious or critical violations.
-- Lighthouse mobile, local server: performance 92, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA).
+- axe-core on the start hub, the principal home, the timetable, a student day, the message list, the profile sheet, the assistant chat as a student, a parent, and a principal, and the teacher setup screen. No serious or critical violations.
+- Lighthouse mobile, local server, two runs: performance 90, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA).
 - gitleaks 8.28.0 on the current tree, no leaks. `npm audit` in `tests/e2e` reported 0 vulnerabilities.
 
 ## Pass / fail
@@ -48,7 +48,7 @@ The report covers the final build: the approved product changes (principal home,
 | RTL (`dir=rtl`) and no horizontal overflow on every scenario | Pass |
 | Manifest, service worker, and a reload while offline | Pass |
 | axe-core, no serious or critical issues | Pass |
-| Lighthouse performance / accessibility / best practices / PWA | 92 / 100 / 100 / 100 |
+| Lighthouse performance / accessibility / best practices / PWA | 90 / 100 / 100 / 100 |
 | WebKit | Not run. The browser is not installed here. |
 | XSS payloads in a school name, a student name, homework text, a transcript, and a custom subject stay as text | Pass |
 | Content-Security-Policy and referrer policy | Pass |
@@ -76,6 +76,7 @@ The report covers the final build: the approved product changes (principal home,
 | A principal cannot add a school from the assistant, and a teacher cannot add a class | Pass |
 | A range such as ד׳1-ד׳3 and a pasted list of names become separate entities | Pass |
 | The avatar shows setup progress until the checklist is complete, then the daily digest returns | Pass |
+| Digest, answers, reminders, setup steps, and confirmations are RTL Hebrew bubbles with a tail, a typing indicator, and the person's reply on the other side. Read-aloud uses he-IL | Pass |
 
 ## Bugs found and fixed
 

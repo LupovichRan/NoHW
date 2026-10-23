@@ -640,14 +640,14 @@ svg.mirror { transform: scaleX(-1); }
   flex-direction: column;
   gap: 8px;
   margin-block: 4px 12px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: #fff7e8;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 .digestgreet, .setupcard p { margin: 0; }
 .digestgreet { font-weight: 700; }
 .setupcard button { align-self: start; min-height: 44px; border: 0; border-radius: 999px; background: #15803d; color: #fff; font-weight: 700; padding: 8px 14px; }
+.setupcard .bubble button[data-act="helper"] { border: 0; background: #15803d; color: #fff; }
 .digestitem { display: flex; flex-direction: column; gap: 6px; }
 .digestitem > button, .digestitem > div {
   display: flex;
@@ -666,26 +666,17 @@ svg.mirror { transform: scaleX(-1); }
 .digestitem img { width: 100%; max-height: 120px; object-fit: cover; border-radius: 10px; }
 .digestitem .meter { margin-top: 4px; background: #dcfce7; }
 .digestitem .meter span { background: #15803d; }
-.remindbar {
+.remindbar, .sysnote {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   margin-block-end: 8px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: #fef3c7;
-  border: 1px solid #f59e0b;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
 }
-.remindbar p { margin: 0; flex: 1; }
-.remindbar button { width: 36px; height: 36px; border: 0; background: transparent; }
-.sysnote {
-  margin-block-end: 8px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: #152033;
-  color: #fff;
-}
-.sysnote strong, .sysnote p { margin: 0; }
+.remindbar > button { width: 36px; height: 36px; border: 0; background: transparent; flex: none; }
 .remindset { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .remindset .hint, .remindset p { flex: 1 1 100%; margin: 0; }
 .remindset input[type="time"] { min-height: 40px; border: 1px solid var(--line); border-radius: 12px; padding: 6px 8px; }
@@ -709,12 +700,68 @@ svg.mirror { transform: scaleX(-1); }
 .chathead .helperface { width: 48px; height: 48px; flex: none; }
 .chathead strong { flex: 1; font-size: 18px; }
 .chathead button { width: 40px; height: 40px; border: 0; background: transparent; font-size: 18px; }
-.chatlog { display: flex; flex-direction: column; gap: 8px; overflow: auto; max-height: 38vh; }
-.bubble { max-width: 88%; padding: 8px 10px; border-radius: 16px; }
-.bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.bubble.me { margin-inline-start: auto; background: #dbeafe; }
-.bubble.bot { margin-inline-end: auto; background: #f3f6ee; }
+.chatlog { display: flex; flex-direction: column; gap: 10px; overflow: auto; max-height: 42vh; }
+.turn { display: flex; align-items: flex-end; gap: 6px; width: 100%; min-width: 0; }
+.remindbar .turn, .sysnote .turn { width: auto; flex: 1; }
+.turn.bot { justify-content: flex-start; }
+.turn.me { justify-content: flex-end; }
+.miniface { width: 36px; height: 36px; flex: none; }
+.miniface .helperface { width: 100%; height: 100%; display: block; }
+.bubbles { display: flex; flex-direction: column; gap: 4px; max-width: min(82%, 280px); }
+.turn.me .bubbles { align-items: flex-end; }
+.bubble { position: relative; max-width: 100%; padding: 8px 10px; border-radius: 16px; }
+.bubble p, .bubble span { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble.me { background: #dbeafe; border-end-end-radius: 4px; }
+.bubble.bot { background: #f3f6ee; border-end-start-radius: 4px; }
 .bubble.confirm { border: 2px solid #15803d; background: #f0fdf4; }
+.bubble.tail::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  bottom: 5px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+.bubble.bot.tail::after { inset-inline-start: 10px; bottom: -4px; }
+.bubble.me.tail::after { inset-inline-end: 10px; bottom: -4px; }
+.typing {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  width: fit-content;
+  padding: 8px 12px;
+  border-radius: 16px;
+  background: #f3f6ee;
+  animation: typinggone 4s ease forwards;
+}
+.typing i {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: #64748b;
+  animation: typingdot 0.8s infinite;
+}
+.typing i:nth-child(2) { animation-delay: 0.12s; }
+.typing i:nth-child(3) { animation-delay: 0.24s; }
+.bubble.bot { animation: popbubble 0.35s ease; }
+.bubbles .bubble.bot:nth-child(3) { animation-delay: 0.12s; }
+.bubbles .bubble.bot:nth-child(4) { animation-delay: 0.22s; }
+.bubbles .bubble.bot:nth-child(5) { animation-delay: 0.32s; }
+.bubbles .bubble.bot:nth-child(n + 6) { animation-delay: 0.4s; }
+.bubble .row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  text-align: start;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  font-weight: 700;
+}
+.bubble .chips { margin-top: 6px; }
 .bubble img { width: 100%; max-height: 140px; object-fit: cover; border-radius: 10px; margin-top: 6px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips button, .askbox button, .chatsheet .pair button, .bubble .play, .bubble button { min-height: 40px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font-weight: 700; padding: 6px 10px; }
@@ -732,8 +779,15 @@ svg.mirror { transform: scaleX(-1); }
 .helperface.talking .mouth { transform-box: fill-box; transform-origin: center; animation: helpertalk 0.28s ease-in-out infinite; }
 @keyframes helperblink { 0%, 42%, 48%, 100% { transform: scaleY(1); } 45% { transform: scaleY(0.12); } }
 @keyframes helpertalk { 50% { transform: scaleY(1.7); } }
+@keyframes typingdot { 50% { transform: translateY(-3px); opacity: 0.35; } }
+@keyframes typinggone {
+  0%, 75% { opacity: 1; max-height: 36px; }
+  100% { opacity: 0; max-height: 0; padding-block: 0; margin: 0; overflow: hidden; }
+}
+@keyframes popbubble { from { transform: translateY(4px); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .recdot, .helperface .eye, .helperface.talking .mouth { animation: none; }
+  .recdot, .helperface .eye, .helperface.talking .mouth, .typing, .typing i, .bubble.bot { animation: none; }
+  .typing { display: none; }
 }
 .meter {
   height: 10px;

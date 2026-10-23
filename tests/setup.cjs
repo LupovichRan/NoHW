@@ -162,9 +162,9 @@ assert.equal(/fetch\s*\(/.test(src), false);
 assert.equal(/XMLHttpRequest|WebSocket/.test(src), false);
 const app = fs.readFileSync(path.join(__dirname, "..", "simple", "app.js"), "utf8");
 assert.match(app, /choice === "yes" && setupPending/);
-assert.match(app, /textContent = turn\.text/);
+assert.match(app, /text\.textContent = line/);
 const sw = fs.readFileSync(path.join(__dirname, "..", "simple", "sw.js"), "utf8");
 assert.match(sw, /setup\.js/);
-assert.match(sw, /nohw-simple-v17/);
+assert.match(sw, /nohw-simple-v18/);
 
 console.log("setup ok");

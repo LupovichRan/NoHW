@@ -344,21 +344,21 @@ try {
   const hint = await page.locator(".chatsheet .hint").innerText();
   if (!hint.includes("דיבור") && !hint.includes("שירות דיבור")) throw new Error(hint);
   await clickText("מה יש למחר?");
-  const tomorrow = await page.locator(".bubble.bot").last().innerText();
+  const tomorrow = await page.locator(".chatsheet .turn.bot").last().innerText();
   if (!tomorrow.includes("עמ׳ 18") || !tomorrow.includes("קריאה") || tomorrow.includes("שיחת הורים")) throw new Error(tomorrow);
-  if (!(await page.locator(".bubble.bot img").count())) throw new Error("missing homework photo");
-  if (!(await page.locator('.bubble.bot [aria-label="השמעה"]').count())) throw new Error("missing voice button");
+  if (!(await page.locator(".chatsheet .bubble.bot img").count())) throw new Error("missing homework photo");
+  if (!(await page.locator('.chatsheet .bubble.bot [aria-label="השמעה"]').count())) throw new Error("missing voice button");
   await page.screenshot({ path: "/opt/cursor/artifacts/helper_student.png" });
   await layout("helper student");
   await axe("helper student");
   await page.locator('.askbox input[name="q"]').fill('<img src=x onerror="window.__xss=1">');
   await clickText("שאל");
   const typed = await page.evaluate(() => {
-    const mine = [...document.querySelectorAll(".bubble.me")];
+    const mine = [...document.querySelectorAll(".chatsheet .bubble.me")];
     const last = mine[mine.length - 1];
     return {
       flag: window.__xss || "",
-      images: document.querySelectorAll(".bubble.me img").length,
+      images: document.querySelectorAll(".chatsheet .bubble.me img").length,
       text: last ? last.textContent : ""
     };
   });
@@ -367,10 +367,10 @@ try {
   if (stored.includes("__xss") || stored.includes("onerror")) throw new Error("chat was stored");
   await page.locator('.askbox input[name="q"]').fill("מה נשאר לעומר");
   await clickText("שאל");
-  const denied = await page.locator(".bubble.bot").last().innerText();
+  const denied = await page.locator(".chatsheet .turn.bot").last().innerText();
   if (!denied.includes("אני יודע רק מה שקשור לכיתה") || denied.includes("עומר")) throw new Error(denied);
   await clickText("מה המורה שלחה?");
-  const sent = await page.locator(".bubble.bot").last().innerText();
+  const sent = await page.locator(".chatsheet .turn.bot").last().innerText();
   if (!sent.includes("מבחן ביום א׳") || sent.includes("שיחת הורים")) throw new Error(sent);
   record("student helper answers stay inside the class", true);
 
@@ -398,7 +398,7 @@ try {
   await fab.click();
   await page.locator('.askbox input[name="q"]').fill("תזכיר לי ב-18:00 על חשבון");
   await clickText("שאל");
-  const reminded = await page.locator(".bubble.bot").last().innerText();
+  const reminded = await page.locator(".chatsheet .turn.bot").last().innerText();
   if (!reminded.includes("18:00") || !reminded.includes("חשבון")) throw new Error(reminded);
   const reminderStore = await page.evaluate(() => ({
     assist: localStorage.getItem("nohw-simple-assist") || "",
@@ -408,7 +408,7 @@ try {
   await page.locator('.askbox input[name="q"]').fill('תזכיר לי ב-18:00 על <img src=x onerror="window.__xss=1">');
   await clickText("שאל");
   const remindedXss = await page.evaluate(() => {
-    const last = [...document.querySelectorAll(".bubble.bot")].pop();
+    const last = [...document.querySelectorAll(".chatsheet .bubble.bot")].pop();
     return { flag: window.__xss || "", images: last ? last.querySelectorAll("img").length : -1, text: last ? last.textContent : "" };
   });
   if (remindedXss.flag || remindedXss.images || !remindedXss.text.includes("<img")) throw new Error(JSON.stringify(remindedXss));
@@ -423,10 +423,10 @@ try {
   await page.locator(".digest").screenshot({ path: "/opt/cursor/artifacts/digest_parent.png" });
   await fab.click();
   await clickText("מה המצב?");
-  const parentStatus = await page.locator(".bubble.bot").last().innerText();
+  const parentStatus = await page.locator(".chatsheet .turn.bot").last().innerText();
   if (!parentStatus.includes("נועה") || parentStatus.includes("עומר")) throw new Error(parentStatus);
   await clickText("מה נשלח?");
-  const parentNote = await page.locator(".bubble.bot").last().innerText();
+  const parentNote = await page.locator(".chatsheet .turn.bot").last().innerText();
   if (!parentNote.includes("שיחת הורים ביום ג׳") || !parentNote.includes("מבחן ביום א׳")) throw new Error(parentNote);
   await page.screenshot({ path: "/opt/cursor/artifacts/helper_parent.png" });
   await layout("helper parent");
@@ -442,10 +442,10 @@ try {
   await fab.click();
   if ((await page.locator("[data-act='helper-face']").count()) < 4) throw new Error("teacher cannot set the face");
   await clickText("מה עוד לא פורסם?");
-  const unposted = await page.locator(".bubble.bot").last().innerText();
+  const unposted = await page.locator(".chatsheet .turn.bot").last().innerText();
   if (!unposted.includes("אנגלית")) throw new Error(unposted);
   await clickText("מי עוד לא סיים?");
-  const waiting = await page.locator(".bubble.bot").last().innerText();
+  const waiting = await page.locator(".chatsheet .turn.bot").last().innerText();
   if (!waiting.includes("נועה") || !waiting.includes("עומר")) throw new Error(waiting);
   await page.screenshot({ path: "/opt/cursor/artifacts/helper_teacher.png" });
   await clickText("נסח תזכורת");
@@ -464,7 +464,7 @@ try {
   if ((await fab.count()) !== 1) throw new Error("principal drill-down fab");
   await fab.click();
   await clickText("מה מצב הכיתה?");
-  const klass = await page.locator(".bubble.bot").last().innerText();
+  const klass = await page.locator(".chatsheet .turn.bot").last().innerText();
   if (!klass.includes("פורסם") || !klass.includes("הוכן") || klass.includes("נועה") || klass.includes("עומר")) throw new Error(klass);
   await layout("helper principal");
   await axe("helper principal");
@@ -481,11 +481,11 @@ try {
   await clickSheet("שאל");
   await page.locator('.askbox input[name="q"]').fill("רן אור");
   await clickSheet("שאל");
-  const adminAsk = await page.locator(".bubble.confirm").innerText();
+  const adminAsk = await page.locator(".chatsheet .bubble.confirm").innerText();
   if (!adminAsk.includes("דקל") || !adminAsk.includes("רן אור")) throw new Error(adminAsk);
   await page.locator(".chatsheet").screenshot({ path: "/opt/cursor/artifacts/setup_admin.png" });
   await clickSheet("כן");
-  const added = await page.locator(".bubble.bot").last().innerText();
+  const added = await page.locator(".chatsheet .bubble.bot").last().innerText();
   if (!added.includes("דקל")) throw new Error(added);
   await page.locator('[aria-label="סגירה"]').click();
   await page.locator('[aria-label="החלפת דמות"]').click();
@@ -495,7 +495,7 @@ try {
   await clickSheet("כיתות חדשות");
   await page.locator('.askbox input[name="q"]').fill("ד׳1-ד׳3");
   await clickSheet("שאל");
-  const classAsk = await page.locator(".bubble.confirm").innerText();
+  const classAsk = await page.locator(".chatsheet .bubble.confirm").innerText();
   if (!classAsk.includes("להוסיף 3 כיתות?")) throw new Error(classAsk);
   await page.locator(".chatsheet").screenshot({ path: "/opt/cursor/artifacts/setup_principal.png" });
   await clickSheet("כן");
