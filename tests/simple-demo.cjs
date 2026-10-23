@@ -192,11 +192,35 @@ const before = JSON.stringify(byId.empty.state);
 D.liveView(byId.empty.state, today);
 assert.equal(JSON.stringify(byId.empty.state), before);
 
+for (const pack of packs) {
+  assert.ok(pack.people.some((item) => item.role === "parent"), pack.id + " parent");
+  for (const school of pack.state.schools) {
+    for (const room of school.classrooms) {
+      for (const kid of room.kids) {
+        assert.ok(pack.people.some((item) => item.role === "parent" && (item.kidIds || []).includes(kid.id)), pack.id + " " + kid.firstName);
+      }
+    }
+  }
+}
+assert.equal(D.parentCaption(who(cast, "par-yael"), cast.state), "אמא של נועה ותמר");
+assert.equal(D.parentCaption(who(byId.normal, "par-yael"), byId.normal.state), "אמא של נועה");
+assert.equal(D.parentCaption(who(byId.two, "par-yael"), byId.two.state), "אמא של נועה ותמר");
+assert.equal(D.parentCaption(who(cast, "par-moshe"), cast.state), "אבא של עידו");
+assert.equal(D.parentCaption(who(byId.empty, "par-hadas"), byId.empty.state), "");
+assert.equal(who(byId.two, byId.two.personId).role, "parent");
+assert.equal(who(byId.week, byId.week.personId).role, "parent");
+
 const appJs = fs.readFileSync(path.join(__dirname, "..", "simple", "app.js"), "utf8");
 assert.match(appJs, /scenarioById/);
 assert.match(appJs, /liveView/);
+assert.match(appJs, /parentCaption/);
 assert.match(appJs, /לאפס/);
 assert.match(appJs, /פעיל/);
+assert.match(appJs, /הורים/);
+assert.match(appJs, /מנהלי בית ספר/);
+assert.match(appJs, /ראה כהורה/);
+assert.match(appJs, /data-act="filter"/);
+assert.match(appJs, /data-act="as-parent"/);
 
 const doc = fs.readFileSync(path.join(__dirname, "..", "docs", "simple-demo-scenarios.md"), "utf8");
 for (const pack of D.scenarios(today)) assert.ok(doc.includes(pack.title), pack.title);
@@ -205,6 +229,9 @@ assert.match(doc, /לאפס/);
 assert.match(doc, /החלפת דמות/);
 assert.match(doc, /נתונים/);
 assert.match(doc, /נתונים חיים/);
+assert.match(doc, /הורים/);
+assert.match(doc, /ראה כהורה/);
+assert.match(doc, /אמא של נועה/);
 
 function ROLE(pack, role) {
   return pack.people.find((item) => item.role === role).name;

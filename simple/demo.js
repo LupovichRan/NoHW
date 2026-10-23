@@ -159,7 +159,8 @@
       person("t-c-h2", "מיכל אביב", "👩‍🏫", "teacher", { schoolId: "s-alon", classId: "c-h2" }),
       person("s-k-noa", "נועה", "👧", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-noa" }),
       person("s-k-omer", "עומר", "👦", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-omer" }),
-      person("par-yael", "יעל ברק", "👩", "parent", { kidIds: extra || ["k-noa"] })
+      person("par-yael", "יעל ברק", "👩", "parent", { kidIds: extra || ["k-noa"], kin: "אמא" }),
+      person("par-avigail", "אביגיל דהן", "👱‍♀️", "parent", { kidIds: ["k-omer"], kin: "אמא" })
     ];
   }
 
@@ -194,9 +195,11 @@
       person("s-k-tamar", "תמר", "👧", "student", { schoolId: "s-alon", classId: "c-d1", kidId: "k-tamar" }),
       person("s-k-ido", "עידו", "👦", "student", { schoolId: "s-brosh", classId: "c-v1", kidId: "k-ido" }),
       person("s-k-maya", "מאיה", "👧", "student", { schoolId: "s-brosh", classId: "c-h1", kidId: "k-maya" }),
-      person("par-yael", "יעל ברק", "👩", "parent", { kidIds: ["k-noa", "k-tamar"] }),
-      person("par-avigail", "אביגיל דהן", "👱‍♀️", "parent", { kidIds: ["k-omer"] }),
-      person("par-moshe", "משה כץ", "👨", "parent", { kidIds: ["k-ido"] })
+      person("par-yael", "יעל ברק", "👩", "parent", { kidIds: ["k-noa", "k-tamar"], kin: "אמא" }),
+      person("par-avigail", "אביגיל דהן", "👱‍♀️", "parent", { kidIds: ["k-omer"], kin: "אמא" }),
+      person("par-moshe", "משה כץ", "👨", "parent", { kidIds: ["k-ido"], kin: "אבא" }),
+      person("par-rina", "רינה לוי", "👩", "parent", { kidIds: ["k-itai"], kin: "אמא" }),
+      person("par-adi", "עדי מור", "👩", "parent", { kidIds: ["k-maya"], kin: "אמא" })
     ];
     return pack("cast", "", "", people, schools);
   }
@@ -242,7 +245,7 @@
         person("t-c-d1", "אור לוי", "👨‍🏫", "teacher", { schoolId: "s-alon", classId: "c-d1" }),
         person("s-k-noa", "נועה", "👧", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-noa" }),
         person("s-k-tamar", "תמר", "👧", "student", { schoolId: "s-alon", classId: "c-d1", kidId: "k-tamar" }),
-        person("par-yael", "יעל ברק", "👩", "parent", { kidIds: ["k-noa", "k-tamar"] })
+        person("par-yael", "יעל ברק", "👩", "parent", { kidIds: ["k-noa", "k-tamar"], kin: "אמא" })
       ], [
         school("s-alon", "אלון", "דנה כהן", [
           room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה", normalDone(day))], normalHomework(day)),
@@ -258,13 +261,15 @@
       pack("add-class", "מנהל מוסיף כיתה", "p-s-alon", [
         person("p-s-alon", "דנה כהן", "👩", "principal", { schoolId: "s-alon" }),
         person("t-c-h2", "מיכל אביב", "👩‍🏫", "teacher", { schoolId: "s-alon", classId: "c-h2" }),
-        person("s-k-noa", "נועה", "👧", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-noa" })
+        person("s-k-noa", "נועה", "👧", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-noa" }),
+        person("par-yael", "יעל ברק", "👩", "parent", { kidIds: ["k-noa"], kin: "אמא" })
       ], [school("s-alon", "אלון", "דנה כהן", [room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה")])])], "➕"),
       pack("add-school", "מנהל מערכת מוסיף בית ספר", "admin", [
         person("admin", "נועם גל", "🧔", "admin"),
         person("p-s-alon", "דנה כהן", "👩", "principal", { schoolId: "s-alon" }),
         person("t-c-h2", "מיכל אביב", "👩‍🏫", "teacher", { schoolId: "s-alon", classId: "c-h2" }),
-        person("s-k-omer", "עומר", "👦", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-omer" })
+        person("s-k-omer", "עומר", "👦", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-omer" }),
+        person("par-avigail", "אביגיל דהן", "👱‍♀️", "parent", { kidIds: ["k-omer"], kin: "אמא" })
       ], [school("s-alon", "אלון", "דנה כהן", [room("c-h2", "ה'2", "מיכל אביב", [kid("k-omer", "עומר")])])], "🏫"),
       pack("hidden", "כיתה או בית ספר אחר לא מופיעים", "t-c-h2", [
         person("p-s-alon", "דנה כהן", "👩", "principal", { schoolId: "s-alon" }),
@@ -274,7 +279,9 @@
         person("t-c-v1", "רונית שמש", "👩‍🏫", "teacher", { schoolId: "s-brosh", classId: "c-v1" }),
         person("s-k-noa", "נועה", "👧", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-noa" }),
         person("s-k-tamar", "תמר", "👧", "student", { schoolId: "s-alon", classId: "c-d1", kidId: "k-tamar" }),
-        person("s-k-ido", "עידו", "👦", "student", { schoolId: "s-brosh", classId: "c-v1", kidId: "k-ido" })
+        person("s-k-ido", "עידו", "👦", "student", { schoolId: "s-brosh", classId: "c-v1", kidId: "k-ido" }),
+        person("par-yael", "יעל ברק", "👩", "parent", { kidIds: ["k-noa", "k-tamar"], kin: "אמא" }),
+        person("par-moshe", "משה כץ", "👨", "parent", { kidIds: ["k-ido"], kin: "אבא" })
       ], [
         school("s-alon", "אלון", "דנה כהן", [
           room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה")]),
@@ -283,16 +290,28 @@
         school("s-brosh", "ברוש", "יואב מזרחי", [room("c-v1", "ו'1", "רונית שמש", [kid("k-ido", "עידו")])])
       ], "🙈"),
       pack("empty", "בית ספר חדש וריק", "p-s-dekel", [
-        person("p-s-dekel", "רן אור", "👨", "principal", { schoolId: "s-dekel" })
+        person("p-s-dekel", "רן אור", "👨", "principal", { schoolId: "s-dekel" }),
+        person("par-hadas", "הדס אור", "👩", "parent", { kidIds: [], kin: "אמא" })
       ], [school("s-dekel", "דקל", "רן אור", [])], "🌱"),
       pack("week", "שבוע עם השלמה חלקית", "par-yael", [
         person("t-c-h2", "מיכל אביב", "👩‍🏫", "teacher", { schoolId: "s-alon", classId: "c-h2" }),
         person("s-k-noa", "נועה", "👧", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-noa" }),
-        person("par-yael", "יעל ברק", "👩", "parent", { kidIds: ["k-noa"] })
+        person("par-yael", "יעל ברק", "👩", "parent", { kidIds: ["k-noa"], kin: "אמא" })
       ], [school("s-alon", "אלון", "דנה כהן", [room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה", weekDone)], weekHomework)])], "📅")
     ];
   }
 
+  function parentCaption(who, state) {
+    if (!who || who.role !== "parent") return "";
+    const names = [];
+    (who.kidIds || []).forEach(function (id) {
+      const found = findKid(state, id);
+      if (found) names.push(found.kid.firstName);
+    });
+    if (!names.length) return "";
+    const kids = names.length === 1 ? names[0] : names.slice(0, -1).join(", ") + " ו" + names[names.length - 1];
+    return (who.kin || "הורה") + " של " + kids;
+  }
   function scenarioById(id, today) {
     if (id && id !== "cast") {
       const found = scenarios(today).find(function (item) { return item.id === id; });
@@ -338,6 +357,7 @@
     scenarios: scenarios,
     scenarioById: scenarioById,
     liveView: liveView,
+    parentCaption: parentCaption,
     findSchool: findSchool,
     findClass: findClass,
     findKid: findKid,
