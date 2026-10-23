@@ -1,0 +1,10 @@
+{
+  "name": "nohw-v1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "test": "node --test tests/"
+  },
+  "engines": { "node": ">=20" }
+}
