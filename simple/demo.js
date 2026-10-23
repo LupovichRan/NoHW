@@ -73,6 +73,7 @@
   }
   const BOARD_VOICE = beep();
   const BOARD_PHOTO = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#143d2a"/><text x="320" y="170" fill="#f4f7ef" font-size="54" text-anchor="middle" font-family="Rubik,sans-serif">תרגיל 4</text><text x="320" y="230" fill="#d7ead4" font-size="28" text-anchor="middle" font-family="Rubik,sans-serif">לוח הכיתה</text></svg>');
+  const BOARD_PHOTO_2 = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#1d4ed8"/><text x="320" y="170" fill="#f4f7ef" font-size="54" text-anchor="middle" font-family="Rubik,sans-serif">עמוד 12</text><text x="320" y="230" fill="#d7ead4" font-size="28" text-anchor="middle" font-family="Rubik,sans-serif">לוח הכיתה</text></svg>');
   function weekTable() {
     const table = {};
     for (let day = 0; day < 6; day++) {
@@ -344,7 +345,17 @@
       (function () {
         const homework = {};
         homework[day] = {};
-        homework[day][SUB[0]] = { mode: "post", text: "תרגיל 4", photo: BOARD_PHOTO, voice: BOARD_VOICE };
+        homework[day][SUB[0]] = {
+          mode: "post",
+          text: "תרגיל 4",
+          photo: BOARD_PHOTO,
+          voice: BOARD_VOICE,
+          photos: [BOARD_PHOTO, BOARD_PHOTO_2],
+          voices: [
+            { src: BOARD_VOICE, text: "תרגיל ארבע" },
+            { src: BOARD_VOICE, text: "עמוד שתים עשרה" }
+          ]
+        };
         const built = alonPair(day, homework);
         const table = weekTable();
         table["5"] = [SUB[0], SUB[1], "אמנות", "", "", ""];

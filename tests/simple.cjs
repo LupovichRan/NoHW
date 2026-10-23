@@ -297,6 +297,31 @@ S.setHomework(board, boardTeacher, { date: friday, subject: "חשבון", mode: 
 assert.equal(S.rowsFor(boardRoom, friday, null).find((row) => row.subject === "חשבון").status, "no-homework");
 assert.equal(S.rowsFor(boardRoom, friday, null).find((row) => row.subject === "אמנות").status, "posted");
 assert.throws(() => S.setHomework(board, boardTeacher, { date: friday, subject: "אמנות", mode: "post" }), /missing/);
+S.setHomework(board, boardTeacher, {
+  date: friday,
+  subject: "אמנות",
+  mode: "post",
+  text: "דף",
+  photos: ["p-one", "p-two"],
+  voices: [{ id: "v-one", text: "שלום כיתה" }, { id: "v-two", text: "עמוד ארבע" }]
+});
+const multi = S.rowsFor(boardRoom, friday, null).find((row) => row.subject === "אמנות");
+assert.deepEqual(multi.photos.map((item) => item.id), ["p-one", "p-two"]);
+assert.equal(multi.voices.length, 2);
+assert.equal(multi.voices[0].text, "שלום כיתה");
+assert.equal(multi.voices[1].text, "עמוד ארבע");
+assert.equal(S.dayFor(board, boardStudent, friday).find((row) => row.subject === "אמנות").voices[0].text, "שלום כיתה");
+S.setHomework(board, boardTeacher, { date: friday, subject: "אמנות", mode: "post", text: "דף", photos: ["p-two"], voices: [{ id: "v-two", text: "עודכן התמלול" }] });
+const trimmed = S.rowsFor(boardRoom, friday, null).find((row) => row.subject === "אמנות");
+assert.deepEqual(trimmed.photos.map((item) => item.id), ["p-two"]);
+assert.equal(trimmed.voices.length, 1);
+assert.equal(trimmed.voices[0].text, "עודכן התמלול");
+const mediaMsg = S.postMessage(board, boardTeacher, { id: "m-media", text: "עם קבצים", photos: ["p-one", "p-two"], voices: [{ id: "v-one", text: "שלום" }], audience: "class", at: 500 });
+assert.equal(S.messagesFor(boardRoom, "student").find((item) => item.id === mediaMsg).voices[0].text, "שלום");
+assert.equal(S.messagesFor(boardRoom, "parent").find((item) => item.id === mediaMsg).photos.length, 2);
+S.editMessage(board, boardTeacher, { id: mediaMsg, text: "עם קבצים", voices: [{ id: "v-one", text: "שלום כיתה" }] });
+assert.equal(S.messagesFor(boardRoom, "student").find((item) => item.id === mediaMsg).voices[0].text, "שלום כיתה");
+assert.equal(S.messagesFor(boardRoom, "student").find((item) => item.id === mediaMsg).photos.length, 2);
 
 assert.throws(() => S.postMessage(board, boardStudent, { text: "שלום", audience: "class" }), /forbidden/);
 assert.throws(() => S.postMessage(board, boardParent, { text: "שלום", audience: "parents" }), /forbidden/);
@@ -369,7 +394,14 @@ assert.match(app, /התראה/);
 assert.match(app, /עודכן/);
 assert.match(app, /הקפצה/);
 assert.match(app, /capture="environment"/);
+assert.match(app, /multiple/);
 assert.match(app, /MediaRecorder/);
+assert.match(app, /SpeechRecognition/);
+assert.match(app, /he-IL/);
+assert.match(app, /תמלול לא זמין בדפדפן זה/);
+assert.match(app, /הקלטה נוספת/);
+assert.match(app, /השמירה נכשלה/);
+assert.match(page, /media\.js/);
 assert.match(app, /אין שיעורים/);
 assert.match(app, /למחוק את /);
 assert.match(app, /canEdit/);

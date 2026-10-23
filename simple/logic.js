@@ -202,9 +202,70 @@
   }
   function mediaOf(value) {
     const text = String(value || "");
+    if (/^[A-Za-z0-9_-]{1,48}$/.test(text)) return text;
     if (text.length > 400000) return "";
     if (text.indexOf("data:image/") === 0 || text.indexOf("data:audio/") === 0) return text;
     return "";
+  }
+  function isData(value) { return String(value || "").indexOf("data:") === 0; }
+  function cleanPhotos(input) {
+    const raw = input && Array.isArray(input.photos) ? input.photos : [];
+    const out = [];
+    raw.forEach(function (item) {
+      const ref = mediaOf(item && typeof item === "object" ? (item.src || item.id) : item);
+      if (ref && out.indexOf(ref) < 0) out.push(ref);
+    });
+    if (!out.length) {
+      const one = mediaOf(input && input.photo);
+      if (one) out.push(one);
+    }
+    return out.slice(0, 8);
+  }
+  function voiceItem(item) {
+    if (typeof item === "string") {
+      const ref = mediaOf(item);
+      if (!ref) return null;
+      return { id: isData(ref) ? "" : ref, src: isData(ref) ? ref : "", text: "" };
+    }
+    if (!item || typeof item !== "object") return null;
+    const src = mediaOf(item.src);
+    const id = mediaOf(item.id);
+    const text = String(item.text || "").trim().slice(0, 280);
+    const dataSrc = isData(src) ? src : "";
+    const dataId = id && !isData(id) ? id : "";
+    if (!dataSrc && !dataId && !text) return null;
+    return { id: dataId, src: dataSrc, text: text };
+  }
+  function cleanVoices(input) {
+    const raw = input && Array.isArray(input.voices) ? input.voices : [];
+    const out = [];
+    raw.forEach(function (item) {
+      const voice = voiceItem(item);
+      if (voice) out.push(voice);
+    });
+    if (!out.length) {
+      const one = voiceItem(input && input.voice);
+      if (one) {
+        one.text = String((input && input.transcript) || one.text || "").trim().slice(0, 280);
+        out.push(one);
+      }
+    }
+    return out.slice(0, 8);
+  }
+  function listedPhotos(entry) {
+    if (!entry || entry.mode === "none" || (entry.mode && entry.mode !== "post")) return [];
+    const list = Array.isArray(entry.photos) && entry.photos.length ? entry.photos : (entry.photo ? [entry.photo] : []);
+    return list.map(function (item) {
+      const ref = mediaOf(item && typeof item === "object" ? (item.src || item.id) : item);
+      if (!ref) return null;
+      return { id: isData(ref) ? "" : ref, src: isData(ref) ? ref : "" };
+    }).filter(Boolean);
+  }
+  function listedVoices(entry) {
+    if (!entry || entry.mode === "none" || (entry.mode && entry.mode !== "post")) return [];
+    if (Array.isArray(entry.voices) && entry.voices.length) return entry.voices.map(voiceItem).filter(Boolean);
+    const one = voiceItem(entry.voice);
+    return one ? [one] : [];
   }
   function weekdayOf(date) {
     const parts = String(date || "").split("-").map(Number);
@@ -255,12 +316,18 @@
       return;
     }
     const text = String((input && input.text) || "").trim().slice(0, 80);
-    const photo = mediaOf(input && input.photo);
-    const voice = mediaOf(input && input.voice);
-    if (input.mode !== "post" || (!text && !photo && !voice)) throw new Error("missing");
+    const photos = cleanPhotos(input);
+    const voices = cleanVoices(input);
+    if (input.mode !== "post" || (!text && !photos.length && !voices.length)) throw new Error("missing");
     const entry = { mode: "post", text: text };
-    if (photo) entry.photo = photo;
-    if (voice) entry.voice = voice;
+    if (photos.length) {
+      entry.photos = photos;
+      entry.photo = photos[0];
+    }
+    if (voices.length) {
+      entry.voices = voices;
+      entry.voice = voices[0].src || voices[0].id;
+    }
     node.room.homework[date][subject] = entry;
   }
   function messageText(value) {
@@ -282,17 +349,19 @@
   function postMessage(state, actor, input) {
     const node = requireEdit(state, actor, { kind: "homework", classId: ownClassId(state, actor, input) });
     const text = messageText(input && input.text);
-    const photo = mediaOf(input && input.photo);
-    const voice = mediaOf(input && input.voice);
-    if (!text && !photo && !voice) throw new Error("missing");
+    const photos = cleanPhotos(input);
+    const voices = cleanVoices(input);
+    if (!text && !photos.length && !voices.length) throw new Error("missing");
     const id = String((input && input.id) || uid(Math.random)).slice(0, 40);
     const at = stamp(input && input.at);
     node.room.messages = node.room.messages || [];
     node.room.messages.push({
       id: id,
       text: text,
-      photo: photo,
-      voice: voice,
+      photo: photos[0] || "",
+      voice: voices[0] ? (voices[0].src || voices[0].id) : "",
+      photos: photos,
+      voices: voices,
       audience: audienceOf(input && input.audience),
       alert: !!(input && input.alert),
       at: at,
@@ -304,12 +373,16 @@
   function editMessage(state, actor, input) {
     const found = messageNode(state, actor, input);
     const text = messageText(input && input.text);
-    const photo = input && Object.prototype.hasOwnProperty.call(input, "photo") ? mediaOf(input.photo) : found.msg.photo || "";
-    const voice = input && Object.prototype.hasOwnProperty.call(input, "voice") ? mediaOf(input.voice) : found.msg.voice || "";
-    if (!text && !photo && !voice) throw new Error("missing");
+    const hasPhotos = !!(input && (Object.prototype.hasOwnProperty.call(input, "photos") || Object.prototype.hasOwnProperty.call(input, "photo")));
+    const hasVoices = !!(input && (Object.prototype.hasOwnProperty.call(input, "voices") || Object.prototype.hasOwnProperty.call(input, "voice") || Object.prototype.hasOwnProperty.call(input, "transcript")));
+    const photos = hasPhotos ? cleanPhotos(input) : listedPhotos(found.msg).map(function (item) { return item.src || item.id; });
+    const voices = hasVoices ? cleanVoices(input) : listedVoices(found.msg);
+    if (!text && !photos.length && !voices.length) throw new Error("missing");
     found.msg.text = text;
-    found.msg.photo = photo;
-    found.msg.voice = voice;
+    found.msg.photos = photos;
+    found.msg.photo = photos[0] || "";
+    found.msg.voices = voices;
+    found.msg.voice = voices[0] ? (voices[0].src || voices[0].id) : "";
     if (input && input.audience) found.msg.audience = audienceOf(input.audience);
     if (input && Object.prototype.hasOwnProperty.call(input, "alert")) found.msg.alert = !!input.alert;
     found.msg.edited = true;
@@ -379,12 +452,16 @@
     return subjectsFor(room, date).map(function (subject) {
       const entry = day[subject];
       const status = statusOf(entry);
+      const photos = status === "posted" ? listedPhotos(entry) : [];
+      const voices = status === "posted" ? listedVoices(entry) : [];
       return {
         subject,
         status,
         text: status === "posted" ? entry.text || "" : "",
-        photo: status === "posted" ? entry.photo || "" : "",
-        voice: status === "posted" ? entry.voice || "" : "",
+        photo: photos.length ? (photos[0].src || photos[0].id) : "",
+        voice: voices.length ? (voices[0].src || voices[0].id) : "",
+        photos: photos,
+        voices: voices,
         done: status === "posted" && !!marks[subject]
       };
     });
@@ -465,12 +542,18 @@
         if (entry.mode === "none") out[date][subject] = { mode: "none" };
         else if (entry.mode === "post") {
           const text = String(entry.text || "").trim().slice(0, 80);
-          const photo = mediaOf(entry.photo);
-          const voice = mediaOf(entry.voice);
-          if (text || photo || voice) {
+          const photos = cleanPhotos(entry);
+          const voices = cleanVoices(entry);
+          if (text || photos.length || voices.length) {
             const clean = { mode: "post", text: text };
-            if (photo) clean.photo = photo;
-            if (voice) clean.voice = voice;
+            if (photos.length) {
+              clean.photos = photos;
+              clean.photo = photos[0];
+            }
+            if (voices.length) {
+              clean.voices = voices;
+              clean.voice = voices[0].src || voices[0].id;
+            }
             out[date][subject] = clean;
           }
         }

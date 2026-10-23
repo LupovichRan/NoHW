@@ -23,6 +23,15 @@ let state = S.emptyState();
 let person = null;
 let view = { name: "people" };
 let stack = [];
+const urls = {};
+const pendingMedia = {};
+const missingMedia = {};
+let mediaBox = null;
+let mediaOpening = null;
+let toastText = "";
+let toastTimer = 0;
+let heard = "";
+let recognition = null;
 
 function ico(d) {
   const paths = Array.isArray(d) ? d : [d];
@@ -43,10 +52,15 @@ function readJSON(key) {
   try { return JSON.parse(localStorage.getItem(key) || ""); } catch (e) { return null; }
 }
 function saveStore() {
-  localStorage.setItem(STORE, JSON.stringify({ scenarioId: scenarioId, scenarioTitle: scenarioTitle, personId: person && person.id || "", suggestedId: suggestedId, people: people, state: state }));
+  try {
+    localStorage.setItem(STORE, JSON.stringify({ scenarioId: scenarioId, scenarioTitle: scenarioTitle, personId: person && person.id || "", suggestedId: suggestedId, people: people, state: state }));
+  } catch (e) {
+    toast("השמירה נכשלה");
+  }
 }
 function render() {
   document.getElementById("app").innerHTML = html();
+  if (view.recording && heard) paintLive(heard);
   if (!focusSuggested) return;
   focusSuggested = false;
   const picked = document.querySelector(".person.on");
@@ -55,7 +69,17 @@ function render() {
 function push(next) { stack.push(view); view = next; render(); }
 function actor() { return D.personActor(state, person); }
 function shell(head, body) {
-  return '<section class="app" lang="he" dir="rtl">' + head + body + "</section>";
+  const note = toastText ? '<p class="toast" role="status">' + esc(toastText) + "</p>" : "";
+  return '<section class="app" lang="he" dir="rtl">' + head + body + note + "</section>";
+}
+function toast(text) {
+  toastText = text;
+  render();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () {
+    toastText = "";
+    render();
+  }, 3200);
 }
 function castButton() {
   return '<button class="icon" type="button" data-act="cast" aria-label="החלפת דמות">' + ico(I.cast) + "</button>";
@@ -254,15 +278,78 @@ function tick(row, live) {
   if (!live) return '<span class="tick' + (row.done ? " on" : "") + '" aria-label="' + (row.done ? "הוכן" : "לא הוכן") + '">' + mark + "</span>";
   return '<button class="tick' + (row.done ? " on" : "") + '" type="button" data-act="tick" data-subject="' + esc(row.subject) + '" aria-pressed="' + (row.done ? "true" : "false") + '" aria-label="הוכן">' + mark + "</button>";
 }
-function mediaBits(row) {
+function asPhotos(entry) {
+  if (!entry) return [];
+  const list = entry.photos && entry.photos.length ? entry.photos : (entry.photo ? [entry.photo] : []);
+  return list.map(function (item) {
+    if (item && typeof item === "object") return { id: item.id || "", src: item.src || "" };
+    const text = String(item || "");
+    if (!text) return null;
+    if (text.indexOf("data:") === 0) return { id: "", src: text };
+    return { id: text, src: "" };
+  }).filter(Boolean);
+}
+function asVoices(entry) {
+  if (!entry) return [];
+  const list = entry.voices && entry.voices.length ? entry.voices : (entry.voice ? [entry.voice] : []);
+  return list.map(function (item) {
+    if (typeof item === "string") {
+      if (!item) return null;
+      if (item.indexOf("data:") === 0) return { id: "", src: item, text: "" };
+      return { id: item, src: "", text: "" };
+    }
+    if (!item || typeof item !== "object") return null;
+    return { id: item.id || "", src: item.src || "", text: item.text || "" };
+  }).filter(Boolean);
+}
+function srcOf(item) {
+  if (!item) return "";
+  if (typeof item === "string") {
+    if (item.indexOf("data:") === 0 || item.indexOf("blob:") === 0) return item;
+    return urls[item] || "";
+  }
+  const src = String(item.src || "");
+  if (src.indexOf("data:") === 0 || src.indexOf("blob:") === 0) return src;
+  if (item.id && urls[item.id]) return urls[item.id];
+  return "";
+}
+function photoThumbs(list, opts) {
+  opts = opts || {};
+  const html = (list || []).map(function (item, index) {
+    const src = srcOf(item);
+    if (!src && item.id) queueMedia(item.id);
+    const img = src ? '<img alt="" src="' + esc(src) + '">' : '<span class="ph"></span>';
+    const attrs = ' data-index="' + index + '"' + (opts.subject ? ' data-subject="' + esc(opts.subject) + '"' : "") + (opts.msgId ? ' data-id="' + esc(opts.msgId) + '"' : "");
+    const zoom = '<button class="thumb" type="button" data-act="zoom"' + attrs + ' aria-label="תמונה">' + img + "</button>";
+    const drop = opts.remove ? '<button class="x" type="button" data-act="drop-photo" data-index="' + index + '" aria-label="הסרת תמונה">✕</button>' : "";
+    return '<span class="shot">' + zoom + drop + "</span>";
+  }).join("");
+  return html ? '<div class="thumbs">' + html + "</div>" : "";
+}
+function voiceClips(list, opts) {
+  opts = opts || {};
+  return (list || []).map(function (item, index) {
+    const src = srcOf(item);
+    if (!src && item.id) queueMedia(item.id);
+    const play = '<button class="play" type="button" data-act="play" data-voice="' + esc(src || item.id || "") + '" aria-label="השמעה">🎤</button>';
+    let said = "";
+    if (opts.edit) said = '<input data-act="transcript" data-index="' + index + '" dir="rtl" maxlength="280" value="' + esc(item.text || "") + '" placeholder="תמלול" aria-label="תמלול">';
+    else if (item.text) said = '<p class="said">' + esc(item.text) + "</p>";
+    const drop = opts.edit ? '<button class="ghost slim" type="button" data-act="drop-voice" data-index="' + index + '">מחיקה</button>' : "";
+    return '<div class="clip">' + play + said + drop + "</div>";
+  }).join("");
+}
+function mediaBlock(row) {
   if (!row || row.status !== "posted") return "";
-  const photo = row.photo ? '<button class="thumb" type="button" data-act="zoom" data-subject="' + esc(row.subject) + '" aria-label="תמונה"><img alt="" src="' + esc(row.photo) + '"></button>' : "";
-  const voice = row.voice ? '<button class="play" type="button" data-act="play" data-voice="' + esc(row.voice) + '" aria-label="השמעה">🎤</button>' : "";
-  return photo || voice ? '<span class="media">' + photo + voice + "</span>" : "";
+  const photos = photoThumbs(asPhotos(row), { subject: row.subject });
+  const voices = voiceClips(asVoices(row));
+  if (!photos && !voices) return "";
+  return '<div class="clips">' + photos + voices + "</div>";
 }
 function dayRows(rows, live) {
   return rows.map(function (row) {
-    return '<div class="row"><span class="who"><strong>' + esc(row.subject) + "</strong>" + chip(row) + "</span>" + mediaBits(row) + tick(row, live) + "</div>";
+    const media = mediaBlock(row);
+    return '<div class="row' + (media ? " rich" : "") + '"><span class="who"><strong>' + esc(row.subject) + "</strong>" + chip(row) + "</span>" + tick(row, live) + media + "</div>";
   }).join("");
 }
 function parentShortcut(kidId) {
@@ -404,23 +491,32 @@ function homeworkHtml() {
   if (!found) return shell(bar("שיעורי בית"), '<p class="empty">אין כיתות</p>');
   const rows = S.rowsFor(found.room, D.schoolDay(today()), null);
   const body = rows.map(function (row) {
-    const label = row.status === "posted" ? (row.text || (row.photo ? "תמונה" : "הקלטה")) : STATUS[row.status];
-    const thumb = row.photo ? '<img class="mini-thumb" alt="" src="' + esc(row.photo) + '">' : "";
-    return '<button class="choice subject" type="button" data-act="post" data-subject="' + esc(row.subject) + '"><span class="avatar">' + (row.photo ? "📷" : "📘") + '</span><span class="meta"><strong>' + esc(row.subject) + "</strong><small>" + esc(label) + "</small></span>" + thumb + "</button>";
+    const shots = asPhotos(row);
+    const src = shots[0] ? srcOf(shots[0]) : "";
+    if (shots[0] && shots[0].id && !src) queueMedia(shots[0].id);
+    const label = row.status === "posted" ? (row.text || (shots.length ? "תמונה" : (asVoices(row).length ? "הקלטה" : ""))) : STATUS[row.status];
+    const thumb = src ? '<img class="mini-thumb" alt="" src="' + esc(src) + '">' : "";
+    return '<button class="choice subject" type="button" data-act="post" data-subject="' + esc(row.subject) + '"><span class="avatar">' + (shots.length ? "📷" : "📘") + '</span><span class="meta"><strong>' + esc(row.subject) + "</strong><small>" + esc(label) + "</small></span>" + thumb + "</button>";
   }).join("");
   return shell(bar("שיעורי בית", found.room.name), '<div class="hub">' + body + "</div>");
 }
-function filePick() {
-  return '<label class="file"><input type="file" accept="image/*" capture="environment" aria-label="צילום"><span>📷 צילום</span></label>';
+function noteSpeech() {
+  if (!speechCtor()) view.speechMissing = true;
 }
-function voiceButtons() {
-  const play = view.voice ? '<button class="ghost" type="button" data-act="play" data-voice="' + esc(view.voice) + '">🎤 השמעה</button>' : "";
-  const rec = view.recording ? '<button class="ghost" type="button" data-act="record">עצירה</button>' : '<button class="ghost" type="button" data-act="record">🎤 הקלטה</button>';
-  return rec + play;
+function pickButtons() {
+  return '<div class="pair"><button class="ghost" type="button" data-act="camera">📷 מצלמה</button><button class="ghost" type="button" data-act="gallery">🖼️ גלריה</button></div>';
+}
+function voicePanel() {
+  const list = view.voices || [];
+  const missing = view.speechMissing ? '<p class="hint">תמלול לא זמין בדפדפן זה</p>' : "";
+  const live = view.recording ? '<p class="said live" data-live-transcript></p>' : "";
+  const label = list.length ? "🎤 הקלטה נוספת" : "🎤 הקלטה";
+  const button = view.recording ? '<button class="ghost" type="button" data-act="record">עצירה</button>' : '<button class="ghost" type="button" data-act="record">' + label + "</button>";
+  return voiceClips(list, { edit: true }) + live + missing + button;
 }
 function postHtml() {
-  const photo = view.photo ? '<button class="thumb wide" type="button" data-act="zoom" data-subject="' + esc(view.subject) + '" aria-label="תמונה"><img alt="" src="' + esc(view.photo) + '"></button>' : "";
-  return shell(bar(view.subject || "שיעור", "שיעורי בית"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="80" value="' + esc(view.text || "") + '" placeholder="שיעורי בית" aria-label="טקסט"></label>' + photo + filePick() + voiceButtons() + err() + '<button class="ghost" type="button" data-act="none">אין שיעורים</button><button class="primary" type="submit">שמירה</button></form>');
+  noteSpeech();
+  return shell(bar(view.subject || "שיעור", "שיעורי בית"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="80" value="' + esc(view.text || "") + '" placeholder="שיעורי בית" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, subject: view.subject }) + pickButtons() + voicePanel() + err() + '<button class="ghost" type="button" data-act="none">אין שיעורים</button><button class="primary" type="submit">שמירה</button></form>');
 }
 function chipSubjects(room) {
   const names = S.SUBJECTS.slice();
@@ -455,10 +551,11 @@ function timetableHtml() {
 function messageCard(msg, can) {
   const who = msg.audience === "parents" ? "הורים בלבד" : "כל הכיתה";
   const marks = (msg.edited ? '<em class="chip posted">עודכן</em>' : "") + (msg.alert ? '<em class="chip">התראה</em>' : "");
-  const photo = msg.photo ? '<button class="thumb" type="button" data-act="zoom" data-id="' + esc(msg.id) + '" aria-label="תמונה"><img alt="" src="' + esc(msg.photo) + '"></button>' : "";
-  const voice = msg.voice ? '<button class="play" type="button" data-act="play" data-voice="' + esc(msg.voice) + '" aria-label="השמעה">🎤</button>' : "";
+  const photos = asPhotos(msg);
+  const voices = asVoices(msg);
+  const media = (photos.length || voices.length) ? '<div class="clips">' + photoThumbs(photos, { msgId: msg.id }) + voiceClips(voices) + "</div>" : "";
   const tools = can ? '<div class="actions"><button type="button" data-act="edit-msg" data-id="' + esc(msg.id) + '">✏️<small>עריכה</small></button><button type="button" data-act="ask-msg" data-id="' + esc(msg.id) + '">🗑️<small>מחיקה</small></button><button type="button" data-act="bump" data-id="' + esc(msg.id) + '">⬆️<small>הקפצה</small></button></div>' : "";
-  return '<article class="card msg"><div class="who"><strong>' + esc(msg.text || (msg.photo ? "תמונה" : "הקלטה")) + "</strong><small>" + esc(who) + "</small>" + marks + "</div>" + photo + voice + tools + "</article>";
+  return '<article class="card msg"><div class="who"><strong>' + esc(msg.text || (photos.length ? "תמונה" : "הקלטה")) + "</strong><small>" + esc(who) + "</small>" + marks + "</div>" + media + tools + "</article>";
 }
 function messagesHtml() {
   const list = visibleMessages(person);
@@ -469,12 +566,12 @@ function messagesHtml() {
   return shell(bar("הודעות", found ? found.room.name : ""), '<div class="list">' + cards + "</div>" + add);
 }
 function composeHtml() {
+  noteSpeech();
   const audience = view.audience === "parents" ? "parents" : "class";
   const alertOn = !!view.alert;
-  const photo = view.photo ? '<button class="thumb wide" type="button" data-act="zoom" data-id="' + esc(view.id || "") + '" aria-label="תמונה"><img alt="" src="' + esc(view.photo) + '"></button>' : "";
   const picks = '<div class="pair"><button class="ghost' + (audience === "class" ? " on" : "") + '" type="button" data-act="audience" data-audience="class">כל הכיתה</button><button class="ghost' + (audience === "parents" ? " on" : "") + '" type="button" data-act="audience" data-audience="parents">הורים בלבד</button></div>';
   const alert = '<button class="ghost' + (alertOn ? " on" : "") + '" type="button" data-act="alert" aria-pressed="' + (alertOn ? "true" : "false") + '">התראה</button>';
-  return shell(bar(view.id ? "עריכת הודעה" : "הודעה חדשה"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="280" value="' + esc(view.text || "") + '" placeholder="הודעה" aria-label="טקסט"></label>' + photo + filePick() + voiceButtons() + picks + alert + err() + '<button class="primary" type="submit">' + (view.id ? "שמירה" : "שליחה") + "</button></form>");
+  return shell(bar(view.id ? "עריכת הודעה" : "הודעה חדשה"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="280" value="' + esc(view.text || "") + '" placeholder="הודעה" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, msgId: view.id || "" }) + pickButtons() + voicePanel() + picks + alert + err() + '<button class="primary" type="submit">' + (view.id ? "שמירה" : "שליחה") + "</button></form>");
 }
 function photoHtml() {
   return shell(bar("תמונה"), '<button class="frame" type="button" data-act="back"><img alt="תמונה" src="' + esc(view.src || "") + '"></button>');
@@ -533,14 +630,30 @@ function fail(error) {
   view.error = error && error.message === "forbidden" ? "אין הרשאה" : "חסר";
   render();
 }
+function photoRefs() {
+  return (view.photos || []).map(function (item) { return item.src || item.id; }).filter(Boolean);
+}
+function voiceRefs() {
+  return (view.voices || []).map(function (item) {
+    return { id: item.id || "", src: item.src || "", text: String(item.text || "").slice(0, 280) };
+  });
+}
 function homeworkInput(mode, text) {
-  S.setHomework(state, actor(), { date: D.schoolDay(today()), subject: view.subject, classId: view.classId, mode: mode, text: text, photo: mode === "post" ? view.photo : "", voice: mode === "post" ? view.voice : "" });
+  S.setHomework(state, actor(), { date: D.schoolDay(today()), subject: view.subject, classId: view.classId, mode: mode, text: text, photos: mode === "post" ? photoRefs() : [], voices: mode === "post" ? voiceRefs() : [] });
 }
 function keepDraft() {
   const input = document.querySelector('form input[name="text"]');
   if (input && (view.name === "post" || view.name === "compose")) view.text = input.value;
+  document.querySelectorAll('[data-act="transcript"]').forEach(function (node) {
+    const index = Number(node.dataset.index);
+    if (view.voices && view.voices[index]) view.voices[index].text = String(node.value || "").slice(0, 280);
+  });
 }
 function haltMic() {
+  if (recognition) {
+    try { recognition.onresult = null; recognition.onerror = null; recognition.onend = null; recognition.stop(); } catch (e) {}
+    recognition = null;
+  }
   if (micStream) micStream.getTracks().forEach(function (track) { track.stop(); });
   micStream = null;
   if (recorder && recorder.state !== "inactive") {
@@ -565,48 +678,159 @@ function notify(body) {
     }
   } catch (e) {}
 }
-function compressImage(file) {
+function mediaId(prefix) {
+  return (prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48);
+}
+function readyStore() {
+  if (mediaBox) return Promise.resolve(mediaBox);
+  if (!mediaOpening) {
+    const open = window.NohwMedia ? window.NohwMedia.openStore() : Promise.reject(new Error("save"));
+    mediaOpening = open.then(function (store) {
+      mediaBox = store;
+      return store;
+    }).catch(function (error) {
+      mediaOpening = null;
+      throw error;
+    });
+  }
+  return mediaOpening;
+}
+function queueMedia(id) {
+  if (!id || urls[id] || pendingMedia[id] || missingMedia[id] || String(id).indexOf("data:") === 0) return;
+  pendingMedia[id] = true;
+  readyStore().then(function (store) { return store.get(id); }).then(function (blob) {
+    delete pendingMedia[id];
+    if (!blob) { missingMedia[id] = true; return; }
+    urls[id] = URL.createObjectURL(blob);
+    render();
+  }).catch(function () { delete pendingMedia[id]; missingMedia[id] = true; });
+}
+function paintLive(text) {
+  const node = document.querySelector("[data-live-transcript]");
+  if (node) node.textContent = text || "";
+}
+function speechCtor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+function drawBlob(source, width, height) {
+  const max = 1280;
+  const scale = Math.min(1, max / Math.max(width || 1, height || 1));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round((width || 1) * scale));
+  canvas.height = Math.max(1, Math.round((height || 1) * scale));
+  canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
   return new Promise(function (resolve, reject) {
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = function () {
-      const img = new Image();
-      img.onload = function () {
-        const max = 960;
-        const scale = Math.min(1, max / Math.max(img.width || 1, img.height || 1));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.max(1, Math.round((img.width || 1) * scale));
-        canvas.height = Math.max(1, Math.round((img.height || 1) * scale));
-        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.72));
-      };
-      img.onerror = reject;
-      img.src = reader.result;
+    canvas.toBlob(function (blob) {
+      if (blob) resolve(blob);
+      else reject(new Error("save"));
+    }, "image/jpeg", 0.7);
+  });
+}
+function imageFromUrl(file) {
+  return new Promise(function (resolve, reject) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = function () {
+      drawBlob(img, img.naturalWidth || img.width, img.naturalHeight || img.height).then(function (blob) {
+        URL.revokeObjectURL(url);
+        resolve(blob);
+      }).catch(function (error) {
+        URL.revokeObjectURL(url);
+        reject(error);
+      });
     };
-    reader.readAsDataURL(file);
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      reject(new Error("read"));
+    };
+    img.src = url;
+  });
+}
+function compressImage(file) {
+  if (typeof createImageBitmap !== "function") return imageFromUrl(file);
+  return createImageBitmap(file, { imageOrientation: "from-image" }).catch(function () {
+    return createImageBitmap(file);
+  }).then(function (bitmap) {
+    return drawBlob(bitmap, bitmap.width, bitmap.height).then(function (blob) {
+      if (bitmap.close) bitmap.close();
+      return blob;
+    }, function (error) {
+      if (bitmap.close) bitmap.close();
+      throw error;
+    });
+  }).catch(function () { return imageFromUrl(file); });
+}
+function addPhotos(files) {
+  view.photos = view.photos || [];
+  const batch = files.slice(0, Math.max(0, 8 - view.photos.length));
+  if (!batch.length) return;
+  let chain = Promise.resolve();
+  batch.forEach(function (file) {
+    chain = chain.then(function () {
+      return compressImage(file).then(function (blob) {
+        const id = mediaId("p");
+        return readyStore().then(function (store) { return store.put(id, blob); }).then(function () {
+          urls[id] = URL.createObjectURL(blob);
+          keepDraft();
+          view.photos = view.photos || [];
+          view.photos.push({ id: id, src: "" });
+          view.error = "";
+          render();
+        });
+      });
+    });
+  });
+  chain.catch(function (error) {
+    toast(error && error.message === "read" ? "לא הצלחנו לקרוא את התמונה" : "השמירה נכשלה");
   });
 }
 function onFile(event) {
   const input = event.target;
-  if (!input || input.type !== "file" || !input.files || !input.files[0]) return;
+  if (!input || input.type !== "file") return;
+  const files = Array.from(input.files || []);
+  input.value = "";
+  if (!files.length || (view.name !== "post" && view.name !== "compose")) return;
   keepDraft();
-  compressImage(input.files[0]).then(function (url) {
-    view.photo = url;
-    view.error = "";
-    render();
-  }).catch(function () {
-    view.error = "חסר";
-    render();
-  });
+  addPhotos(files);
+}
+function startSpeech() {
+  const Ctor = speechCtor();
+  if (!Ctor) {
+    view.speechMissing = true;
+    return;
+  }
+  heard = "";
+  try {
+    recognition = new Ctor();
+    recognition.lang = "he-IL";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = function (event) {
+      let text = "";
+      for (let i = 0; i < event.results.length; i++) text += event.results[i][0].transcript;
+      heard = text.trim().slice(0, 280);
+      paintLive(heard);
+    };
+    recognition.onerror = function () {};
+    recognition.start();
+  } catch (e) {
+    recognition = null;
+    view.speechMissing = true;
+  }
 }
 function toggleRecord() {
   keepDraft();
   if (view.recording && recorder) {
-    view.recording = false;
-    recorder.stop();
-    render();
+    const pending = recognition;
+    if (pending) {
+      try { pending.stop(); } catch (e) {}
+    }
+    setTimeout(function () {
+      if (recorder && recorder.state !== "inactive") recorder.stop();
+    }, 200);
     return;
   }
+  if ((view.voices || []).length >= 8) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) {
     view.error = "אין מיקרופון";
     render();
@@ -615,27 +839,40 @@ function toggleRecord() {
   navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
     micStream = stream;
     const chunks = [];
+    heard = "";
     const mime = window.MediaRecorder.isTypeSupported && window.MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
     recorder = mime ? new window.MediaRecorder(stream, { mimeType: mime }) : new window.MediaRecorder(stream);
     recorder.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
     recorder.onstop = function () {
+      const text = heard.trim().slice(0, 280);
       stream.getTracks().forEach(function (track) { track.stop(); });
-      micStream = null;
-      const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-      const reader = new FileReader();
-      reader.onload = function () {
-        view.voice = String(reader.result || "");
-        view.recording = false;
+      if (micStream === stream) micStream = null;
+      if (recognition) {
+        try { recognition.onresult = null; recognition.stop(); } catch (e) {}
+        recognition = null;
+      }
+      recorder = null;
+      view.recording = false;
+      const blob = new Blob(chunks, { type: (chunks[0] && chunks[0].type) || "audio/webm" });
+      const id = mediaId("v");
+      readyStore().then(function (store) { return store.put(id, blob); }).then(function () {
+        urls[id] = URL.createObjectURL(blob);
+        keepDraft();
+        view.voices = view.voices || [];
+        view.voices.push({ id: id, src: "", text: text });
+        view.error = "";
         render();
-      };
-      reader.readAsDataURL(blob);
+      }).catch(function () {
+        toast("השמירה נכשלה");
+      });
     };
+    startSpeech();
     recorder.start();
     view.recording = true;
     view.error = "";
     render();
   }).catch(function () {
-    view.recording = false;
+    haltMic();
     view.error = "אין מיקרופון";
     render();
   });
@@ -644,11 +881,13 @@ function messageById(id) {
   return visibleMessages(person).find(function (item) { return item.id === id; }) || null;
 }
 function zoomSrc(el) {
-  if ((view.name === "post" || view.name === "compose") && view.photo && !el.dataset.id) return view.photo;
+  const index = el.dataset.index !== undefined && el.dataset.index !== "" ? Number(el.dataset.index) : -1;
+  if ((view.name === "post" || view.name === "compose") && index >= 0 && view.photos && view.photos[index]) return srcOf(view.photos[index]);
   if (el.dataset.id) {
     const msg = messageById(el.dataset.id);
-    if (msg && msg.photo) return msg.photo;
-    if (view.id === el.dataset.id && view.photo) return view.photo;
+    const photos = asPhotos(msg);
+    if (index >= 0 && photos[index]) return srcOf(photos[index]);
+    if (photos[0]) return srcOf(photos[0]);
   }
   const room = (function () {
     if (view.kidId) {
@@ -669,7 +908,28 @@ function zoomSrc(el) {
   if (!room) return "";
   const date = person && (person.role === "student" || person.role === "parent") ? focusDate() : D.schoolDay(today());
   const row = S.rowsFor(room, date, null).find(function (item) { return item.subject === (el.dataset.subject || view.subject); });
-  return row && row.photo || "";
+  const photos = asPhotos(row);
+  if (index >= 0 && photos[index]) return srcOf(photos[index]);
+  return photos[0] ? srcOf(photos[0]) : "";
+}
+function copyMedia(entry) {
+  return {
+    photos: asPhotos(entry).map(function (item) { return { id: item.id, src: item.src }; }),
+    voices: asVoices(entry).map(function (item) { return { id: item.id, src: item.src, text: item.text }; })
+  };
+}
+function dropAt(listName, index) {
+  keepDraft();
+  const list = view[listName] || [];
+  const item = list[index];
+  if (!item) return;
+  list.splice(index, 1);
+  view[listName] = list;
+  if (item.id && urls[item.id]) {
+    URL.revokeObjectURL(urls[item.id]);
+    delete urls[item.id];
+  }
+  render();
 }
 function onClick(event) {
   const el = event.target.closest("[data-act]");
@@ -768,9 +1028,23 @@ function onClick(event) {
   } else if (act === "post") {
     const found = classFor(person);
     const row = found ? S.rowsFor(found.room, D.schoolDay(today()), null).find(function (item) { return item.subject === el.dataset.subject; }) : null;
-    push({ name: "post", classId: found ? found.room.id : "", subject: el.dataset.subject, text: row && row.status === "posted" ? row.text : "", photo: (row && row.photo) || "", voice: (row && row.voice) || "", recording: false });
-  } else if (act === "record") toggleRecord();
-  else if (act === "play") { if (el.dataset.voice) { try { new Audio(el.dataset.voice).play(); } catch (e) {} } }
+    const posted = row && row.status === "posted";
+    const media = copyMedia(posted ? row : {});
+    push({ name: "post", classId: found ? found.room.id : "", subject: el.dataset.subject, text: posted ? row.text : "", photos: media.photos, voices: media.voices, recording: false });
+  } else if (act === "camera") {
+    const input = document.getElementById("cam");
+    if (input) input.click();
+  } else if (act === "gallery") {
+    const input = document.getElementById("lib");
+    if (input) input.click();
+  } else if (act === "drop-photo") dropAt("photos", Number(el.dataset.index));
+  else if (act === "drop-voice") dropAt("voices", Number(el.dataset.index));
+  else if (act === "record") toggleRecord();
+  else if (act === "play") {
+    const src = el.dataset.voice || "";
+    const url = src.indexOf("data:") === 0 || src.indexOf("blob:") === 0 ? src : (urls[src] || "");
+    if (url) { try { new Audio(url).play(); } catch (e) {} }
+  }
   else if (act === "zoom") { const src = zoomSrc(el); if (src) push({ name: "photo", src: src }); }
   else if (act === "dow") { view.day = Number(el.dataset.day); render(); }
   else if (act === "lesson") { view.lesson = Number(el.dataset.lesson); render(); }
@@ -788,13 +1062,14 @@ function onClick(event) {
     person.seen[msg.id] = msg.bump || msg.at;
     saveStore();
     render();
-  } else if (act === "compose") push({ name: "compose", classId: person.classId, text: "", photo: "", voice: "", audience: "class", alert: false });
+  } else if (act === "compose") push({ name: "compose", classId: person.classId, text: "", photos: [], voices: [], audience: "class", alert: false });
   else if (act === "audience") { keepDraft(); view.audience = el.dataset.audience === "parents" ? "parents" : "class"; render(); }
   else if (act === "alert") { keepDraft(); view.alert = !view.alert; render(); }
   else if (act === "edit-msg") {
     const msg = messageById(el.dataset.id);
     if (!msg) return;
-    push({ name: "compose", id: msg.id, classId: person.classId, text: msg.text || "", photo: msg.photo || "", voice: msg.voice || "", audience: msg.audience, alert: !!msg.alert });
+    const media = copyMedia(msg);
+    push({ name: "compose", id: msg.id, classId: person.classId, text: msg.text || "", photos: media.photos, voices: media.voices, audience: msg.audience, alert: !!msg.alert });
   } else if (act === "ask-msg") {
     const msg = messageById(el.dataset.id);
     push({ name: "confirm", kind: "message", id: el.dataset.id, classId: person.classId, title: ((msg && msg.text) || "הודעה").slice(0, 40) });
@@ -823,7 +1098,7 @@ function onSubmit(event) {
   event.preventDefault();
   const data = new FormData(event.target);
   if (view.name === "post") {
-    try { homeworkInput("post", data.get("text")); saveStore(); haltMic(); view = stack.pop() || { name: "homework" }; }
+    try { keepDraft(); homeworkInput("post", data.get("text")); saveStore(); haltMic(); view = stack.pop() || { name: "homework" }; }
     catch (e) { view.error = e.message === "forbidden" ? "אין הרשאה" : "חסר"; }
     render();
     return;
@@ -841,8 +1116,9 @@ function onSubmit(event) {
   }
   if (view.name === "compose") {
     try {
+      keepDraft();
       const text = data.get("text");
-      const payload = { classId: person.classId, text: text, photo: view.photo || "", voice: view.voice || "", audience: view.audience || "class", alert: !!view.alert };
+      const payload = { classId: person.classId, text: text, photos: photoRefs(), voices: voiceRefs(), audience: view.audience || "class", alert: !!view.alert };
       if (view.id) S.editMessage(state, actor(), Object.assign({ id: view.id }, payload));
       else S.postMessage(state, actor(), payload);
       if (payload.alert) notify(String(text || ""));
@@ -915,7 +1191,17 @@ function boot() {
   const app = document.getElementById("app");
   app.addEventListener("click", onClick);
   app.addEventListener("submit", onSubmit);
-  app.addEventListener("change", onFile);
+  app.addEventListener("input", function (event) {
+    const node = event.target;
+    if (!node || node.dataset.act !== "transcript") return;
+    const index = Number(node.dataset.index);
+    if (view.voices && view.voices[index]) view.voices[index].text = String(node.value || "").slice(0, 280);
+  });
+  if (!document.getElementById("cam")) {
+    document.body.insertAdjacentHTML("beforeend", '<input id="cam" class="picker" type="file" accept="image/*" capture="environment" aria-label="מצלמה"><input id="lib" class="picker" type="file" accept="image/*" multiple aria-label="גלריה">');
+    document.getElementById("cam").addEventListener("change", onFile);
+    document.getElementById("lib").addEventListener("change", onFile);
+  }
   render();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {});
 }
