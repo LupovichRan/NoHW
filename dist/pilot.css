@@ -1,0 +1,39 @@
+/* Pilot chrome: tree, owner setup, evening status, teacher post. Mobile first. */
+#pilotBar{margin:0 0 16px;padding:14px}
+.pilotHead{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.pilotKicker{font-size:12px;color:#0f766e;font-weight:700}
+.pilotHead b{font-size:18px}
+#pilotSearch{width:100%;margin:10px 0;padding:10px 12px;border:1px solid var(--line,#d8dee9);border-radius:12px;font:inherit}
+.pilotRecent{display:flex;gap:6px;overflow:auto;padding-bottom:6px}
+.pilotRecent button,.pilotActions button,.treeLabel,.twisty,.shareRow button{min-height:44px}
+.chip{border:1px solid var(--line,#d8dee9);background:#fff;border-radius:999px;padding:6px 12px;font:inherit}
+.treeRow{display:flex;align-items:center;gap:4px;min-height:44px}
+.treeLabel{flex:1;text-align:start;border:0;background:transparent;font:inherit;font-weight:650;border-radius:10px;padding:8px}
+.treeRow.is-on .treeLabel{background:#e7f5f2;color:#0f766e}
+.twisty{width:36px;border:0;background:transparent;font-size:18px}
+.twisty.spacer{visibility:hidden}
+.pilotActions,.shareRow,.wizardNav{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.pilotStats{font-size:14px;margin:8px 0}
+.scopeTag{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700}
+.eveningRow,.teacherRow,.weekLine{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin:6px 0;border:1px solid var(--line,#d8dee9);border-radius:12px;background:#fff}
+.eveningRow input,.teacherRow input{width:26px;height:26px;min-height:0;accent-color:#0f766e}
+.st-not_updated{background:#fff7ed;color:#9a3412}
+.st-no_homework{background:#e0f2fe;color:#075985}
+.st-homework{background:#d1fae5;color:#065f46}
+.weekBlock{margin:8px 0;padding-bottom:8px;border-bottom:1px solid var(--line,#d8dee9)}
+#teacherBoard{margin-bottom:14px}
+.teacherRow{border-inline-start:6px solid var(--sc,#0f766e)}
+#consentCard{margin-bottom:12px}
+#consentCard label{display:flex;gap:10px;align-items:flex-start}
+#consentCard input{width:22px;height:22px;min-height:0;margin-top:4px}
+.wizardSteps{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.wizardSteps span{font-size:12px;padding:4px 8px;border-radius:999px;background:#f1f5f9}
+.wizardSteps .on{background:#0f766e;color:#fff}
+.classPreview{display:flex;flex-wrap:wrap;gap:6px}
+.classPreview span{background:#f8fafc;border:1px solid var(--line,#d8dee9);border-radius:8px;padding:4px 8px}
+#iosGuide{max-width:440px}
+#iosGuide ol{padding-inline-start:1.2em}
+.langPick{font-size:12px;display:flex;align-items:center;gap:4px}
+.langPick select{width:auto;min-height:36px;margin:0}
+code.ltr,input.ltr{direction:ltr;unicode-bidi:isolate}
+@media(min-width:760px){#pilotBar{padding:18px 20px}}

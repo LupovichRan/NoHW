@@ -1,3 +1,3 @@
-// Phone-app proof of concept: no sign-in or registration, local sample data, switch roles freely.
-// Set enabled:false to bring back real accounts (Supabase) and the demo accounts.
+// Local pilot: no sign-in, no server, sample data on this device, switch roles freely.
+// There is no Supabase project to turn on. Sharing between devices is a file or a link.
 window.NOHOMEWORK_POC={enabled:true};
