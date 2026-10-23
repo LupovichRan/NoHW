@@ -197,25 +197,140 @@
     if (entry.mode === "post") return "posted";
     return "not-updated";
   }
-  function setHomework(state, actor, input) {
+  function subjectOf(value) {
+    return String(value || "").trim().slice(0, 40);
+  }
+  function mediaOf(value) {
+    const text = String(value || "");
+    if (text.length > 400000) return "";
+    if (text.indexOf("data:image/") === 0 || text.indexOf("data:audio/") === 0) return text;
+    return "";
+  }
+  function weekdayOf(date) {
+    const parts = String(date || "").split("-").map(Number);
+    if (parts.length < 3 || parts.some(function (n) { return Number.isNaN(n); })) return -1;
+    const day = new Date(parts[0], parts[1] - 1, parts[2]).getDay();
+    if (Number.isNaN(day)) return -1;
+    return day === 6 ? 5 : day;
+  }
+  function subjectsFor(room, date) {
+    const slots = room && room.timetable && room.timetable[String(weekdayOf(date))];
+    if (!Array.isArray(slots)) return SUBJECTS.slice();
+    const names = [];
+    slots.forEach(function (item) {
+      const name = subjectOf(item);
+      if (name && names.indexOf(name) < 0) names.push(name);
+    });
+    return names.length ? names : SUBJECTS.slice();
+  }
+  function ownClassId(state, actor, input) {
     let classId = input && input.classId;
     if (!classId && actor && actor.role === "teacher") {
       const found = locate(state, actor.code);
       classId = found && found.role === "teacher" ? found.room.id : "";
     }
-    const node = requireEdit(state, actor, { kind: "homework", classId });
-    const subject = input && input.subject;
+    return classId || "";
+  }
+  function setSlot(state, actor, input) {
+    const node = requireEdit(state, actor, { kind: "homework", classId: ownClassId(state, actor, input) });
+    const day = Number(input && input.day);
+    const lesson = Number(input && input.lesson);
+    if (!Number.isInteger(day) || day < 0 || day > 5 || !Number.isInteger(lesson) || lesson < 0 || lesson > 5) throw new Error("missing");
+    node.room.timetable = node.room.timetable || {};
+    const key = String(day);
+    const slots = Array.isArray(node.room.timetable[key]) ? node.room.timetable[key].slice() : [];
+    while (slots.length <= lesson) slots.push("");
+    slots[lesson] = subjectOf(input && input.subject);
+    node.room.timetable[key] = slots;
+  }
+  function setHomework(state, actor, input) {
+    const node = requireEdit(state, actor, { kind: "homework", classId: ownClassId(state, actor, input) });
+    const subject = subjectOf(input && input.subject);
     const date = input && input.date;
-    if (!SUBJECTS.includes(subject) || !date) throw new Error("missing");
+    if (!subject || !date) throw new Error("missing");
     node.room.homework = node.room.homework || {};
     node.room.homework[date] = node.room.homework[date] || {};
     if (input.mode === "none") {
       node.room.homework[date][subject] = { mode: "none" };
       return;
     }
-    const text = String((input && input.text) || "").trim();
-    if (input.mode !== "post" || !text) throw new Error("missing");
-    node.room.homework[date][subject] = { mode: "post", text: text.slice(0, 80) };
+    const text = String((input && input.text) || "").trim().slice(0, 80);
+    const photo = mediaOf(input && input.photo);
+    const voice = mediaOf(input && input.voice);
+    if (input.mode !== "post" || (!text && !photo && !voice)) throw new Error("missing");
+    const entry = { mode: "post", text: text };
+    if (photo) entry.photo = photo;
+    if (voice) entry.voice = voice;
+    node.room.homework[date][subject] = entry;
+  }
+  function messageText(value) {
+    return String(value || "").trim().slice(0, 280);
+  }
+  function audienceOf(value) {
+    return value === "parents" ? "parents" : "class";
+  }
+  function stamp(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : Date.now();
+  }
+  function messageNode(state, actor, input) {
+    const node = requireEdit(state, actor, { kind: "homework", classId: ownClassId(state, actor, input) });
+    const msg = (node.room.messages || []).find(function (item) { return item.id === (input && input.id); });
+    if (!msg) throw new Error("missing");
+    return { room: node.room, msg: msg };
+  }
+  function postMessage(state, actor, input) {
+    const node = requireEdit(state, actor, { kind: "homework", classId: ownClassId(state, actor, input) });
+    const text = messageText(input && input.text);
+    const photo = mediaOf(input && input.photo);
+    const voice = mediaOf(input && input.voice);
+    if (!text && !photo && !voice) throw new Error("missing");
+    const id = String((input && input.id) || uid(Math.random)).slice(0, 40);
+    const at = stamp(input && input.at);
+    node.room.messages = node.room.messages || [];
+    node.room.messages.push({
+      id: id,
+      text: text,
+      photo: photo,
+      voice: voice,
+      audience: audienceOf(input && input.audience),
+      alert: !!(input && input.alert),
+      at: at,
+      bump: at,
+      edited: false
+    });
+    return id;
+  }
+  function editMessage(state, actor, input) {
+    const found = messageNode(state, actor, input);
+    const text = messageText(input && input.text);
+    const photo = input && Object.prototype.hasOwnProperty.call(input, "photo") ? mediaOf(input.photo) : found.msg.photo || "";
+    const voice = input && Object.prototype.hasOwnProperty.call(input, "voice") ? mediaOf(input.voice) : found.msg.voice || "";
+    if (!text && !photo && !voice) throw new Error("missing");
+    found.msg.text = text;
+    found.msg.photo = photo;
+    found.msg.voice = voice;
+    if (input && input.audience) found.msg.audience = audienceOf(input.audience);
+    if (input && Object.prototype.hasOwnProperty.call(input, "alert")) found.msg.alert = !!input.alert;
+    found.msg.edited = true;
+  }
+  function deleteMessage(state, actor, input) {
+    const node = requireEdit(state, actor, { kind: "homework", classId: ownClassId(state, actor, input) });
+    const before = (node.room.messages || []).length;
+    node.room.messages = (node.room.messages || []).filter(function (item) { return item.id !== (input && input.id); });
+    if (node.room.messages.length === before) throw new Error("missing");
+  }
+  function bumpMessage(state, actor, input) {
+    const found = messageNode(state, actor, input);
+    found.msg.bump = stamp(input && input.at);
+    found.msg.alert = true;
+  }
+  function messagesFor(room, role) {
+    return ((room && room.messages) || []).filter(function (item) {
+      return role !== "student" || item.audience !== "parents";
+    }).slice().sort(function (a, b) {
+      return (b.bump || b.at || 0) - (a.bump || a.at || 0);
+    });
   }
   function rename(state, actor, target) {
     const node = requireEdit(state, actor, target);
@@ -261,13 +376,15 @@
   function rowsFor(room, date, kid) {
     const day = (room.homework || {})[date] || {};
     const marks = (kid && kid.done && kid.done[date]) || {};
-    return SUBJECTS.map(function (subject) {
+    return subjectsFor(room, date).map(function (subject) {
       const entry = day[subject];
       const status = statusOf(entry);
       return {
         subject,
         status,
         text: status === "posted" ? entry.text || "" : "",
+        photo: status === "posted" ? entry.photo || "" : "",
+        voice: status === "posted" ? entry.voice || "" : "",
         done: status === "posted" && !!marks[subject]
       };
     });
@@ -320,6 +437,8 @@
       teacherName: room.teacherName,
       teacherCode: role === "teacher" ? room.teacherCode : "",
       homework: clone(room.homework || {}),
+      timetable: clone(room.timetable || {}),
+      messages: clone(messagesFor(room, role)),
       kids: role === "teacher" ? clone(room.kids || []) : [kidSlice(found.kid, role)]
     }];
     return { v: 1, role, code: found.code, schools: [school] };
@@ -344,7 +463,17 @@
         const entry = homework[date][subject];
         if (!entry) continue;
         if (entry.mode === "none") out[date][subject] = { mode: "none" };
-        else if (entry.mode === "post" && String(entry.text || "").trim()) out[date][subject] = { mode: "post", text: String(entry.text).trim().slice(0, 80) };
+        else if (entry.mode === "post") {
+          const text = String(entry.text || "").trim().slice(0, 80);
+          const photo = mediaOf(entry.photo);
+          const voice = mediaOf(entry.voice);
+          if (text || photo || voice) {
+            const clean = { mode: "post", text: text };
+            if (photo) clean.photo = photo;
+            if (voice) clean.voice = voice;
+            out[date][subject] = clean;
+          }
+        }
       }
     }
     return out;
@@ -406,6 +535,8 @@
       if (teacherCode) room.teacherCode = teacherCode;
     }
     room.homework = mergeHomework(room.homework, incoming.homework);
+    if (incoming.timetable && typeof incoming.timetable === "object") room.timetable = clone(incoming.timetable);
+    if (Array.isArray(incoming.messages)) room.messages = clone(incoming.messages);
     for (const kid of incoming.kids || []) mergeKid(room, kid);
   }
   function mergeSchool(state, incoming) {
@@ -449,7 +580,14 @@
     resetCode,
     removeNode,
     statusOf,
+    subjectsFor,
+    setSlot,
     setHomework,
+    postMessage,
+    editMessage,
+    deleteMessage,
+    bumpMessage,
+    messagesFor,
     rowsFor,
     dayFor,
     markDone,

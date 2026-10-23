@@ -203,6 +203,7 @@ function classesHtml(schoolId) {
   return entityList("class", rows, school ? school.name : "כיתות", school ? "כיתות" : "", "", "אין כיתות");
 }
 function dayButton(classId) {
+  if (person && person.role === "teacher") return "";
   return S.canEdit(state, actor(), { kind: "homework", classId: classId }) ? '<button class="text" type="button" data-act="day">היום</button>' : "";
 }
 function linkParent(kidId, name) {
@@ -236,7 +237,7 @@ function parentKidsHtml() {
   const body = rows.length ? '<div class="list">' + rows.map(function (row) {
     return '<button class="card" type="button" data-act="open" data-id="' + esc(row.id) + '"><span class="who"><strong>' + esc(row.title) + "</strong><small>" + esc(row.meta) + "</small></span></button>";
   }).join("") + "</div>" : '<p class="empty">אין ילדים</p>';
-  return shell(bar(person.name, D.parentCaption(person, state) || "הילדים"), body);
+  return shell(bar(person.name, D.parentCaption(person, state) || "הילדים"), alertBanner() + inboxLink() + body);
 }
 function weekStrip(date) {
   return '<div class="week">' + D.weekDates(today()).map(function (item, index) {
@@ -253,9 +254,15 @@ function tick(row, live) {
   if (!live) return '<span class="tick' + (row.done ? " on" : "") + '" aria-label="' + (row.done ? "הוכן" : "לא הוכן") + '">' + mark + "</span>";
   return '<button class="tick' + (row.done ? " on" : "") + '" type="button" data-act="tick" data-subject="' + esc(row.subject) + '" aria-pressed="' + (row.done ? "true" : "false") + '" aria-label="הוכן">' + mark + "</button>";
 }
+function mediaBits(row) {
+  if (!row || row.status !== "posted") return "";
+  const photo = row.photo ? '<button class="thumb" type="button" data-act="zoom" data-subject="' + esc(row.subject) + '" aria-label="תמונה"><img alt="" src="' + esc(row.photo) + '"></button>' : "";
+  const voice = row.voice ? '<button class="play" type="button" data-act="play" data-voice="' + esc(row.voice) + '" aria-label="השמעה">🎤</button>' : "";
+  return photo || voice ? '<span class="media">' + photo + voice + "</span>" : "";
+}
 function dayRows(rows, live) {
   return rows.map(function (row) {
-    return '<div class="row"><span><strong>' + esc(row.subject) + "</strong>" + chip(row) + "</span>" + tick(row, live) + "</div>";
+    return '<div class="row"><span class="who"><strong>' + esc(row.subject) + "</strong>" + chip(row) + "</span>" + mediaBits(row) + tick(row, live) + "</div>";
   }).join("");
 }
 function parentShortcut(kidId) {
@@ -270,7 +277,7 @@ function dayHtml(kidId, live) {
   const date = focusDate();
   const rows = S.rowsFor(found.room, date, found.kid);
   const jump = live ? parentShortcut(kidId) : "";
-  return shell(bar(found.kid.firstName, found.room.name), jump + weekStrip(date) + '<div class="list">' + dayRows(rows, live) + "</div>");
+  return shell(bar(found.kid.firstName, found.room.name), alertBanner() + inboxLink() + jump + weekStrip(date) + '<div class="list">' + dayRows(rows, live) + "</div>");
 }
 const ENTITY = {
   school: { icon: "🏫", noun: "בית ספר", add: "הוספת בית ספר", edit: "עריכת בית ספר", remove: "מחיקת בית ספר", fields: [["a", "שם בית ספר", "אלון"], ["b", "שם מנהל/ת", "דנה כהן"]] },
@@ -322,24 +329,160 @@ function editHtml() {
   return shell(bar(entityHeading(item, values[0])), '<form class="stack fit">' + inputs + err() + '<button class="primary" type="submit">שמירה</button></form>' + remove);
 }
 function confirmHtml() {
+  if (view.kind === "message") {
+    const name = view.title || "הודעה";
+    return shell(bar("🗑️ מחיקת הודעה"), '<div class="confirm"><p class="ask">למחוק את ' + esc(name) + '?</p><div class="pair"><button class="primary" type="button" data-act="delete">מחיקה</button><button class="ghost" type="button" data-act="back">ביטול</button></div></div>');
+  }
   const item = entityOf(view.kind);
   const name = view.title || item.noun;
   return shell(bar(item.icon + " " + item.remove + " · " + name), '<div class="confirm"><p class="ask">למחוק את ' + esc(name) + '?</p><div class="pair"><button class="primary" type="button" data-act="delete">' + esc(item.remove) + '</button><button class="ghost" type="button" data-act="back">ביטול</button></div></div>');
 }
-function homeworkHtml() {
-  const found = D.findClass(state, view.classId);
-  if (!found) return shell(bar("היום"), '<p class="empty">אין כיתות</p>');
-  const rows = S.rowsFor(found.room, D.schoolDay(today()), null);
-  const current = rows.find(function (row) { return row.subject === view.subject; }) || rows[0];
-  const buttons = rows.map(function (row) {
-    return '<button class="row' + (row.subject === current.subject ? " on" : "") + '" type="button" data-act="subject" data-subject="' + esc(row.subject) + '"><span><strong>' + esc(row.subject) + "</strong>" + chip(row) + "</span></button>";
+let recorder = null;
+let micStream = null;
+function weekdayIndex(date) {
+  const parts = String(date || "").split("-").map(Number);
+  const day = new Date(parts[0], parts[1] - 1, parts[2]).getDay();
+  return day === 6 ? 5 : day;
+}
+function classFor(who) {
+  const id = (view && view.classId) || (who && who.classId) || "";
+  return D.findClass(state, id);
+}
+function visibleMessages(who) {
+  if (!who) return [];
+  if (who.role === "student") {
+    const found = D.findKid(state, who.kidId);
+    return found ? S.messagesFor(found.room, "student") : [];
+  }
+  if (who.role === "parent") {
+    const seen = {};
+    const all = [];
+    (who.kidIds || []).forEach(function (id) {
+      const found = D.findKid(state, id);
+      if (!found) return;
+      S.messagesFor(found.room, "parent").forEach(function (msg) {
+        const key = found.room.id + ":" + msg.id;
+        if (seen[key]) return;
+        seen[key] = true;
+        all.push(msg);
+      });
+    });
+    all.sort(function (a, b) { return (b.bump || b.at || 0) - (a.bump || a.at || 0); });
+    return all;
+  }
+  const found = classFor(who);
+  return found ? S.messagesFor(found.room, "teacher") : [];
+}
+function unseenAlert(who) {
+  const seen = (who && who.seen) || {};
+  return visibleMessages(who).find(function (msg) { return msg.alert && seen[msg.id] !== (msg.bump || msg.at); }) || null;
+}
+function alertBanner() {
+  if (!person || person.role === "teacher") return "";
+  const msg = unseenAlert(person);
+  if (!msg) return "";
+  return '<div class="banner"><button type="button" data-act="inbox"><b>התראה</b><span>' + esc(msg.text || "הודעה") + '</span></button><button type="button" data-act="dismiss" data-id="' + esc(msg.id) + '" aria-label="סגירה">✕</button></div>';
+}
+function inboxLink() {
+  if (!person || person.role === "teacher") return "";
+  const count = visibleMessages(person).length;
+  if (!count) return "";
+  return '<button class="jump" type="button" data-act="inbox"><span>💬</span><b>הודעות</b><small>' + count + "</small></button>";
+}
+function teacherHome() {
+  const found = D.findClass(state, person.classId);
+  const tiles = [["homework", "📘", "שיעורי בית היום"], ["messages", "💬", "הודעות"], ["timetable", "🗓️", "מערכת"], ["students", "🧒", "תלמידים"]];
+  const count = visibleMessages(person).length;
+  const body = tiles.map(function (item) {
+    const badge = item[0] === "messages" && count ? '<b class="count">' + count + "</b>" : "";
+    return '<button class="choice" type="button" data-act="tile" data-to="' + item[0] + '"><span class="avatar">' + item[1] + "</span><strong>" + item[2] + "</strong>" + badge + "</button>";
   }).join("");
-  return shell(bar("היום", found.room.name), '<form class="stack"><div class="list">' + buttons + '</div><input name="text" dir="rtl" maxlength="80" placeholder="שיעורי בית" aria-label="שיעורי בית" value="' + esc(current && current.text) + '">' + err() + '<div class="pair"><button class="primary" type="submit">שמירה</button><button class="ghost" type="button" data-act="none">אין</button></div></form>');
+  return shell(bar(person.name, found ? found.room.name : ""), '<div class="hub tiles">' + body + "</div>");
+}
+function homeworkHtml() {
+  const found = classFor(person);
+  if (!found) return shell(bar("שיעורי בית"), '<p class="empty">אין כיתות</p>');
+  const rows = S.rowsFor(found.room, D.schoolDay(today()), null);
+  const body = rows.map(function (row) {
+    const label = row.status === "posted" ? (row.text || (row.photo ? "תמונה" : "הקלטה")) : STATUS[row.status];
+    const thumb = row.photo ? '<img class="mini-thumb" alt="" src="' + esc(row.photo) + '">' : "";
+    return '<button class="choice subject" type="button" data-act="post" data-subject="' + esc(row.subject) + '"><span class="avatar">' + (row.photo ? "📷" : "📘") + '</span><span class="meta"><strong>' + esc(row.subject) + "</strong><small>" + esc(label) + "</small></span>" + thumb + "</button>";
+  }).join("");
+  return shell(bar("שיעורי בית", found.room.name), '<div class="hub">' + body + "</div>");
+}
+function filePick() {
+  return '<label class="file"><input type="file" accept="image/*" capture="environment" aria-label="צילום"><span>📷 צילום</span></label>';
+}
+function voiceButtons() {
+  const play = view.voice ? '<button class="ghost" type="button" data-act="play" data-voice="' + esc(view.voice) + '">🎤 השמעה</button>' : "";
+  const rec = view.recording ? '<button class="ghost" type="button" data-act="record">עצירה</button>' : '<button class="ghost" type="button" data-act="record">🎤 הקלטה</button>';
+  return rec + play;
+}
+function postHtml() {
+  const photo = view.photo ? '<button class="thumb wide" type="button" data-act="zoom" data-subject="' + esc(view.subject) + '" aria-label="תמונה"><img alt="" src="' + esc(view.photo) + '"></button>' : "";
+  return shell(bar(view.subject || "שיעור", "שיעורי בית"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="80" value="' + esc(view.text || "") + '" placeholder="שיעורי בית" aria-label="טקסט"></label>' + photo + filePick() + voiceButtons() + err() + '<button class="ghost" type="button" data-act="none">אין שיעורים</button><button class="primary" type="submit">שמירה</button></form>');
+}
+function chipSubjects(room) {
+  const names = S.SUBJECTS.slice();
+  Object.keys(room.timetable || {}).forEach(function (key) {
+    (room.timetable[key] || []).forEach(function (item) {
+      const name = String(item || "").trim();
+      if (name && names.indexOf(name) < 0) names.push(name);
+    });
+  });
+  return names;
+}
+function timetableHtml() {
+  const found = classFor(person);
+  if (!found) return shell(bar("מערכת"), '<p class="empty">אין כיתות</p>');
+  const day = Number.isInteger(view.day) ? view.day : weekdayIndex(D.schoolDay(today()));
+  const lesson = Number.isInteger(view.lesson) ? view.lesson : 0;
+  view.day = day;
+  view.lesson = lesson;
+  const slots = (found.room.timetable && found.room.timetable[String(day)]) || [];
+  const days = DAY_LABEL.map(function (label, index) {
+    return '<button class="dow' + (index === day ? " on" : "") + '" type="button" data-act="dow" data-day="' + index + '">' + label + "</button>";
+  }).join("");
+  const lessons = [0, 1, 2, 3, 4, 5].map(function (index) {
+    const name = slots[index] || "";
+    return '<button class="row' + (index === lesson ? " on" : "") + '" type="button" data-act="lesson" data-lesson="' + index + '"><strong>שיעור ' + (index + 1) + '</strong><em class="chip' + (name ? " posted" : "") + '">' + esc(name || "ריק") + "</em></button>";
+  }).join("");
+  const chips = chipSubjects(found.room).map(function (name) {
+    return '<button class="pick" type="button" data-act="slot" data-subject="' + esc(name) + '">' + esc(name) + "</button>";
+  }).join("") + '<button class="pick" type="button" data-act="slot" data-subject="">ריק</button>';
+  return shell(bar("מערכת", found.room.name), '<div class="week">' + days + '</div><div class="list">' + lessons + '</div><div class="picks">' + chips + '</div><form class="stack"><label class="field"><span>מקצוע נוסף</span><input name="custom" dir="rtl" maxlength="40" placeholder="אמנות" aria-label="מקצוע נוסף"></label><button class="primary" type="submit">הוספה</button></form>');
+}
+function messageCard(msg, can) {
+  const who = msg.audience === "parents" ? "הורים בלבד" : "כל הכיתה";
+  const marks = (msg.edited ? '<em class="chip posted">עודכן</em>' : "") + (msg.alert ? '<em class="chip">התראה</em>' : "");
+  const photo = msg.photo ? '<button class="thumb" type="button" data-act="zoom" data-id="' + esc(msg.id) + '" aria-label="תמונה"><img alt="" src="' + esc(msg.photo) + '"></button>' : "";
+  const voice = msg.voice ? '<button class="play" type="button" data-act="play" data-voice="' + esc(msg.voice) + '" aria-label="השמעה">🎤</button>' : "";
+  const tools = can ? '<div class="actions"><button type="button" data-act="edit-msg" data-id="' + esc(msg.id) + '">✏️<small>עריכה</small></button><button type="button" data-act="ask-msg" data-id="' + esc(msg.id) + '">🗑️<small>מחיקה</small></button><button type="button" data-act="bump" data-id="' + esc(msg.id) + '">⬆️<small>הקפצה</small></button></div>' : "";
+  return '<article class="card msg"><div class="who"><strong>' + esc(msg.text || (msg.photo ? "תמונה" : "הקלטה")) + "</strong><small>" + esc(who) + "</small>" + marks + "</div>" + photo + voice + tools + "</article>";
+}
+function messagesHtml() {
+  const list = visibleMessages(person);
+  const can = !!(person && person.role === "teacher" && S.canEdit(state, actor(), { kind: "homework", classId: person.classId }));
+  const cards = list.length ? list.map(function (msg) { return messageCard(msg, can); }).join("") : '<p class="empty">אין הודעות</p>';
+  const add = can ? '<button class="primary add" type="button" data-act="compose"><span aria-hidden="true">+</span>הודעה</button>' : "";
+  const found = person && person.role === "teacher" ? D.findClass(state, person.classId) : null;
+  return shell(bar("הודעות", found ? found.room.name : ""), '<div class="list">' + cards + "</div>" + add);
+}
+function composeHtml() {
+  const audience = view.audience === "parents" ? "parents" : "class";
+  const alertOn = !!view.alert;
+  const photo = view.photo ? '<button class="thumb wide" type="button" data-act="zoom" data-id="' + esc(view.id || "") + '" aria-label="תמונה"><img alt="" src="' + esc(view.photo) + '"></button>' : "";
+  const picks = '<div class="pair"><button class="ghost' + (audience === "class" ? " on" : "") + '" type="button" data-act="audience" data-audience="class">כל הכיתה</button><button class="ghost' + (audience === "parents" ? " on" : "") + '" type="button" data-act="audience" data-audience="parents">הורים בלבד</button></div>';
+  const alert = '<button class="ghost' + (alertOn ? " on" : "") + '" type="button" data-act="alert" aria-pressed="' + (alertOn ? "true" : "false") + '">התראה</button>';
+  return shell(bar(view.id ? "עריכת הודעה" : "הודעה חדשה"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="280" value="' + esc(view.text || "") + '" placeholder="הודעה" aria-label="טקסט"></label>' + photo + filePick() + voiceButtons() + picks + alert + err() + '<button class="primary" type="submit">' + (view.id ? "שמירה" : "שליחה") + "</button></form>");
+}
+function photoHtml() {
+  return shell(bar("תמונה"), '<button class="frame" type="button" data-act="back"><img alt="תמונה" src="' + esc(view.src || "") + '"></button>');
 }
 function home() {
   if (person.role === "student") return dayHtml(person.kidId, true);
   if (person.role === "parent") return person.kidIds.length === 1 ? dayHtml(person.kidIds[0], false) : parentKidsHtml();
-  if (person.role === "teacher") return kidsHtml(person.classId);
+  if (person.role === "teacher") return teacherHome();
   if (person.role === "principal") return classesHtml(person.schoolId);
   return schoolsHtml();
 }
@@ -352,6 +495,11 @@ function html() {
   if (view.name === "form") return formHtml();
   if (view.name === "edit") return editHtml();
   if (view.name === "confirm") return confirmHtml();
+  if (view.name === "photo") return photoHtml();
+  if (view.name === "post") return postHtml();
+  if (view.name === "compose") return composeHtml();
+  if (view.name === "messages") return messagesHtml();
+  if (view.name === "timetable") return timetableHtml();
   if (view.name === "homework") return homeworkHtml();
   if (view.name === "day") return dayHtml(view.kidId, false);
   if (view.name === "kids") return kidsHtml(view.classId);
@@ -386,7 +534,142 @@ function fail(error) {
   render();
 }
 function homeworkInput(mode, text) {
-  S.setHomework(state, actor(), { date: D.schoolDay(today()), subject: view.subject, classId: view.classId, mode: mode, text: text });
+  S.setHomework(state, actor(), { date: D.schoolDay(today()), subject: view.subject, classId: view.classId, mode: mode, text: text, photo: mode === "post" ? view.photo : "", voice: mode === "post" ? view.voice : "" });
+}
+function keepDraft() {
+  const input = document.querySelector('form input[name="text"]');
+  if (input && (view.name === "post" || view.name === "compose")) view.text = input.value;
+}
+function haltMic() {
+  if (micStream) micStream.getTracks().forEach(function (track) { track.stop(); });
+  micStream = null;
+  if (recorder && recorder.state !== "inactive") {
+    recorder.onstop = null;
+    try { recorder.stop(); } catch (e) {}
+  }
+  recorder = null;
+  view.recording = false;
+}
+function notify(body) {
+  const title = "התראה";
+  if (typeof Notification === "undefined") return;
+  try {
+    if (Notification.permission === "granted") {
+      new Notification(title, { body: body || title });
+      return;
+    }
+    if (Notification.permission !== "denied" && Notification.requestPermission) {
+      Notification.requestPermission().then(function (result) {
+        if (result === "granted") { try { new Notification(title, { body: body || title }); } catch (e) {} }
+      }).catch(function () {});
+    }
+  } catch (e) {}
+}
+function compressImage(file) {
+  return new Promise(function (resolve, reject) {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = function () {
+      const img = new Image();
+      img.onload = function () {
+        const max = 960;
+        const scale = Math.min(1, max / Math.max(img.width || 1, img.height || 1));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round((img.width || 1) * scale));
+        canvas.height = Math.max(1, Math.round((img.height || 1) * scale));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.72));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function onFile(event) {
+  const input = event.target;
+  if (!input || input.type !== "file" || !input.files || !input.files[0]) return;
+  keepDraft();
+  compressImage(input.files[0]).then(function (url) {
+    view.photo = url;
+    view.error = "";
+    render();
+  }).catch(function () {
+    view.error = "חסר";
+    render();
+  });
+}
+function toggleRecord() {
+  keepDraft();
+  if (view.recording && recorder) {
+    view.recording = false;
+    recorder.stop();
+    render();
+    return;
+  }
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    view.error = "אין מיקרופון";
+    render();
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+    micStream = stream;
+    const chunks = [];
+    const mime = window.MediaRecorder.isTypeSupported && window.MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+    recorder = mime ? new window.MediaRecorder(stream, { mimeType: mime }) : new window.MediaRecorder(stream);
+    recorder.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = function () {
+      stream.getTracks().forEach(function (track) { track.stop(); });
+      micStream = null;
+      const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+      const reader = new FileReader();
+      reader.onload = function () {
+        view.voice = String(reader.result || "");
+        view.recording = false;
+        render();
+      };
+      reader.readAsDataURL(blob);
+    };
+    recorder.start();
+    view.recording = true;
+    view.error = "";
+    render();
+  }).catch(function () {
+    view.recording = false;
+    view.error = "אין מיקרופון";
+    render();
+  });
+}
+function messageById(id) {
+  return visibleMessages(person).find(function (item) { return item.id === id; }) || null;
+}
+function zoomSrc(el) {
+  if ((view.name === "post" || view.name === "compose") && view.photo && !el.dataset.id) return view.photo;
+  if (el.dataset.id) {
+    const msg = messageById(el.dataset.id);
+    if (msg && msg.photo) return msg.photo;
+    if (view.id === el.dataset.id && view.photo) return view.photo;
+  }
+  const room = (function () {
+    if (view.kidId) {
+      const found = D.findKid(state, view.kidId);
+      return found && found.room;
+    }
+    if (person && person.role === "student") {
+      const found = D.findKid(state, person.kidId);
+      return found && found.room;
+    }
+    if (person && person.role === "parent" && person.kidIds && person.kidIds.length === 1) {
+      const found = D.findKid(state, person.kidIds[0]);
+      return found && found.room;
+    }
+    const found = classFor(person);
+    return found && found.room;
+  })();
+  if (!room) return "";
+  const date = person && (person.role === "student" || person.role === "parent") ? focusDate() : D.schoolDay(today());
+  const row = S.rowsFor(room, date, null).find(function (item) { return item.subject === (el.dataset.subject || view.subject); });
+  return row && row.photo || "";
 }
 function onClick(event) {
   const el = event.target.closest("[data-act]");
@@ -432,6 +715,7 @@ function onClick(event) {
     saveStore();
     render();
   } else if (act === "back") {
+    haltMic();
     if (stack.length) {
       const prev = stack.pop();
       if (prev.personId) {
@@ -458,6 +742,14 @@ function onClick(event) {
   } else if (act === "ask") push({ name: "confirm", kind: el.dataset.kind, id: el.dataset.id, title: nodeTitle(el.dataset.kind, el.dataset.id) });
   else if (act === "delete") {
     try {
+      if (view.kind === "message") {
+        S.deleteMessage(state, actor(), { id: view.id, classId: person && person.classId });
+        saveStore();
+        view = stack.pop() || { name: "messages" };
+        if (view.name === "confirm") view = stack.pop() || { name: "messages" };
+        render();
+        return;
+      }
       S.removeNode(state, actor(), { kind: view.kind, id: view.id });
       syncPeople();
       saveStore();
@@ -466,10 +758,56 @@ function onClick(event) {
       if (!person) view = { name: "people" };
       render();
     } catch (e) { fail(e); }
-  } else if (act === "day") push({ name: "homework", classId: currentClassId(), subject: S.SUBJECTS[0] });
-  else if (act === "subject") { view.subject = el.dataset.subject; view.error = ""; render(); }
-  else if (act === "none") {
-    try { homeworkInput("none"); saveStore(); view.error = ""; }
+  } else if (act === "day") push({ name: "homework", classId: currentClassId() });
+  else if (act === "tile") {
+    const classId = person.classId;
+    if (el.dataset.to === "students") push({ name: "kids", classId: classId });
+    else if (el.dataset.to === "homework") push({ name: "homework", classId: classId });
+    else if (el.dataset.to === "timetable") push({ name: "timetable", classId: classId, day: weekdayIndex(D.schoolDay(today())), lesson: 0 });
+    else if (el.dataset.to === "messages") push({ name: "messages", classId: classId });
+  } else if (act === "post") {
+    const found = classFor(person);
+    const row = found ? S.rowsFor(found.room, D.schoolDay(today()), null).find(function (item) { return item.subject === el.dataset.subject; }) : null;
+    push({ name: "post", classId: found ? found.room.id : "", subject: el.dataset.subject, text: row && row.status === "posted" ? row.text : "", photo: (row && row.photo) || "", voice: (row && row.voice) || "", recording: false });
+  } else if (act === "record") toggleRecord();
+  else if (act === "play") { if (el.dataset.voice) { try { new Audio(el.dataset.voice).play(); } catch (e) {} } }
+  else if (act === "zoom") { const src = zoomSrc(el); if (src) push({ name: "photo", src: src }); }
+  else if (act === "dow") { view.day = Number(el.dataset.day); render(); }
+  else if (act === "lesson") { view.lesson = Number(el.dataset.lesson); render(); }
+  else if (act === "slot") {
+    try {
+      S.setSlot(state, actor(), { classId: view.classId || person.classId, day: view.day, lesson: Number.isInteger(view.lesson) ? view.lesson : 0, subject: el.dataset.subject || "" });
+      saveStore();
+    } catch (e) { fail(e); return; }
+    render();
+  } else if (act === "inbox") push({ name: "messages" });
+  else if (act === "dismiss") {
+    const msg = messageById(el.dataset.id);
+    if (!msg || !person) return;
+    person.seen = person.seen || {};
+    person.seen[msg.id] = msg.bump || msg.at;
+    saveStore();
+    render();
+  } else if (act === "compose") push({ name: "compose", classId: person.classId, text: "", photo: "", voice: "", audience: "class", alert: false });
+  else if (act === "audience") { keepDraft(); view.audience = el.dataset.audience === "parents" ? "parents" : "class"; render(); }
+  else if (act === "alert") { keepDraft(); view.alert = !view.alert; render(); }
+  else if (act === "edit-msg") {
+    const msg = messageById(el.dataset.id);
+    if (!msg) return;
+    push({ name: "compose", id: msg.id, classId: person.classId, text: msg.text || "", photo: msg.photo || "", voice: msg.voice || "", audience: msg.audience, alert: !!msg.alert });
+  } else if (act === "ask-msg") {
+    const msg = messageById(el.dataset.id);
+    push({ name: "confirm", kind: "message", id: el.dataset.id, classId: person.classId, title: ((msg && msg.text) || "הודעה").slice(0, 40) });
+  } else if (act === "bump") {
+    try {
+      S.bumpMessage(state, actor(), { id: el.dataset.id, classId: person.classId });
+      const msg = messageById(el.dataset.id);
+      notify(msg && msg.text);
+      saveStore();
+      render();
+    } catch (e) { fail(e); }
+  } else if (act === "none") {
+    try { homeworkInput("none"); saveStore(); haltMic(); view = stack.pop() || { name: "homework" }; }
     catch (e) { view.error = e.message === "forbidden" ? "אין הרשאה" : "חסר"; }
     render();
   } else if (act === "date") { view.date = el.dataset.date; render(); }
@@ -484,9 +822,34 @@ function onClick(event) {
 function onSubmit(event) {
   event.preventDefault();
   const data = new FormData(event.target);
-  if (view.name === "homework") {
-    try { homeworkInput("post", data.get("text")); saveStore(); view.error = ""; }
+  if (view.name === "post") {
+    try { homeworkInput("post", data.get("text")); saveStore(); haltMic(); view = stack.pop() || { name: "homework" }; }
     catch (e) { view.error = e.message === "forbidden" ? "אין הרשאה" : "חסר"; }
+    render();
+    return;
+  }
+  if (view.name === "timetable") {
+    try {
+      const subject = String(data.get("custom") || "").trim();
+      if (!subject) throw new Error("missing");
+      S.setSlot(state, actor(), { classId: view.classId || person.classId, day: view.day, lesson: Number.isInteger(view.lesson) ? view.lesson : 0, subject: subject });
+      saveStore();
+      view.error = "";
+    } catch (e) { fail(e); return; }
+    render();
+    return;
+  }
+  if (view.name === "compose") {
+    try {
+      const text = data.get("text");
+      const payload = { classId: person.classId, text: text, photo: view.photo || "", voice: view.voice || "", audience: view.audience || "class", alert: !!view.alert };
+      if (view.id) S.editMessage(state, actor(), Object.assign({ id: view.id }, payload));
+      else S.postMessage(state, actor(), payload);
+      if (payload.alert) notify(String(text || ""));
+      saveStore();
+      haltMic();
+      view = stack.pop() || { name: "messages" };
+    } catch (e) { fail(e); return; }
     render();
     return;
   }
@@ -552,6 +915,7 @@ function boot() {
   const app = document.getElementById("app");
   app.addEventListener("click", onClick);
   app.addEventListener("submit", onSubmit);
+  app.addEventListener("change", onFile);
   render();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {});
 }

@@ -43,8 +43,51 @@
   function kid(id, name, done) {
     return { id: id, firstName: name, kidCode: code(id + ":k"), parentCode: code(id + ":p"), done: done || {} };
   }
-  function room(id, name, teacher, kids, homework) {
-    return { id: id, name: name, teacherName: teacher, teacherCode: code(id + ":t"), homework: homework || {}, kids: kids || [] };
+  function beep() {
+    const rate = 8000;
+    const n = 2400;
+    const bytes = new Uint8Array(44 + n * 2);
+    function writeStr(offset, text) { for (let i = 0; i < text.length; i++) bytes[offset + i] = text.charCodeAt(i); }
+    function write32(offset, value) { bytes[offset] = value & 255; bytes[offset + 1] = (value >> 8) & 255; bytes[offset + 2] = (value >> 16) & 255; bytes[offset + 3] = (value >> 24) & 255; }
+    function write16(offset, value) { bytes[offset] = value & 255; bytes[offset + 1] = (value >> 8) & 255; }
+    writeStr(0, "RIFF");
+    write32(4, 36 + n * 2);
+    writeStr(8, "WAVE");
+    writeStr(12, "fmt ");
+    write32(16, 16);
+    write16(20, 1);
+    write16(22, 1);
+    write32(24, rate);
+    write32(28, rate * 2);
+    write16(32, 2);
+    write16(34, 16);
+    writeStr(36, "data");
+    write32(40, n * 2);
+    for (let i = 0; i < n; i++) {
+      const sample = Math.round(Math.sin((2 * Math.PI * 523.25 * i) / rate) * 9000);
+      write16(44 + i * 2, sample & 65535);
+    }
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return "data:audio/wav;base64," + btoa(bin);
+  }
+  const BOARD_VOICE = beep();
+  const BOARD_PHOTO = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="100%" height="100%" fill="#143d2a"/><text x="320" y="170" fill="#f4f7ef" font-size="54" text-anchor="middle" font-family="Rubik,sans-serif">תרגיל 4</text><text x="320" y="230" fill="#d7ead4" font-size="28" text-anchor="middle" font-family="Rubik,sans-serif">לוח הכיתה</text></svg>');
+  function weekTable() {
+    const table = {};
+    for (let day = 0; day < 6; day++) {
+      const slots = SUB.slice();
+      while (slots.length < 6) slots.push("");
+      table[String(day)] = slots;
+    }
+    return table;
+  }
+  function room(id, name, teacher, kids, homework, extra) {
+    const item = { id: id, name: name, teacherName: teacher, teacherCode: code(id + ":t"), homework: homework || {}, kids: kids || [], timetable: weekTable(), messages: [] };
+    const more = extra || {};
+    if (more.timetable) item.timetable = more.timetable;
+    if (more.messages) item.messages = more.messages;
+    return item;
   }
   function school(id, name, principal, rooms) {
     return { id: id, name: name, principalName: principal, principalCode: code(id + ":s"), classrooms: rooms || [] };
@@ -297,7 +340,33 @@
         person("t-c-h2", "מיכל אביב", "👩‍🏫", "teacher", { schoolId: "s-alon", classId: "c-h2" }),
         person("s-k-noa", "נועה", "👧", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-noa" }),
         person("par-yael", "יעל ברק", "👩", "parent", { kidIds: ["k-noa"], kin: "אמא" })
-      ], [school("s-alon", "אלון", "דנה כהן", [room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה", weekDone)], weekHomework)])], "📅")
+      ], [school("s-alon", "אלון", "דנה כהן", [room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה", weekDone)], weekHomework)])], "📅"),
+      (function () {
+        const homework = {};
+        homework[day] = {};
+        homework[day][SUB[0]] = { mode: "post", text: "תרגיל 4", photo: BOARD_PHOTO, voice: BOARD_VOICE };
+        const built = alonPair(day, homework);
+        const table = weekTable();
+        table["5"] = [SUB[0], SUB[1], "אמנות", "", "", ""];
+        built.classrooms[0].timetable = table;
+        return pack("board", "מורה מצלמת לוח", "t-c-h2", corePeople(), [built], "📷");
+      })(),
+      (function () {
+        const built = alonPair(day, normalHomework(day), normalDone(day));
+        built.classrooms[0].messages = [
+          { id: "m-class", text: "מבחן ביום ד׳", photo: "", voice: "", audience: "class", alert: false, at: 1000, bump: 1000, edited: false },
+          { id: "m-parents", text: "שיחת הורים מחר", photo: "", voice: "", audience: "parents", alert: true, at: 2000, bump: 2000, edited: false }
+        ];
+        return pack("parents-msg", "הודעה להורים בלבד", "t-c-h2", corePeople(), [built], "💬");
+      })(),
+      (function () {
+        const built = alonPair(day, normalHomework(day), normalDone(day));
+        built.classrooms[0].messages = [
+          { id: "m-old", text: "הטיול נדחה ליום ג׳", photo: "", voice: "", audience: "class", alert: true, at: 1000, bump: 4000, edited: true },
+          { id: "m-new", text: "להביא ספר", photo: "", voice: "", audience: "class", alert: false, at: 3000, bump: 3000, edited: false }
+        ];
+        return pack("bump-msg", "עדכון והקפצת הודעה", "t-c-h2", corePeople(), [built], "📌");
+      })()
     ];
   }
 

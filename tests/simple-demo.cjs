@@ -42,7 +42,7 @@ assert.deepEqual(yael.kidIds, ["k-noa", "k-tamar"]);
 assert.notEqual(D.findKid(cast.state, "k-noa").room.id, D.findKid(cast.state, "k-tamar").room.id);
 
 const packs = [cast].concat(D.scenarios(today));
-assert.equal(D.scenarios(today).length, 9);
+assert.equal(D.scenarios(today).length, 12);
 for (const pack of packs) {
   assert.equal(pack.state.v, 1);
   assert.ok(Array.isArray(pack.people) && pack.people.length > 0);
@@ -53,7 +53,7 @@ for (const pack of packs) {
 }
 
 const byId = Object.fromEntries(D.scenarios(today).map((pack) => [pack.id, pack]));
-for (const id of ["normal", "stale", "none", "two", "add-class", "add-school", "hidden", "empty", "week"]) assert.ok(byId[id], id);
+for (const id of ["normal", "stale", "none", "two", "add-class", "add-school", "hidden", "empty", "week", "board", "parents-msg", "bump-msg"]) assert.ok(byId[id], id);
 
 const normalKid = D.findKid(byId.normal.state, "k-noa");
 const normalRows = S.rowsFor(normalKid.room, today, normalKid.kid);
@@ -119,6 +119,26 @@ assert.equal(S.rowsFor(weekKid.room, days[3], weekKid.kid).filter((row) => row.s
 assert.equal(S.rowsFor(weekKid.room, days[3], weekKid.kid).filter((row) => row.done).length, 1);
 assert.equal(S.rowsFor(weekKid.room, days[5], weekKid.kid).find((row) => row.subject === S.SUBJECTS[1]).done, true);
 assert.equal(S.rowsFor(weekKid.room, days[5], weekKid.kid).find((row) => row.subject === S.SUBJECTS[0]).done, false);
+
+const boardRows = S.rowsFor(D.findKid(byId.board.state, "k-noa").room, today, null);
+assert.deepEqual(boardRows.map((row) => row.subject), [S.SUBJECTS[0], S.SUBJECTS[1], "אמנות"]);
+assert.equal(boardRows[0].status, "posted");
+assert.equal(boardRows[0].text, "תרגיל 4");
+assert.equal(boardRows[0].photo.indexOf("data:image/"), 0);
+assert.equal(boardRows[0].voice.indexOf("data:audio/"), 0);
+assert.equal(boardRows[1].status, "not-updated");
+assert.equal(boardRows[2].status, "not-updated");
+assert.notEqual(boardRows[1].status, "no-homework");
+const parentsRoom = byId["parents-msg"].state.schools[0].classrooms[0];
+assert.equal(S.messagesFor(parentsRoom, "student").some((item) => item.audience === "parents"), false);
+assert.equal(S.messagesFor(parentsRoom, "student").some((item) => item.text === "מבחן ביום ד׳"), true);
+assert.equal(S.messagesFor(parentsRoom, "parent").some((item) => item.text === "שיחת הורים מחר"), true);
+const bumped = S.messagesFor(byId["bump-msg"].state.schools[0].classrooms[0], "student");
+assert.equal(bumped[0].id, "m-old");
+assert.equal(bumped[0].edited, true);
+assert.equal(bumped[0].text, "הטיול נדחה ליום ג׳");
+assert.ok(bumped[0].bump > bumped[1].bump);
+assert.equal(who(byId.board, byId.board.personId).role, "teacher");
 
 const emojis = D.scenarios(today).map((pack) => pack.emoji);
 assert.equal(emojis.every((emoji) => emoji), true);
