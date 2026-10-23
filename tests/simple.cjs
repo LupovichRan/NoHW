@@ -138,4 +138,22 @@ assert.equal(teacherPack.schools[0].principalCode, "");
 assert.equal(teacherPack.schools[0].classrooms[0].teacherCode, teacherCode);
 assert.equal(teacherPack.schools[0].classrooms[0].kids.length, 2);
 
+const fs = require("node:fs");
+const path = require("node:path");
+const root = path.join(__dirname, "..", "simple");
+const page = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
+const css = fs.readFileSync(path.join(root, "app.css"), "utf8");
+const manifest = fs.readFileSync(path.join(root, "manifest.webmanifest"), "utf8");
+assert.match(page, /<html lang="he" dir="rtl">/);
+assert.match(app, /lang = "he"/);
+assert.match(app, /dir = "rtl"/);
+assert.match(app, /dir="rtl"/);
+assert.match(app, /<bdi dir="ltr">/);
+assert.doesNotMatch(app, /"(NoHW|Admin|Principal|Teacher|Student|Parent)"/);
+assert.doesNotMatch(manifest, /NoHW/);
+assert.doesNotMatch(css, /\b(left|right)\b/);
+assert.match(css, /margin-inline|padding-inline|text-align:\s*start/);
+assert.match(app, /M9 5l7 7-7 7/);
+
 console.log("simple logic ok");

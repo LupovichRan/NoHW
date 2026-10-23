@@ -4,11 +4,11 @@ const ADMIN = "nohw-simple-admin";
 const SES = "nohw-simple-session";
 const STATUS = { "not-updated": "לא עודכן", "no-homework": "אין שיעורים" };
 const ROLES = [
-  ["admin", "אדמין", "Admin", "M12 3l7 3v6c0 4.2-3.1 7.4-7 8.8C8.1 19.4 5 16.2 5 12V6l7-3z"],
-  ["principal", "מנהל", "Principal", "M4 20h16M6 20V5h12v15M9 8h2M13 8h2M9 12h2M13 12h2M10 20v-4h4v4"],
-  ["teacher", "מורה", "Teacher", "M15.2 8.2a3.2 3.2 0 1 1-6.4 0 3.2 3.2 0 0 1 6.4 0zM6 19.2c1.1-2.7 3.2-4 6-4s4.9 1.3 6 4"],
-  ["student", "תלמיד", "Student", ["M4.5 5.5h6A2.5 2.5 0 0 1 13 8v11H7A2.5 2.5 0 0 1 4.5 16.5z", "M13 8h6.5V19H13"]],
-  ["parent", "הורה", "Parent", "M8.2 11.2a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2zM16.4 10.4a2.2 2.2 0 1 1 0-4.4 2.2 2.2 0 0 1 0 4.4zM3.8 18.4c.7-2.1 2.3-3.2 4.4-3.2s3.7 1.1 4.4 3.2M13.2 18.4c.5-1.6 1.7-2.6 3.2-2.6 1.6 0 2.8.9 3.4 2.6"]
+  ["admin", "אדמין", "M12 3l7 3v6c0 4.2-3.1 7.4-7 8.8C8.1 19.4 5 16.2 5 12V6l7-3z"],
+  ["principal", "מנהל", "M4 20h16M6 20V5h12v15M9 8h2M13 8h2M9 12h2M13 12h2M10 20v-4h4v4"],
+  ["teacher", "מורה", "M15.2 8.2a3.2 3.2 0 1 1-6.4 0 3.2 3.2 0 0 1 6.4 0zM6 19.2c1.1-2.7 3.2-4 6-4s4.9 1.3 6 4"],
+  ["student", "תלמיד", ["M4.5 5.5h6A2.5 2.5 0 0 1 13 8v11H7A2.5 2.5 0 0 1 4.5 16.5z", "M13 8h6.5V19H13"]],
+  ["parent", "הורה", "M8.2 11.2a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2zM16.4 10.4a2.2 2.2 0 1 1 0-4.4 2.2 2.2 0 0 1 0 4.4zM3.8 18.4c.7-2.1 2.3-3.2 4.4-3.2s3.7 1.1 4.4 3.2M13.2 18.4c.5-1.6 1.7-2.6 3.2-2.6 1.6 0 2.8.9 3.4 2.6"]
 ];
 const I = {
   back: "M9 5l7 7-7 7",
@@ -21,11 +21,14 @@ let state = S.emptyState();
 let session = null;
 let view = { name: "roles" };
 
-function ico(d) {
+function ico(d, mirror) {
   const paths = Array.isArray(d) ? d : [d];
-  return '<svg viewBox="0 0 24 24" aria-hidden="true">' + paths.map(function (p) {
+  return '<svg class="' + (mirror ? "mirror" : "") + '" viewBox="0 0 24 24" aria-hidden="true">' + paths.map(function (p) {
     return '<path d="' + p + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';
   }).join("") + "</svg>";
+}
+function ltr(value) {
+  return '<bdi dir="ltr">' + esc(value) + "</bdi>";
 }
 function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, function (ch) {
@@ -42,15 +45,15 @@ function readJSON(key) {
 function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
 function saveSession() { localStorage.setItem(SES, JSON.stringify(session)); }
 function render() { document.getElementById("app").innerHTML = html(); }
-function shell(head, body) { return '<section class="app">' + head + body + "</section>"; }
-function bar(title, sub, extra) {
-  return '<header class="top"><button class="icon" type="button" data-act="back" aria-label="החלפת תפקיד">' + ico(I.back) + '</button><div class="titles"><h1>' + esc(title) + "</h1>" + (sub ? "<p>" + esc(sub) + "</p>" : "") + "</div>" + (extra || "") + "</header>";
+function shell(head, body) { return '<section class="app" lang="he" dir="rtl">' + head + body + "</section>"; }
+function bar(title, sub, extra, backLabel) {
+  return '<header class="top"><button class="icon" type="button" data-act="back" aria-label="' + (backLabel || "חזרה") + '">' + ico(I.back) + '</button><div class="titles"><h1>' + esc(title) + "</h1>" + (sub ? "<p>" + esc(sub) + "</p>" : "") + "</div>" + (extra || "") + "</header>";
 }
 function roleMeta(id) { return ROLES.find(function (role) { return role[0] === id; }); }
 function place() {
   if (!session || session.role === "admin") return { title: "בתי ספר" };
   const found = S.identify(state, session.code);
-  if (!found) return { title: "NoHW" };
+  if (!found) return { title: "שיעורי בית" };
   if (session.role === "principal") return { title: "כיתות", sub: found.school.name };
   if (session.role === "teacher") return { title: found.room.name, sub: found.room.teacherName };
   return { title: "היום", sub: found.kid.firstName };
@@ -74,49 +77,49 @@ function shareItems(id) {
 function cards() {
   if (session.role === "admin") {
     return state.schools.map(function (school) {
-      return { id: school.id, title: school.name, meta: school.principalName + " · " + school.principalCode };
+      return { id: school.id, title: school.name, metaHtml: esc(school.principalName) + " · " + ltr(school.principalCode) };
     });
   }
   const found = S.identify(state, session.code);
   if (session.role === "principal") {
     return found.school.classrooms.map(function (room) {
-      return { id: room.id, title: room.name, meta: room.teacherName + " · " + room.teacherCode };
+      return { id: room.id, title: room.name, metaHtml: esc(room.teacherName) + " · " + ltr(room.teacherCode) };
     });
   }
   return found.room.kids.map(function (kid) {
-    return { id: kid.id, title: kid.firstName, meta: "תלמיד " + kid.kidCode + " · הורה " + kid.parentCode };
+    return { id: kid.id, title: kid.firstName, metaHtml: "תלמיד " + ltr(kid.kidCode) + " · הורה " + ltr(kid.parentCode) };
   });
 }
 function rolesHtml() {
   const buttons = ROLES.map(function (role) {
-    return '<button class="role" type="button" data-act="role" data-arg="' + role[0] + '"><span class="badge">' + ico(role[3]) + '</span><span><b>' + role[1] + "</b><small>" + role[2] + "</small></span></button>";
+    return '<button class="role" type="button" data-act="role" data-arg="' + role[0] + '"><span class="badge">' + ico(role[2]) + "</span><b>" + esc(role[1]) + "</b></button>";
   }).join("");
-  return shell('<header class="hero"><h1>שיעורי בית</h1><p>NoHW</p></header>', '<div class="roles">' + buttons + "</div>" + err());
+  return shell('<header class="hero"><h1>שיעורי בית</h1></header>', '<div class="roles">' + buttons + "</div>" + err());
 }
 function codeHtml() {
   const role = roleMeta(view.role);
-  return shell(bar(role[1], role[2]), '<form class="stack"><input class="code-input" name="code" lang="en" dir="ltr" maxlength="6" autocapitalize="characters" autocomplete="off" aria-label="קוד" required>' + err() + '<button class="primary" type="submit">כניסה</button></form>');
+  return shell(bar(role[1], "", "", "החלפת תפקיד"), '<form class="stack"><input class="code-input" name="code" dir="ltr" maxlength="6" autocapitalize="characters" autocomplete="off" aria-label="קוד" required>' + err() + '<button class="primary" type="submit">כניסה</button></form>');
 }
 function listHtml() {
   const info = place();
   const rows = cards();
   const extra = session.role === "teacher" ? '<button class="text" type="button" data-act="day">היום</button>' : "";
   const body = rows.length ? '<div class="list">' + rows.map(function (row) {
-    return '<button class="card" type="button" data-act="open" data-id="' + esc(row.id) + '"><span><strong>' + esc(row.title) + "</strong><small>" + esc(row.meta) + "</small></span></button>";
+    return '<button class="card" type="button" data-act="open" data-id="' + esc(row.id) + '"><span class="who"><strong>' + esc(row.title) + "</strong><small>" + row.metaHtml + "</small></span></button>";
   }).join("") + "</div>" : '<p class="empty">ריק</p>';
-  return shell(bar(info.title, info.sub, extra), body + '<button class="primary" type="button" data-act="add">＋ הוספה</button>');
+  return shell(bar(info.title, info.sub, extra, "החלפת תפקיד"), body + '<button class="primary add" type="button" data-act="add"><span aria-hidden="true">+</span>הוספה</button>');
 }
 function formHtml() {
   const title = session.role === "admin" ? "בית ספר" : session.role === "principal" ? "כיתה" : "ילד";
   const fields = session.role === "admin" ? [["a", "בית הספר", "בית הספר"], ["b", "שם המנהל", "שם המנהל"]] : session.role === "principal" ? [["a", "כיתה", "ה'2"], ["b", "שם המורה", "שם המורה"]] : [["a", "שם פרטי", "שם פרטי"]];
   return shell(bar(title), '<form class="stack">' + fields.map(function (field) {
-    return '<input name="' + field[0] + '" maxlength="40" required placeholder="' + field[2] + '" aria-label="' + field[1] + '">';
+    return '<input name="' + field[0] + '" dir="rtl" maxlength="40" required placeholder="' + field[2] + '" aria-label="' + field[1] + '">';
   }).join("") + err() + '<button class="primary" type="submit">יצירה</button></form>');
 }
 function shareHtml() {
   const blocks = (view.items || []).map(function (item) {
     const copied = view.copied === item.code;
-    return '<div class="block"><span>' + esc(item.label) + (item.hint ? " · " + esc(item.hint) : "") + '</span><p class="big">' + esc(item.code) + '</p><div class="pair"><button class="primary wa" type="button" data-act="wa" data-role="' + item.role + '" data-code="' + esc(item.code) + '">' + ico(I.chat) + "וואטסאפ</button><button class=\"ghost\" type=\"button\" data-act=\"copy\" data-role=\"" + item.role + "\" data-code=\"" + esc(item.code) + "\">" + (copied ? "הועתק" : "העתקה") + "</button></div></div>";
+    return '<div class="block"><span>' + esc(item.label) + (item.hint ? " · " + esc(item.hint) : "") + '</span><p class="big">' + ltr(item.code) + '</p><div class="pair"><button class="primary wa" type="button" data-act="wa" data-role="' + item.role + '" data-code="' + esc(item.code) + '">' + ico(I.chat, true) + "וואטסאפ</button><button class=\"ghost\" type=\"button\" data-act=\"copy\" data-role=\"" + item.role + "\" data-code=\"" + esc(item.code) + "\">" + (copied ? "הועתק" : "העתקה") + "</button></div></div>";
   }).join("");
   return shell(bar("שיתוף"), blocks);
 }
@@ -138,7 +141,7 @@ function dayRows(rows, live) {
 function dayHtml() {
   const info = place();
   const rows = S.dayFor(state, session, today());
-  return shell(bar(info.title, info.sub), '<div class="list">' + dayRows(rows, session.role === "student") + "</div>");
+  return shell(bar(info.title, info.sub, "", "החלפת תפקיד"), '<div class="list">' + dayRows(rows, session.role === "student") + "</div>");
 }
 function homeworkHtml() {
   const found = S.identify(state, session.code);
@@ -147,7 +150,7 @@ function homeworkHtml() {
   const buttons = rows.map(function (row) {
     return '<button class="row' + (row.subject === current.subject ? " on" : "") + '" type="button" data-act="subject" data-subject="' + esc(row.subject) + '"><span><strong>' + esc(row.subject) + "</strong>" + chip(row) + "</span></button>";
   }).join("");
-  return shell(bar("היום", found.room.name), '<form class="stack"><div class="list">' + buttons + '</div><input name="text" maxlength="80" placeholder="שיעורי בית" aria-label="שיעורי בית" value="' + esc(current && current.text) + '">' + err() + '<div class="pair"><button class="primary" type="submit">שמירה</button><button class="ghost" type="button" data-act="none">אין</button></div></form>');
+  return shell(bar("היום", found.room.name), '<form class="stack"><div class="list">' + buttons + '</div><input name="text" dir="rtl" maxlength="80" placeholder="שיעורי בית" aria-label="שיעורי בית" value="' + esc(current && current.text) + '">' + err() + '<div class="pair"><button class="primary" type="submit">שמירה</button><button class="ghost" type="button" data-act="none">אין</button></div></form>');
 }
 function err() { return view.error ? '<p class="err">' + esc(view.error) + "</p>" : ""; }
 function html() {
@@ -168,7 +171,7 @@ function leave() {
 }
 function message(role, code) {
   const url = location.origin + location.pathname + location.search + "#pack=" + S.encodePack(S.packFor(state, role, code));
-  return "קוד " + code + "\n" + url;
+  return "קוד \u2066" + code + "\u2069\n\u2066" + url + "\u2069";
 }
 function onClick(event) {
   const el = event.target.closest("[data-act]");
@@ -248,6 +251,8 @@ function onSubmit(event) {
   render();
 }
 function boot() {
+  document.documentElement.lang = "he";
+  document.documentElement.dir = "rtl";
   const stored = readJSON(KEY);
   state = stored && stored.v === 1 && Array.isArray(stored.schools) ? stored : S.emptyState();
   const token = (location.hash.match(/^#pack=([A-Za-z0-9_-]+)/) || [])[1];

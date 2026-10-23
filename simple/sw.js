@@ -1,4 +1,4 @@
-const CACHE = "nohw-simple-v1";
+const CACHE = "nohw-simple-v2";
 const SHELL = ["./","index.html","app.css","app.js","logic.js","manifest.webmanifest","icon-192.png","icon-512.png"];
 
 self.addEventListener("install", function (event) {
@@ -7,7 +7,9 @@ self.addEventListener("install", function (event) {
 });
 
 self.addEventListener("activate", function (event) {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(caches.keys().then(function (keys) {
+    return Promise.all(keys.filter(function (key) { return key.indexOf("nohw-simple-") === 0 && key !== CACHE; }).map(function (key) { return caches.delete(key); }));
+  }).then(function () { return self.clients.claim(); }));
 });
 
 self.addEventListener("fetch", function (event) {
