@@ -713,6 +713,10 @@ svg.mirror { transform: scaleX(-1); }
 .bubble p, .bubble span { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .bubble.me { background: #dbeafe; border-end-end-radius: 4px; }
 .bubble.bot { background: #f3f6ee; border-end-start-radius: 4px; }
+.bubble.saying { outline: 2px solid #15803d; }
+.voiceset { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.voiceset select { flex: 1; min-width: 0; min-height: 40px; border: 1px solid var(--line); border-radius: 12px; background: #fff; font: inherit; padding: 6px 8px; }
+.voiceset .voicehint { flex: 1 1 100%; margin: 0; color: var(--muted, #64748b); font-size: 14px; }
 .bubble.confirm { border: 2px solid #15803d; background: #f0fdf4; }
 .bubble.tail::after {
   content: "";

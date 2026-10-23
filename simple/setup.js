@@ -1,9 +1,10 @@
 (function (root, factory) {
   const model = typeof module === "object" && module.exports ? require("./logic.js") : root.Nohw;
-  const api = factory(model);
+  const hebrew = typeof module === "object" && module.exports ? require("./avatar-he.js") : root.NohwHebrew;
+  const api = factory(model, hebrew);
   if (typeof module === "object" && module.exports) module.exports = api;
   root.NohwSetup = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function (S) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (S, H) {
   const ALLOW = {
     admin: { "add-school": 1, attention: 1, health: 1, "rename-school": 1, "delete-school": 1, scenarios: 1, reset: 1 },
     principal: { "add-classes": 1, "assign-teacher": 1, "missing-today": 1, "teacher-note": 1 },
@@ -100,7 +101,7 @@
     };
   }
   function deny() {
-    return reply("אין הרשאה", blank(), { forbidden: true });
+    return reply(H.text("deny"), blank(), { forbidden: true });
   }
   function choices(session, chips) {
     const list = chips.slice();
@@ -202,14 +203,14 @@
     if (role === "admin") {
       const schools = (state && state.schools) || [];
       const done = schools.length > 0;
-      return { role: role, complete: done, progress: { done: done ? 1 : 0, total: 1 }, items: [{ id: "school", title: "בית ספר", done: done }] };
+      return { role: role, complete: done, progress: { done: done ? 1 : 0, total: 1 }, items: [{ id: "school", title: H.checklistTitle("school"), done: done }] };
     }
     if (role === "principal") {
       const rooms = ((schoolsOf(state, who)[0] || {}).classrooms) || [];
       const items = [
-        { id: "classes", title: "כיתות", done: rooms.length > 0 },
-        { id: "teachers", title: "מורים", done: rooms.length > 0 && rooms.every(function (room) { return clean(room.teacherName); }) },
-        { id: "timetable", title: "מערכת", done: rooms.length > 0 && rooms.every(hasTable) }
+        { id: "classes", title: H.checklistTitle("classes"), done: rooms.length > 0 },
+        { id: "teachers", title: H.checklistTitle("teachers"), done: rooms.length > 0 && rooms.every(function (room) { return clean(room.teacherName); }) },
+        { id: "timetable", title: H.checklistTitle("timetable"), done: rooms.length > 0 && rooms.every(hasTable) }
       ];
       const count = items.filter(function (item) { return item.done; }).length;
       return { role: role, complete: count === items.length, progress: { done: count, total: items.length }, items: items };
@@ -219,10 +220,10 @@
       const room = found && found.room;
       const kids = (room && room.kids) || [];
       const items = [
-        { id: "timetable", title: "מערכת", done: !!room && hasTable(room) },
-        { id: "kids", title: "ילדים", done: kids.length > 0 },
-        { id: "parents", title: "הורים", done: kids.length > 0 && kids.every(function (kid) { return parentOf(kid, people); }) },
-        { id: "avatar", title: "עוזר", done: !!(room && room.helper && room.helper.face && clean(room.helper.name)) }
+        { id: "timetable", title: H.checklistTitle("timetable"), done: !!room && hasTable(room) },
+        { id: "kids", title: H.checklistTitle("kids"), done: kids.length > 0 },
+        { id: "parents", title: H.checklistTitle("parents"), done: kids.length > 0 && kids.every(function (kid) { return parentOf(kid, people); }) },
+        { id: "avatar", title: H.checklistTitle("avatar"), done: !!(room && room.helper && room.helper.face && clean(room.helper.name)) }
       ];
       const count = items.filter(function (item) { return item.done; }).length;
       return { role: role, complete: !!room && count === items.length, progress: { done: count, total: items.length }, items: items };
@@ -248,25 +249,25 @@
       });
     });
     const rate = slots ? Math.round(100 * posted / slots) : 0;
-    return "בתי ספר " + ((state.schools || []).length) + "\nכיתות " + classes + "\nמורים " + teachers + "\nילדים " + kids + "\nפרסום היום " + rate + "%";
+    return H.health((state.schools || []).length, classes, teachers, kids, rate);
   }
   function attentionText(state, today) {
     const lines = [];
     ((state && state.schools) || []).forEach(function (school) {
       const rooms = school.classrooms || [];
-      if (!rooms.length) lines.push(school.name + ": אין כיתות");
-      else if (!rooms.some(function (room) { return postedWeek(room, today); })) lines.push(school.name + ": אין פרסום השבוע");
+      if (!rooms.length) lines.push(H.noClasses(school.name));
+      else if (!rooms.some(function (room) { return postedWeek(room, today); })) lines.push(H.noPosts(school.name));
     });
-    return lines.length ? lines.join("\n") : "אין בתי ספר שמחכים לתשומת לב";
+    return lines.length ? lines.join("\n") : H.text("attention-clear");
   }
   function missingText(state, who, today) {
     const rooms = ((schoolsOf(state, who)[0] || {}).classrooms) || [];
     const lines = [];
     rooms.forEach(function (room) {
       const waiting = S.rowsFor(room, today, null).filter(function (row) { return row.status === "not-updated"; });
-      if (waiting.length) lines.push(room.name + ": " + waiting.map(function (row) { return row.subject; }).join(", "));
+      if (waiting.length) lines.push(H.missingLine(room.name, waiting.map(function (row) { return row.subject; })));
     });
-    return lines.length ? lines.join("\n") : "כל הכיתות עודכנו היום";
+    return lines.length ? lines.join("\n") : H.text("classes-updated");
   }
   function teacherNote(state, who, today) {
     const rooms = ((schoolsOf(state, who)[0] || {}).classrooms) || [];
@@ -276,25 +277,25 @@
     });
     const school = schoolsOf(state, who)[0];
     const classId = rooms[0] ? rooms[0].id : "";
-    if (!names.length) return { text: "כל הכיתות עודכנו היום.", draft: "", classId: classId };
-    const draft = "שלום המורים, היום עוד לא עודכן: " + names.join(", ") + ".";
-    return { text: "הכנתי טיוטה. השליחה נשארת אצלך.\n" + draft, draft: draft, classId: classId, audience: "class" };
+    if (!names.length) return { text: H.text("classes-updated"), draft: "", classId: classId };
+    const draft = H.staffDraft(names);
+    return { text: H.staffDraftSay(draft), draft: draft, classId: classId, audience: "class" };
   }
   function gapText(found, today) {
-    if (!found) return "אין כיתה";
+    if (!found) return H.text("no-class");
     const waiting = S.rowsFor(found.room, today, null).filter(function (row) { return row.status === "not-updated"; });
-    if (!waiting.length) return "הכל עודכן היום.";
-    return "חסר היום:\n" + waiting.map(function (row) { return row.subject; }).join("\n");
+    if (!waiting.length) return H.text("updated-today");
+    return H.text("missing-today") + "\n" + waiting.map(function (row) { return row.subject; }).join("\n");
   }
   function parentDraft(found, today) {
-    if (!found) return { text: "אין כיתה", draft: "" };
+    if (!found) return { text: H.text("no-class"), draft: "" };
     const lines = [];
     (found.room.kids || []).forEach(function (kid) {
       const left = S.rowsFor(found.room, today, kid).filter(function (row) { return row.status === "posted" && !row.done; });
       if (left.length) lines.push(kid.firstName + ": " + left.map(function (row) { return row.subject; }).join(", "));
     });
-    const draft = lines.length ? "שלום, עוד לא הוכן: " + lines.join("; ") + "." : "שלום, כל מה שפורסם הוכן. כל הכבוד!";
-    return { text: "הכנתי טיוטה להורים. השליחה נשארת אצלך.\n" + draft, draft: draft, classId: found.room.id, audience: "parents" };
+    const draft = H.parentDraftBody(lines);
+    return { text: H.parentDraftSay(draft), draft: draft, classId: found.room.id, audience: "parents" };
   }
   function schoolChips(state) {
     return ((state && state.schools) || []).map(function (school) {
@@ -323,170 +324,171 @@
     if (!allowed(role, flow)) return deny();
     if (flow === "add-school") {
       if (session.step === "ask") {
-        const named = askName(session, text, "schoolName", "principal", "מי המנהל/ת?", "שם המנהל/ת");
-        if (!named) return reply("איך קוראים לבית הספר?", session, { placeholder: "שם בית הספר", back: true, chips: choices(session, []) });
+        const named = askName(session, text, "schoolName", "principal", H.text("ask-principal"), "שם המנהל/ת");
+        if (!named) return reply(H.text("ask-school"), session, { placeholder: "שם בית הספר", back: true, chips: choices(session, []) });
         return reply(named.question, named.session, { placeholder: named.placeholder, back: true, chips: choices(named.session, []) });
       }
       if (session.step === "principal") {
         const named = askName(session, text, "principalName", "confirm", "", "");
-        if (!named) return reply("מי המנהל/ת?", session, { placeholder: "שם המנהל/ת", back: true, chips: choices(session, []) });
+        if (!named) return reply(H.text("ask-principal"), session, { placeholder: "שם המנהל/ת", back: true, chips: choices(session, []) });
         const bag = named.session.bag;
-        return reply("להוסיף את בית הספר " + bag.schoolName + " עם " + bag.principalName + "?", named.session, {
+        const ask = H.confirmSchool(bag.schoolName, bag.principalName);
+        return reply(ask, named.session, {
           chips: confirmChips(),
-          confirm: { title: "להוסיף את בית הספר " + bag.schoolName + " עם " + bag.principalName + "?", action: "add-school", payload: { schoolName: bag.schoolName, principalName: bag.principalName }, done: "נוסף בית הספר " + bag.schoolName + "." }
+          confirm: { title: ask, action: "add-school", payload: { schoolName: bag.schoolName, principalName: bag.principalName }, done: H.addedSchool(bag.schoolName) }
         });
       }
     }
     if (flow === "add-classes") {
       if (session.step === "ask") {
         const names = parseList(text);
-        if (!names.length) return reply("אילו כיתות? אפשר ד׳1-ד׳3 או רשימה.", session, { placeholder: "ד׳1-ד׳3", back: true, chips: choices(session, []) });
+        if (!names.length) return reply(H.text("which-classes"), session, { placeholder: "ד׳1-ד׳3", back: true, chips: choices(session, []) });
         const next = remember(session);
         next.step = "confirm";
         next.bag.names = names;
-        const title = names.length === 1 ? "להוסיף כיתה אחת?" : "להוסיף " + names.length + " כיתות?";
-        return reply(title + "\n" + names.join(", "), next, {
+        const title = H.confirmClasses(names.length);
+        return reply(H.confirmList(title, names), next, {
           chips: confirmChips(),
-          confirm: { title: title, action: "add-classes", payload: { schoolId: who.schoolId || "", names: names }, done: names.length === 1 ? "נוספה כיתה." : "נוספו " + names.length + " כיתות." }
+          confirm: { title: title, action: "add-classes", payload: { schoolId: who.schoolId || "", names: names }, done: H.addedClasses(names.length) }
         });
       }
     }
     if (flow === "assign-teacher") {
       const rooms = (((schoolsOf(state, who)[0] || {}).classrooms) || []).filter(function (room) { return !clean(room.teacherName); });
-      if (!rooms.length && session.step === "ask") return reply("לכל הכיתות יש מורה.", blank(), { chips: setupChips(role) });
+      if (!rooms.length && session.step === "ask") return reply(H.text("all-have-teacher"), blank(), { chips: setupChips(role) });
       if (session.step === "ask") {
         const room = chosen(rooms, text, "class:", function (item) { return item.name; }, opts.resume);
-        if (!room) return reply("לאיזו כיתה?", session, { chips: choices(session, rooms.map(function (item) { return { id: "class:" + item.id, label: item.name }; })), back: true });
+        if (!room) return reply(H.text("which-class"), session, { chips: choices(session, rooms.map(function (item) { return { id: "class:" + item.id, label: item.name }; })), back: true });
         const next = remember(session);
         next.step = "name";
         next.bag.classId = room.id;
         next.bag.className = room.name;
-        return reply("מי המורה של " + room.name + "?", next, { placeholder: "שם המורה", back: true, chips: choices(next, []) });
+        return reply(H.whoTeaches(room.name), next, { placeholder: "שם המורה", back: true, chips: choices(next, []) });
       }
       if (session.step === "name") {
         const teacherName = clean(text);
-        if (!teacherName) return reply("מי המורה של " + session.bag.className + "?", session, { placeholder: "שם המורה", back: true, chips: choices(session, []) });
+        if (!teacherName) return reply(H.whoTeaches(session.bag.className), session, { placeholder: "שם המורה", back: true, chips: choices(session, []) });
         const next = remember(session);
         next.step = "confirm";
         next.bag.teacherName = teacherName;
-        const title = "לשייך את " + teacherName + " ל" + next.bag.className + "?";
+        const title = H.confirmTeacher(teacherName, next.bag.className);
         return reply(title, next, {
           chips: confirmChips(),
-          confirm: { title: title, action: "assign-teacher", payload: { classId: next.bag.classId, className: next.bag.className, teacherName: teacherName }, done: teacherName + " משויך ל" + next.bag.className + "." }
+          confirm: { title: title, action: "assign-teacher", payload: { classId: next.bag.classId, className: next.bag.className, teacherName: teacherName }, done: H.teacherPlaced(teacherName, next.bag.className) }
         });
       }
     }
     if (flow === "rename-school" || flow === "delete-school") {
       const schools = (state && state.schools) || [];
-      if (!schools.length) return reply("אין בתי ספר.", blank(), { chips: setupChips(role) });
+      if (!schools.length) return reply(H.text("no-schools"), blank(), { chips: setupChips(role) });
       if (session.step === "ask") {
         const school = chosen(schools, text, "school:", function (item) { return item.name; }, opts.resume);
-        if (!school) return reply(flow === "delete-school" ? "איזה בית ספר למחוק?" : "איזה בית ספר?", session, { chips: choices(session, schoolChips(state)), back: true });
+        if (!school) return reply(flow === "delete-school" ? H.text("delete-which") : H.text("which-school"), session, { chips: choices(session, schoolChips(state)), back: true });
         const next = remember(session);
         next.bag.schoolId = school.id;
         next.bag.schoolName = school.name;
         next.bag.principalName = school.principalName;
         if (flow === "delete-school") {
           next.step = "confirm";
-          const title = "למחוק את " + school.name + "?";
-          return reply(title, next, { chips: confirmChips(), confirm: { title: title, action: "delete-school", payload: { id: school.id }, done: school.name + " נמחק." } });
+          const title = H.confirmDelete(school.name);
+          return reply(title, next, { chips: confirmChips(), confirm: { title: title, action: "delete-school", payload: { id: school.id }, done: H.deletedSchool(school.name) } });
         }
         next.step = "name";
-        return reply("שם חדש ל" + school.name + "?", next, { placeholder: "שם חדש", back: true, chips: choices(next, []) });
+        return reply(H.renameAsk(school.name), next, { placeholder: "שם חדש", back: true, chips: choices(next, []) });
       }
       if (session.step === "name") {
         const name = clean(text);
-        if (!name) return reply("שם חדש ל" + session.bag.schoolName + "?", session, { placeholder: "שם חדש", back: true, chips: choices(session, []) });
+        if (!name) return reply(H.renameAsk(session.bag.schoolName), session, { placeholder: "שם חדש", back: true, chips: choices(session, []) });
         const next = remember(session);
         next.step = "confirm";
         next.bag.name = name;
-        const title = "לשנות את " + next.bag.schoolName + " ל" + name + "?";
-        return reply(title, next, { chips: confirmChips(), confirm: { title: title, action: "rename-school", payload: { id: next.bag.schoolId, name: name, extra: next.bag.principalName }, done: "השם עודכן." } });
+        const title = H.confirmRename(next.bag.schoolName, name);
+        return reply(title, next, { chips: confirmChips(), confirm: { title: title, action: "rename-school", payload: { id: next.bag.schoolId, name: name, extra: next.bag.principalName }, done: H.text("name-updated") } });
       }
     }
     if (flow === "template") {
       const found = roomOf(state, who);
-      if (!found) return reply("אין כיתה.", blank());
+      if (!found) return reply(H.text("no-class"), blank());
       const slots = templateSlots(found.room.name);
-      const title = "להחיל תבנית ל" + (gradeLetter(found.room.name) || "כיתה") + "?";
+      const shaped = H.confirmTemplate(gradeLetter(found.room.name), slots);
       if (session.step === "ask") {
-        if (opts.resume) return reply("בסדר.", blank(), { chips: setupChips(role) });
+        if (opts.resume) return reply(H.text("ok"), blank(), { chips: setupChips(role) });
         const next = remember(session);
         next.step = "confirm";
-        return reply(title + "\n" + slots.join(", "), next, { chips: confirmChips(), confirm: { title: title, action: "template", payload: { classId: found.room.id, slots: slots }, done: "המערכת הוחלה. אפשר לדייק בלו״ז." } });
+        return reply(shaped.text, next, { chips: confirmChips(), confirm: { title: shaped.title, action: "template", payload: { classId: found.room.id, slots: slots }, done: H.text("template-done") } });
       }
     }
     if (flow === "add-kids") {
       const found = roomOf(state, who);
-      if (!found) return reply("אין כיתה.", blank());
+      if (!found) return reply(H.text("no-class"), blank());
       if (session.step === "ask") {
         const names = parseList(text);
-        if (!names.length) return reply("אילו ילדים? שורה או פסיק.", session, { placeholder: "נועה, עומר", back: true, chips: choices(session, []) });
+        if (!names.length) return reply(H.text("which-kids"), session, { placeholder: "נועה, עומר", back: true, chips: choices(session, []) });
         const next = remember(session);
         next.step = "confirm";
         next.bag.names = names;
-        const title = names.length === 1 ? "להוסיף ילד אחד?" : "להוסיף " + names.length + " ילדים?";
-        return reply(title + "\n" + names.join(", "), next, { chips: confirmChips(), confirm: { title: title, action: "add-kids", payload: { classId: found.room.id, names: names }, done: "הילדים נוספו." } });
+        const title = H.confirmKids(names.length);
+        return reply(H.confirmList(title, names), next, { chips: confirmChips(), confirm: { title: title, action: "add-kids", payload: { classId: found.room.id, names: names }, done: names.length === 1 ? H.text("kid-added") : H.text("kids-added") } });
       }
     }
     if (flow === "add-parent") {
       const found = roomOf(state, who);
       const kids = ((found && found.room.kids) || []).filter(function (kid) { return !parentOf(kid, opts.people || []); });
-      if (!kids.length) return reply("לכל הילדים יש הורה.", blank(), { chips: setupChips(role) });
+      if (!kids.length) return reply(H.text("all-have-parent"), blank(), { chips: setupChips(role) });
       if (session.step === "ask") {
         const kid = chosen(kids, text, "kid:", function (item) { return item.firstName; }, opts.resume);
-        if (!kid) return reply("לאיזה ילד?", session, { chips: choices(session, kids.map(function (item) { return { id: "kid:" + item.id, label: item.firstName }; })), back: true });
+        if (!kid) return reply(H.text("which-kid"), session, { chips: choices(session, kids.map(function (item) { return { id: "kid:" + item.id, label: item.firstName }; })), back: true });
         const next = remember(session);
         next.step = "name";
         next.bag.kidId = kid.id;
         next.bag.kidName = kid.firstName;
-        return reply("מי ההורה של " + kid.firstName + "?", next, { placeholder: "שם ההורה", back: true, chips: choices(next, []) });
+        return reply(H.whoParent(kid.firstName), next, { placeholder: "שם ההורה", back: true, chips: choices(next, []) });
       }
       if (session.step === "name") {
         const parentName = clean(text);
-        if (!parentName) return reply("מי ההורה של " + session.bag.kidName + "?", session, { placeholder: "שם ההורה", back: true, chips: choices(session, []) });
+        if (!parentName) return reply(H.whoParent(session.bag.kidName), session, { placeholder: "שם ההורה", back: true, chips: choices(session, []) });
         const next = remember(session);
         next.step = "confirm";
         next.bag.parentName = parentName;
-        const title = "להוסיף את " + parentName + " כהורה של " + next.bag.kidName + "?";
-        return reply(title, next, { chips: confirmChips(), confirm: { title: title, action: "add-parent", payload: { kidId: next.bag.kidId, parentName: parentName }, done: parentName + " נוסף." } });
+        const title = H.confirmParent(parentName, next.bag.kidName);
+        return reply(title, next, { chips: confirmChips(), confirm: { title: title, action: "add-parent", payload: { kidId: next.bag.kidId, parentName: parentName }, done: H.parentAdded(parentName) } });
       }
     }
     if (flow === "avatar") {
       const found = roomOf(state, who);
-      if (!found) return reply("אין כיתה.", blank());
+      if (!found) return reply(H.text("no-class"), blank());
       if (session.step === "ask") {
         const face = String(text || "").replace(/^face:/, "");
         if (!FACES[face]) {
-          return reply("אילו פנים?", session, { chips: choices(session, Object.keys(FACES).map(function (id) { return { id: "face:" + id, label: FACES[id] }; })), back: true });
+          return reply(H.text("which-face"), session, { chips: choices(session, Object.keys(FACES).map(function (id) { return { id: "face:" + id, label: FACES[id] }; })), back: true });
         }
         const next = remember(session);
         next.step = "name";
         next.bag.face = face;
-        return reply("איך קוראים ל" + FACES[face] + "?", next, { placeholder: "שם העוזר", back: true, chips: choices(next, []) });
+        return reply(H.nameFace(FACES[face]), next, { placeholder: "שם העוזר", back: true, chips: choices(next, []) });
       }
       if (session.step === "name") {
         const name = clean(text);
-        if (!name) return reply("איך קוראים לעוזר?", session, { placeholder: "שם העוזר", back: true, chips: choices(session, []) });
+        if (!name) return reply(H.text("ask-helper-name"), session, { placeholder: "שם העוזר", back: true, chips: choices(session, []) });
         const next = remember(session);
         next.step = "confirm";
         next.bag.name = name;
-        const title = "לשמור " + FACES[next.bag.face] + " בשם " + name + "?";
-        return reply(title, next, { chips: confirmChips(), confirm: { title: title, action: "avatar", payload: { classId: found.room.id, face: next.bag.face, name: name }, done: "העוזר נשמר." } });
+        const title = H.confirmFace(FACES[next.bag.face], name);
+        return reply(title, next, { chips: confirmChips(), confirm: { title: title, action: "avatar", payload: { classId: found.room.id, face: next.bag.face, name: name }, done: H.text("helper-saved") } });
       }
     }
     if (flow === "none-day") {
       const found = roomOf(state, who);
-      if (!found) return reply("אין כיתה.", blank());
+      if (!found) return reply(H.text("no-class"), blank());
       if (session.step === "ask") {
-        if (opts.resume) return reply("בסדר.", blank(), { chips: setupChips(role) });
+        if (opts.resume) return reply(H.text("ok"), blank(), { chips: setupChips(role) });
         const next = remember(session);
         next.step = "confirm";
-        const title = "לסמן אין שיעורים להיום?";
-        return reply(title, next, { chips: confirmChips(), confirm: { title: title, action: "none-day", payload: { classId: found.room.id, date: today }, done: "סומן אין שיעורים להיום." } });
+        const title = H.text("none-day");
+        return reply(title, next, { chips: confirmChips(), confirm: { title: title, action: "none-day", payload: { classId: found.room.id, date: today }, done: H.text("marked-none") } });
       }
     }
-    return reply("אפשר לבחור פעולה.", blank(), { chips: setupChips(role) });
+    return reply(H.text("choose"), blank(), { chips: setupChips(role) });
   }
   function guide(state, who, session, text, opts) {
     opts = opts || {};
@@ -495,23 +497,23 @@
     if (!state || !who || !ALLOW[role] || !today) return deny();
     if (opts.back) {
       const prev = backSession(session || blank());
-      if (!prev.flow) return reply("בסדר.", blank(), { chips: setupChips(role) });
+      if (!prev.flow) return reply(H.text("ok"), blank(), { chips: setupChips(role) });
       const resumed = {};
       Object.keys(opts).forEach(function (key) { resumed[key] = opts[key]; });
       resumed.back = false;
       resumed.resume = true;
       return flowStep(state, who, prev, "", resumed);
     }
-    if (opts.declined) return reply("בסדר, לא שיניתי.", blank(), { chips: setupChips(role) });
-    if (opts.applied) return reply(opts.done || "בוצע.", blank(), { chips: setupChips(role) });
+    if (opts.declined) return reply(H.text("declined"), blank(), { chips: setupChips(role) });
+    if (opts.applied) return reply(opts.done || H.text("done"), blank(), { chips: setupChips(role) });
     const intent = opts.intent || "";
     if (ENTRY[intent]) {
       const flow = ENTRY[intent];
       if (!allowed(role, flow)) return deny();
       if (flow === "attention") return reply(attentionText(state, today), blank(), { chips: setupChips(role) });
       if (flow === "health") return reply(healthText(state, today), blank(), { chips: setupChips(role) });
-      if (flow === "scenarios") return reply("עוברים לתרחישים.", blank(), { go: { name: "data" }, chips: setupChips(role) });
-      if (flow === "reset") return reply("עוברים לאיפוס.", blank(), { go: { name: "reset" }, chips: setupChips(role) });
+      if (flow === "scenarios") return reply(H.text("go-scenarios"), blank(), { go: { name: "data" }, chips: setupChips(role) });
+      if (flow === "reset") return reply(H.text("go-reset"), blank(), { go: { name: "reset" }, chips: setupChips(role) });
       if (flow === "missing-today") return reply(missingText(state, who, today), blank(), { chips: setupChips(role) });
       if (flow === "teacher-note") {
         const note = teacherNote(state, who, today);
@@ -525,7 +527,7 @@
       return flowStep(state, who, { flow: flow, step: "ask", bag: {}, history: [] }, "", opts);
     }
     if (session && session.flow) return flowStep(state, who, session, text, opts);
-    return reply("אפשר לבחור פעולה.", blank(), { chips: setupChips(role) });
+    return reply(H.text("choose"), blank(), { chips: setupChips(role) });
   }
 
   return { allowed: allowed, setupChips: setupChips, parseList: parseList, templateSlots: templateSlots, checklist: checklist, guide: guide };

@@ -2,11 +2,11 @@
 
 Date: 23 October 2026. Build under test is the `simple` branch, the Hebrew PWA in `simple/`. Nothing was merged.
 
-The report covers the final build: the approved product changes (principal home, scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, profile photos) and the class assistant, עוזר הכיתה. The assistant organizes a short digest for each role, can remind them from the class data already on the device, and walks an admin, a principal, and a teacher through setup. Every reply is an RTL Hebrew chat: the avatar's bubbles sit by the face with a tail, the person's replies sit on the other side, a short typing indicator plays before the avatar speaks, and a long answer is several short bubbles. Read-aloud uses he-IL. It does not call a language model, use an API key, or open a network request. A change waits for כן. A reliable background push still needs a backend later; reminders fire while the app is open and are checked again on open.
+The report covers the final build: the approved product changes (principal home, scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, profile photos) and the class assistant, עוזר הכיתה. The assistant organizes a short digest for each role, can remind them from the class data already on the device, and walks an admin, a principal, and a teacher through setup. Every reply is an RTL Hebrew chat: the avatar's bubbles sit by the face with a tail, the person's replies sit on the other side, a short typing indicator plays before the avatar speaks, and a long answer is several short bubbles. The lines live in `simple/avatar-he.js` and are listed in `docs/avatar-hebrew-lines.md`. Read-aloud is off until turned on, speaks he-IL bubble by bubble, and prefers the best installed Hebrew voice. A pronunciation dictionary is used only for the spoken text. The voice is only as good as the device's Hebrew voice. It does not call a language model, use an API key, or open a network request. A change waits for כן. A reliable background push still needs a backend later; reminders fire while the app is open and are checked again on open.
 
 ## How it was run
 
-- Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`, `node tests/assist.cjs`, `node tests/setup.cjs`.
+- Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`, `node tests/assist.cjs`, `node tests/setup.cjs`, `node tests/speak-he.cjs`.
 - Browser walk at 390×844 in headless Chromium: `node tests/e2e/walk.mjs` against a local static server. 60 checks passed, 0 failed. WebKit is not installed in this environment, so that browser was not run.
 - axe-core on the start hub, the principal home, the timetable, a student day, the message list, the profile sheet, the assistant chat as a student, a parent, and a principal, and the teacher setup screen. No serious or critical violations.
 - Lighthouse mobile, local server, two runs: performance 90, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA).
@@ -77,6 +77,7 @@ The report covers the final build: the approved product changes (principal home,
 | A range such as ד׳1-ד׳3 and a pasted list of names become separate entities | Pass |
 | The avatar shows setup progress until the checklist is complete, then the daily digest returns | Pass |
 | Digest, answers, reminders, setup steps, and confirmations are RTL Hebrew bubbles with a tail, a typing indicator, and the person's reply on the other side. Read-aloud uses he-IL | Pass |
+| Avatar lines are in `simple/avatar-he.js`. Spoken text expands grades, hours, and numbers, strips emoji, and is not shown with niqqud. Students start muted | Pass |
 
 ## Bugs found and fixed
 
@@ -96,7 +97,8 @@ The report covers the final build: the approved product changes (principal home,
 
 | Risk | Severity | Notes |
 | --- | --- | --- |
-| Web Speech may send audio to the browser's own speech service | Medium | The app does not upload homework or chat text. Recording, read-aloud, and the assistant microphone use the browser's speech APIs. The recording screen and the chat say the browser may use its own speech service. |
+| Web Speech may send audio to the browser's own speech service | Medium | The app does not upload homework or chat text. Recording, read-aloud, and the assistant microphone use the browser's speech APIs. The recording screen and the chat say the browser may use its own speech service. Hebrew pronunciation is only as good as the installed he-IL voice. Fixed phrases can later be replaced by pre-generated neural clips without changing the phrase ids. |
+| Read-aloud quality varies by device | Low | There is no bundled Hebrew voice. The picker ranks Google or Microsoft he-IL voices when they exist and otherwise uses speechSynthesis. Dynamic lines still need a backend voice in a later version. |
 | A `#pack=` link can still change the local demo | Low | The pack cannot run code or pollute prototypes. It can merge names and homework into the on-device demo, which has no accounts. |
 | Most of the page is drawn with `innerHTML` | Low | User-entered strings go through `esc()`. The assistant chat, digest, reminder banner, notification card, and setup confirmations set questions, answers, and names with `textContent`. A later edit that interpolates a field without `esc()` would be an XSS bug. The CSP blocks injected scripts. |
 | Reminders do not arrive if the app is closed | Low | Times are stored on the device and checked with `setTimeout` while the app is open, plus a catch-up when it opens. The reminder settings and the demo script say a reliable background push needs a backend later. |

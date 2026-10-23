@@ -71,7 +71,46 @@ function saveStore() {
     toast(full ? "האחסון מלא" : "השמירה נכשלה");
   }
 }
+function fillVoices(select) {
+  if (!select || !window.NohwSpeak || !window.NohwHebrew) return;
+  window.NohwSpeak.ensureVoices(function (voices) {
+    if (!select.isConnected) return;
+    const ranked = window.NohwSpeak.rankVoices(voices);
+    const current = speechPref().voice;
+    select.textContent = "";
+    const auto = document.createElement("option");
+    auto.value = "";
+    auto.textContent = ranked.length ? window.NohwHebrew.text("voice-best") : window.NohwHebrew.text("voice-empty");
+    select.appendChild(auto);
+    ranked.forEach(function (voice) {
+      const option = document.createElement("option");
+      option.value = voice.name;
+      option.textContent = voice.name;
+      select.appendChild(option);
+    });
+    select.value = current && ranked.some(function (voice) { return voice.name === current; }) ? current : "";
+  });
+}
+function speechPref() {
+  if (!person) return { on: false, voice: "" };
+  const saved = assist.speech && assist.speech[person.id];
+  if (saved && typeof saved.on === "boolean") return { on: !!saved.on, voice: String(saved.voice || "") };
+  return { on: false, voice: "" };
+}
+function applySpeechPref() {
+  const pref = speechPref();
+  view.readAloud = !!pref.on;
+  if (window.NohwSpeak) window.NohwSpeak.setPreferredVoice(pref.voice);
+}
+function saveSpeech(next) {
+  if (!person) return;
+  if (!assist.speech) assist.speech = {};
+  assist.speech[person.id] = { on: !!next.on, voice: String(next.voice || "") };
+  saveAssist();
+  applySpeechPref();
+}
 function render() {
+  applySpeechPref();
   document.getElementById("app").innerHTML = html();
   if (view.recording) paintRecording();
   if (view.chat) paintChat();
@@ -270,24 +309,57 @@ function helperWho() {
   return who;
 }
 function hush() {
-  if (window.speechSynthesis) {
+  if (window.NohwSpeak) window.NohwSpeak.cancel();
+  else if (window.speechSynthesis) {
     try { window.speechSynthesis.cancel(); } catch (e) {}
   }
+  document.querySelectorAll(".bubble.saying").forEach(function (node) { node.classList.remove("saying"); });
   const face = document.querySelector(".chatsheet .helperface");
   if (face) face.classList.remove("talking");
 }
-function speakAnswer(text) {
-  hush();
-  if (!view.readAloud || !window.speechSynthesis || !text) return;
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = "he-IL";
-  const voices = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
-  const hebrew = (voices || []).filter(function (item) { return /^he([-_]|$)/i.test(item.lang || ""); })[0];
-  if (hebrew) utter.voice = hebrew;
+function markSaying(bubble, on) {
+  document.querySelectorAll(".bubble.saying").forEach(function (node) { node.classList.remove("saying"); });
   const face = document.querySelector(".chatsheet .helperface");
-  utter.onstart = function () { if (face) face.classList.add("talking"); };
-  utter.onend = function () { if (face) face.classList.remove("talking"); };
-  try { window.speechSynthesis.speak(utter); } catch (e) {}
+  if (face) face.classList.toggle("talking", !!on);
+  if (bubble && on) bubble.classList.add("saying");
+}
+function speakBubbles(bubbles) {
+  hush();
+  if (!view.readAloud || !window.NohwSpeak || !bubbles || !bubbles.length) return;
+  const items = bubbles.map(function (bubble) {
+    return { id: bubble.dataset.phrase || "", text: bubble.dataset.say || "" };
+  }).filter(function (item) { return item.text; });
+  if (!items.length) return;
+  window.NohwSpeak.speakQueue(items, {
+    phrase: function (index) {
+      const match = bubbles.filter(function (bubble) { return bubble.dataset.say; })[index];
+      markSaying(match, true);
+    },
+    done: function () { markSaying(null, false); }
+  });
+}
+function speakLatest() {
+  const turns = document.querySelectorAll(".chatsheet .turn.bot");
+  const last = turns[turns.length - 1];
+  if (!last) return;
+  speakBubbles([].slice.call(last.querySelectorAll(".bubble")));
+}
+function speakSample() {
+  const sample = window.NohwHebrew ? window.NohwHebrew.text("voice-test") : "";
+  if (!sample || !window.NohwSpeak) return;
+  const was = view.readAloud;
+  view.readAloud = true;
+  window.NohwSpeak.speakQueue([{ id: "voice-test", text: sample }], {
+    phrase: function () {
+      const face = document.querySelector(".chatsheet .helperface");
+      if (face) face.classList.add("talking");
+    },
+    done: function () {
+      const face = document.querySelector(".chatsheet .helperface");
+      if (face) face.classList.remove("talking");
+      view.readAloud = was;
+    }
+  });
 }
 function talkLines(text) {
   return String(text || "").split(/\n+/).map(function (line) { return line.trim(); }).filter(Boolean);
@@ -324,6 +396,9 @@ function buildTurn(kind, lines, opts) {
     if (line) {
       const text = document.createElement("p");
       text.textContent = line;
+      bubble.dataset.say = line;
+      const phrase = window.NohwHebrew && window.NohwHebrew.idFor(line);
+      if (phrase) bubble.dataset.phrase = phrase;
       bubble.appendChild(text);
     }
     if (last && opts.fill) opts.fill(bubble);
@@ -381,14 +456,14 @@ function askHelper(opts) {
   view.chat = true;
   armReminders();
   render();
-  if (view.readAloud) speakAnswer(answer.text);
+  if (view.readAloud) speakLatest();
 }
 function askSetup(who, typed, intent, choiceLabel) {
   if (setupPending && !intent) {
     if (typed === "כן") { applySetup(setupPending); return; }
     if (typed === "לא") { declineSetup(); return; }
     if (typed) chatLog.push({ role: "me", text: typed });
-    pushBot(setupPending.title || "כן או לא?", { confirm: true });
+    pushBot(setupPending.title || (window.NohwHebrew ? window.NohwHebrew.text("yes-or-no") : ""), { confirm: true });
     view.chat = true;
     render();
     return;
@@ -421,7 +496,7 @@ function showSetup(turn, typed, intent, choiceLabel) {
   }
   view.chat = true;
   render();
-  if (view.readAloud) speakAnswer(turn.text);
+  if (view.readAloud) speakLatest();
 }
 function declineSetup() {
   const who = helperWho();
@@ -493,7 +568,7 @@ function applySetup(pending) {
       });
     }
   } catch (e) {
-    failed = e && e.message === "forbidden" ? "אין הרשאה" : "לא בוצע.";
+    failed = e && e.message === "forbidden" ? (window.NohwHebrew ? window.NohwHebrew.text("deny") : "") : (window.NohwHebrew ? window.NohwHebrew.text("not-done") : "");
   }
   if (failed) {
     setupPending = null;
@@ -505,7 +580,7 @@ function applySetup(pending) {
   }
   saveStore();
   const who = helperWho();
-  const turn = who ? G.guide(state, who, {}, "", { today: D.schoolDay(today()), applied: true, done: pending.done, people: people }) : { text: pending.done || "בוצע.", session: { flow: "", step: "", bag: {}, history: [] }, chips: [] };
+  const turn = who ? G.guide(state, who, {}, "", { today: D.schoolDay(today()), applied: true, done: pending.done, people: people }) : { text: pending.done || (window.NohwHebrew ? window.NohwHebrew.text("done") : ""), session: { flow: "", step: "", bag: {}, history: [] }, chips: [] };
   chatLog.push({ role: "me", text: "כן" });
   wizard = turn;
   setupPending = null;
@@ -562,7 +637,7 @@ function paintChat() {
   if (settingUp) log.appendChild(buildSetupCard(setupStatus(), false));
   else if (card) log.appendChild(buildDigest(card));
   if (!chatLog.length && !settingUp && !(card && card.greeting)) {
-    log.appendChild(buildTurn("bot", ["היי, אפשר לשאול על הכיתה."], { face: helper.face }));
+    log.appendChild(buildTurn("bot", [window.NohwHebrew.text("chat-hello")], { face: helper.face }));
   }
   chatLog.forEach(function (turn) {
     const kind = turn.role === "me" ? "me" : "bot";
@@ -669,6 +744,20 @@ function paintChat() {
   const hint = document.createElement("p");
   hint.className = "hint";
   hint.textContent = speechCtor() ? "הדפדפן עשוי להשתמש בשירות דיבור משלו" : "הדיבור לא זמין בדפדפן זה";
+  const voiceBox = document.createElement("div");
+  voiceBox.className = "voiceset";
+  const voicePick = document.createElement("select");
+  voicePick.setAttribute("aria-label", "קול");
+  const voiceTest = document.createElement("button");
+  voiceTest.type = "button";
+  voiceTest.dataset.act = "helper-voice-test";
+  voiceTest.textContent = "בדיקת קול";
+  const voiceNote = document.createElement("p");
+  voiceNote.className = "voicehint";
+  voiceNote.textContent = window.NohwHebrew.text(person && person.role === "student" ? "voice-hint" : "voice-device");
+  voiceBox.appendChild(voicePick);
+  voiceBox.appendChild(voiceTest);
+  voiceBox.appendChild(voiceNote);
   const botTurns = log.querySelectorAll(".turn.bot");
   const lastBot = botTurns.length ? botTurns[botTurns.length - 1].querySelector(".bubbles") : null;
   if (lastBot) lastBot.appendChild(chips);
@@ -677,7 +766,13 @@ function paintChat() {
   sheet.appendChild(log);
   sheet.appendChild(form);
   sheet.appendChild(tools);
+  sheet.appendChild(voiceBox);
   sheet.appendChild(hint);
+  fillVoices(voicePick);
+  voicePick.addEventListener("change", function () {
+    const pref = speechPref();
+    saveSpeech({ on: pref.on, voice: voicePick.value || "" });
+  });
   const prefs = document.createElement("button");
   prefs.type = "button";
   prefs.dataset.act = "helper-prefs";
@@ -813,11 +908,12 @@ function loadAssist() {
     prefs: raw.prefs && typeof raw.prefs === "object" ? raw.prefs : {},
     custom: Array.isArray(raw.custom) ? raw.custom.filter(function (item) { return item && /^\d{2}:\d{2}$/.test(item.time); }).slice(0, 40) : [],
     seen: raw.seen && typeof raw.seen === "object" ? raw.seen : {},
-    fired: raw.fired && typeof raw.fired === "object" ? raw.fired : {}
+    fired: raw.fired && typeof raw.fired === "object" ? raw.fired : {},
+    speech: raw.speech && typeof raw.speech === "object" ? raw.speech : {}
   };
 }
 function saveAssist() {
-  try { localStorage.setItem(ASSIST, JSON.stringify({ prefs: assist.prefs, custom: assist.custom, seen: assist.seen, fired: assist.fired })); }
+  try { localStorage.setItem(ASSIST, JSON.stringify({ prefs: assist.prefs, custom: assist.custom, seen: assist.seen, fired: assist.fired, speech: assist.speech })); }
   catch (e) {}
 }
 function currentPref() {
@@ -991,9 +1087,9 @@ function buildSetupCard(status, withButton) {
   box.className = "setupcard";
   box.lang = "he";
   box.dir = "rtl";
-  const lines = ["היי, נמשיך בהקמה.", "הקמה " + status.progress.done + "/" + status.progress.total];
+  const lines = [window.NohwHebrew.text("setup-hello"), window.NohwHebrew.setupProgress(status.progress.done, status.progress.total)];
   (status.items || []).forEach(function (item) {
-    lines.push((item.done ? "✓ " : "○ ") + item.title);
+    lines.push(window.NohwHebrew.setupItem(item.done, item.title));
   });
   box.appendChild(buildTurn("bot", lines, {
     face: helperLook(helperContext()).face,
@@ -1001,7 +1097,7 @@ function buildSetupCard(status, withButton) {
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.act = "helper";
-      button.textContent = "המשך הקמה";
+      button.textContent = window.NohwHebrew.text("setup-go");
       bubble.appendChild(button);
     } : null
   }));
@@ -2189,9 +2285,19 @@ function onClick(event) {
     return;
   }
   if (act === "helper-read") {
-    view.readAloud = !view.readAloud;
+    const pref = speechPref();
+    saveSpeech({ on: !pref.on, voice: pref.voice });
     if (!view.readAloud) hush();
     render();
+    return;
+  }
+  if (act === "helper-voice") {
+    const pref = speechPref();
+    saveSpeech({ on: pref.on, voice: el.value || "" });
+    return;
+  }
+  if (act === "helper-voice-test") {
+    speakSample();
     return;
   }
   if (act === "helper-mic") { startChatMic(); return; }

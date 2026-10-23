@@ -1,10 +1,11 @@
 (function (root, factory) {
   const model = typeof module === "object" && module.exports ? require("./logic.js") : root.Nohw;
-  const api = factory(model);
+  const hebrew = typeof module === "object" && module.exports ? require("./avatar-he.js") : root.NohwHebrew;
+  const api = factory(model, hebrew);
   if (typeof module === "object" && module.exports) module.exports = api;
   root.NohwAssist = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function (S) {
-  const FALLBACK = "אני יודע רק מה שקשור לכיתה 😊";
+})(typeof globalThis !== "undefined" ? globalThis : this, function (S, H) {
+  const FALLBACK = H.FALLBACK;
   const DAY = ["יום א׳", "יום ב׳", "יום ג׳", "יום ד׳", "יום ה׳", "יום ו׳", "שבת"];
   const ROLES = {
     student: [
@@ -181,9 +182,7 @@
     voicesList.forEach(function (item) { pushVoice(voices, item); });
   }
   function postedLine(row) {
-    if (row.status === "posted") return row.subject + ": " + (row.text || "פורסם");
-    if (row.status === "no-homework") return row.subject + ": אין שיעורים";
-    return row.subject + ": לא עודכן";
+    return H.postedLine(row);
   }
   function unfinished(room, date) {
     const lines = [];
@@ -205,25 +204,25 @@
       const date = S.nextSchoolDay(today);
       const rows = S.rowsFor(room, date, kid);
       takeRows(rows, photos, voices);
-      const body = rows.length ? rows.map(postedLine).join("\n") : "אין שיעורים למחר.";
-      return answer("מחר, " + dayLabel(date) + ":\n" + body, photos, voices);
+      const body = rows.length ? rows.map(postedLine) : [];
+      return answer(H.tomorrowWork(dayLabel(date), body), photos, voices);
     }
     if (intent === "tomorrow-lessons") {
       const date = S.nextSchoolDay(today);
       const names = lessons(room, date);
-      return answer("מחר בלו״ז, " + dayLabel(date) + ":\n" + names.join("\n"));
+      return answer(H.tomorrowLessons(dayLabel(date), names));
     }
     if (intent === "left") {
       const rows = S.rowsFor(room, today, kid).filter(function (row) { return row.status === "posted" && !row.done; });
       takeRows(rows, photos, voices);
-      if (!rows.length) return answer("לא נשאר לך כלום להיום 🎉");
-      return answer("נשאר לך:\n" + rows.map(function (row) { return row.subject + ": " + (row.text || "פורסם"); }).join("\n"), photos, voices);
+      if (!rows.length) return answer(H.text("nothing-left"));
+      return answer(H.leftWork(rows.map(function (row) { return H.kidLeftLine(row.subject, row.text); })), photos, voices);
     }
     if (intent === "messages") {
       const msgs = S.messagesFor(room, "student").slice(0, 5);
       msgs.forEach(function (msg) { takeMessage(msg, photos, voices); });
-      if (!msgs.length) return answer("אין הודעות חדשות.");
-      return answer("מהמורה:\n" + msgs.map(function (msg) { return msg.text || "הודעה"; }).join("\n"), photos, voices);
+      if (!msgs.length) return answer(H.text("no-messages"));
+      return answer(H.fromTeacher(msgs.map(function (msg) { return msg.text || H.text("message-word"); })), photos, voices);
     }
     if (intent === "streak") {
       const dates = weekDates(today).filter(function (item) { return item <= today; }).reverse();
@@ -237,7 +236,7 @@
       }
       const todayRows = S.rowsFor(room, today, kid).filter(function (row) { return row.status === "posted"; });
       const done = todayRows.filter(function (row) { return row.done; }).length;
-      return answer("הרצף שלך: " + count + ".\nהיום הוכנו " + done + " מתוך " + todayRows.length + ".");
+      return answer(H.streak(count, done, todayRows.length));
     }
     return null;
   }
@@ -249,11 +248,11 @@
       const blocks = kids.map(function (found) {
         const rows = S.rowsFor(found.room, today, found.kid);
         const body = rows.map(function (row) {
-          if (row.status === "posted") return row.subject + ": " + (row.text || "פורסם") + " · " + (row.done ? "הוכן" : "עוד לא");
-          if (row.status === "no-homework") return row.subject + ": אין שיעורים";
-          return row.subject + ": לא עודכן";
+          if (row.status === "posted") return H.kidStatusLine(found.kid.firstName, row.subject, row.text, row.done);
+          if (row.status === "no-homework") return H.kidNoHomework(row.subject);
+          return H.kidNotUpdated(row.subject);
         }).join("\n");
-        return found.kid.firstName + ":\n" + body;
+        return H.kidBlock(found.kid.firstName, body);
       });
       return answer(blocks.join("\n\n"));
     }
@@ -261,8 +260,8 @@
       const blocks = kids.map(function (found) {
         const rows = S.rowsFor(found.room, today, found.kid).filter(function (row) { return row.status === "posted" && !row.done; });
         takeRows(rows, photos, voices);
-        if (!rows.length) return found.kid.firstName + ": הכל הוכן";
-        return found.kid.firstName + ":\n" + rows.map(function (row) { return row.subject + ": " + (row.text || "פורסם"); }).join("\n");
+        if (!rows.length) return H.allPrepared(found.kid.firstName);
+        return H.kidBlock(found.kid.firstName, rows.map(function (row) { return H.kidLeftLine(row.subject, row.text); }).join("\n"));
       });
       return answer(blocks.join("\n\n"), photos, voices);
     }
@@ -274,8 +273,8 @@
         seen[found.room.id] = 1;
         const msgs = S.messagesFor(found.room, "parent").slice(0, 5);
         msgs.forEach(function (msg) { takeMessage(msg, photos, voices); });
-        const body = msgs.length ? msgs.map(function (msg) { return msg.text || "הודעה"; }).join("\n") : "אין הודעות";
-        blocks.push(found.room.name + ":\n" + body);
+        const body = msgs.length ? msgs.map(function (msg) { return msg.text || H.text("message-word"); }).join("\n") : H.text("no-messages-short");
+        blocks.push(H.roomMessages(found.room.name, body));
       });
       return answer(blocks.join("\n\n"), photos, voices);
     }
@@ -291,7 +290,7 @@
             if (row.done) done += 1;
           });
         });
-        return found.kid.firstName + " השבוע: " + done + " הוכנו מתוך " + posted + ".";
+        return H.weekLine(found.kid.firstName, done, posted);
       });
       return answer(blocks.join("\n"));
     }
@@ -303,23 +302,23 @@
     const voices = [];
     if (intent === "unposted") {
       const missing = S.rowsFor(room, today, null).filter(function (row) { return row.status === "not-updated"; });
-      if (!missing.length) return answer("הכל פורסם להיום.");
-      return answer("עוד לא פורסם היום:\n" + missing.map(function (row) { return row.subject; }).join("\n"));
+      if (!missing.length) return answer(H.text("all-posted"));
+      return answer(H.notPosted(missing.map(function (row) { return row.subject; })));
     }
     if (intent === "unfinished" || intent === "remind") {
       const lines = unfinished(room, today);
       if (intent === "remind") {
-        const draft = lines.length ? "תזכורת: עוד לא הוכן — " + lines.join("; ") + "." : "תזכורת: כל מה שפורסם הוכן. כל הכבוד!";
-        return answer("הכנתי טיוטה.\nהשליחה נשארת אצלך, ידנית.\n" + draft, [], [], draft);
+        const draft = H.remindDraft(lines);
+        return answer(H.draftIntro(draft), [], [], draft);
       }
-      if (!lines.length) return answer("כולם סיימו את מה שפורסם.");
-      return answer("עוד לא סיימו:\n" + lines.join("\n"));
+      if (!lines.length) return answer(H.text("all-finished"));
+      return answer(H.notFinished(lines));
     }
     if (intent === "messages") {
       const msgs = S.messagesFor(room, "teacher").slice(0, 5);
       msgs.forEach(function (msg) { takeMessage(msg, photos, voices); });
-      if (!msgs.length) return answer("עוד לא שלחת הודעות.");
-      return answer("שלחת:\n" + msgs.map(function (msg) { return msg.text || "הודעה"; }).join("\n"), photos, voices);
+      if (!msgs.length) return answer(H.text("none-sent"));
+      return answer(H.sentList(msgs.map(function (msg) { return msg.text || H.text("message-word"); })), photos, voices);
     }
     return null;
   }
@@ -337,7 +336,7 @@
     const posted = rows.filter(function (row) { return row.status === "posted"; }).length;
     const waiting = rows.filter(function (row) { return row.status === "not-updated"; }).length;
     const none = rows.filter(function (row) { return row.status === "no-homework"; }).length;
-    return room.name + " היום:\nפורסם " + posted + "\nלא עודכן " + waiting + "\nאין שיעורים " + none + "\nהוכן " + done + " מתוך " + possible;
+    return H.classStatus(room.name, posted, waiting, none, done, possible);
   }
   function cardItem(id, title, text, go, extra) {
     extra = extra || {};
@@ -352,8 +351,7 @@
     };
   }
   function subjectPhrase(count) {
-    if (count === 1) return "מקצוע אחד לא עודכן";
-    return count + " מקצועות לא עודכנו";
+    return H.subjectPhrase(count);
   }
   function postedToday(room, date, kid) {
     return S.rowsFor(room, date, kid).filter(function (row) { return row.status === "posted"; });
@@ -368,11 +366,11 @@
         if (row.done) done += 1;
       });
     });
-    return found.kid.firstName + " השבוע: " + done + " הוכנו מתוך " + posted;
+    return H.weekCard(found.kid.firstName, done, posted);
   }
   function remindDraft(room, today) {
     const lines = unfinished(room, today);
-    return lines.length ? "תזכורת: עוד לא הוכן — " + lines.join("; ") + "." : "תזכורת: כל מה שפורסם הוכן. כל הכבוד!";
+    return H.remindDraft(lines);
   }
   function notUpdated(room, today) {
     return S.rowsFor(room, today, null).filter(function (row) { return row.status === "not-updated"; });
@@ -408,24 +406,24 @@
     const voices = [];
     takeRows(rows, photos, voices);
     const names = lessons(room, date);
-    const body = rows.length ? rows.map(postedLine).join("\n") : "אין שיעורים למחר.";
-    items.push(cardItem("tomorrow", "למחר", "מחר, " + dayLabel(date) + "\n" + names.join(", ") + "\n" + body, { name: "day", kidId: kid.id, date: date }, { photos: photos.slice(0, 1), voices: voices.slice(0, 1) }));
+    const body = rows.length ? rows.map(postedLine).join("\n") : H.text("no-tomorrow");
+    items.push(cardItem("tomorrow", H.text("tomorrow-title"), H.digestTomorrow(dayLabel(date), names, body), { name: "day", kidId: kid.id, date: date }, { photos: photos.slice(0, 1), voices: voices.slice(0, 1) }));
     const posted = postedToday(room, today, kid);
     const left = posted.filter(function (row) { return !row.done; });
     if (left.length) {
-      items.push(cardItem("left", "נשאר", left.map(function (row) { return row.subject + ": " + (row.text || "פורסם"); }).join("\n"), { name: "day", kidId: kid.id, date: today }, { progress: { done: posted.length - left.length, total: posted.length } }));
+      items.push(cardItem("left", H.text("left-title"), H.digestLeft(left.map(function (row) { return H.kidLeftLine(row.subject, row.text); })), { name: "day", kidId: kid.id, date: today }, { progress: { done: posted.length - left.length, total: posted.length } }));
     }
     const msgs = S.messagesFor(room, "student").slice(0, 5);
     if (msgs.length) {
       const msgPhotos = [];
       const msgVoices = [];
       msgs.forEach(function (msg) { takeMessage(msg, msgPhotos, msgVoices); });
-      items.push(cardItem("messages", "מהמורה", msgs.map(function (msg) { return msg.text || "הודעה"; }).join("\n"), { name: "messages" }, { photos: msgPhotos.slice(0, 1), voices: msgVoices.slice(0, 1) }));
+      items.push(cardItem("messages", H.text("from-teacher").replace(/:$/, ""), msgs.map(function (msg) { return msg.text || H.text("message-word"); }).join("\n"), { name: "messages" }, { photos: msgPhotos.slice(0, 1), voices: msgVoices.slice(0, 1) }));
     }
     if (posted.length && !left.length) {
-      items.push(cardItem("cheer", "כל הכבוד", "כל הכבוד, הכול הוכן היום", null, { progress: { done: posted.length, total: posted.length } }));
+      items.push(cardItem("cheer", "כל הכבוד", H.text("cheer"), null, { progress: { done: posted.length, total: posted.length } }));
     }
-    return { greeting: "היי, זה מה שחשוב עכשיו.", items: items };
+    return { greeting: H.greet("student"), items: items };
   }
   function parentDigest(kids, today) {
     const items = [];
@@ -433,11 +431,11 @@
     kids.forEach(function (found) {
       const posted = postedToday(found.room, today, found.kid);
       const done = posted.filter(function (row) { return row.done; }).length;
-      items.push(cardItem("kid:" + found.kid.id + ":status", "מצב", found.kid.firstName + ": הוכנו " + done + " מתוך " + posted.length, { name: "day", kidId: found.kid.id, date: today }, posted.length ? { progress: { done: done, total: posted.length } } : null));
+      items.push(cardItem("kid:" + found.kid.id + ":status", H.text("status-title"), H.parentStatus(found.kid.firstName, done, posted.length), { name: "day", kidId: found.kid.id, date: today }, posted.length ? { progress: { done: done, total: posted.length } } : null));
       const date = S.nextSchoolDay(today);
       const waiting = S.rowsFor(found.room, date, found.kid).filter(function (row) { return row.status === "posted" && !row.done; });
       if (waiting.length) {
-        items.push(cardItem("kid:" + found.kid.id + ":tomorrow", "למחר", found.kid.firstName + ":\n" + waiting.map(function (row) { return row.subject + ": " + (row.text || "פורסם"); }).join("\n"), { name: "day", kidId: found.kid.id, date: date }));
+        items.push(cardItem("kid:" + found.kid.id + ":tomorrow", H.text("tomorrow-title"), H.parentTomorrow(found.kid.firstName, waiting.map(function (row) { return H.kidLeftLine(row.subject, row.text); })), { name: "day", kidId: found.kid.id, date: date }));
       }
       if (!seen[found.room.id]) {
         seen[found.room.id] = 1;
@@ -447,28 +445,28 @@
           const photos = [];
           const voices = [];
           msgs.forEach(function (msg) { takeMessage(msg, photos, voices); });
-          const text = msgs.map(function (msg) { return msg.text || "הודעה"; }).join("\n") + (alert ? "\nהתראה" : "");
-          items.push(cardItem("kid:" + found.kid.id + ":messages", "נשלח", text, { name: "messages" }, { photos: photos.slice(0, 1), voices: voices.slice(0, 1) }));
+          const text = H.messagesBody(msgs.map(function (msg) { return msg.text || H.text("message-word"); }), alert);
+          items.push(cardItem("kid:" + found.kid.id + ":messages", H.text("sent-title"), text, { name: "messages" }, { photos: photos.slice(0, 1), voices: voices.slice(0, 1) }));
         }
       }
-      items.push(cardItem("kid:" + found.kid.id + ":week", "השבוע", weekLine(found, today), { name: "day", kidId: found.kid.id, date: today }));
+      items.push(cardItem("kid:" + found.kid.id + ":week", H.text("week-title"), weekLine(found, today), { name: "day", kidId: found.kid.id, date: today }));
     });
-    return { greeting: "היי, ככה נראה היום.", items: items };
+    return { greeting: H.greet("parent"), items: items };
   }
   function teacherDigest(room, today) {
     const items = [];
-    if (!room) return { greeting: "היי, זה מה שמחכה בכיתה.", items: items };
+    if (!room) return { greeting: H.greet("teacher"), items: items };
     const missing = notUpdated(room, today);
     if (missing.length) {
       items.push(cardItem("unposted", subjectPhrase(missing.length), missing.map(function (row) { return row.subject; }).join("\n"), { name: "homework", classId: room.id }));
     }
     const lines = unfinished(room, today);
-    if (lines.length) items.push(cardItem("unfinished", "עוד לא סיימו", lines.join("\n"), { name: "kids", classId: room.id }));
+    if (lines.length) items.push(cardItem("unfinished", H.text("unfinished-title"), lines.join("\n"), { name: "kids", classId: room.id }));
     const replies = S.messagesFor(room, "teacher").filter(function (msg) { return msg.from === "student" || msg.from === "parent"; });
-    if (replies.length) items.push(cardItem("replies", "תגובות", replies.map(function (msg) { return msg.text || "הודעה"; }).join("\n"), { name: "messages" }));
+    if (replies.length) items.push(cardItem("replies", H.text("replies-title"), replies.map(function (msg) { return msg.text || H.text("message-word"); }).join("\n"), { name: "messages" }));
     const draft = remindDraft(room, today);
-    items.push(cardItem("draft", "טיוטה", draft, { name: "compose", classId: room.id, text: draft, fillDraft: true }));
-    return { greeting: "היי, זה מה שמחכה בכיתה.", items: items };
+    items.push(cardItem("draft", H.text("draft-title"), draft, { name: "compose", classId: room.id, text: draft, fillDraft: true }));
+    return { greeting: H.greet("teacher"), items: items };
   }
   function schoolDigest(schools, today, wide) {
     const items = [];
@@ -487,13 +485,13 @@
         }
       });
       if (wide) {
-        if (waitingSubjects) items.push(cardItem("school:" + school.id, school.name, school.name + ": " + subjectPhrase(waitingSubjects), { name: "classes", schoolId: school.id }));
+        if (waitingSubjects) items.push(cardItem("school:" + school.id, school.name, H.schoolAttention(school.name, subjectPhrase(waitingSubjects)), { name: "classes", schoolId: school.id }));
         return;
       }
       const pct = possible ? Math.round(100 * done / possible) : 0;
-      items.push(cardItem("school:" + school.id, "בית הספר", "בית הספר: הוכן " + pct + "% (" + done + " מתוך " + possible + ")", { name: "classes", schoolId: school.id }));
+      items.push(cardItem("school:" + school.id, H.text("school-title"), H.schoolDone(pct, done, possible), { name: "classes", schoolId: school.id }));
     });
-    if (wide && !items.length) items.push(cardItem("clear", "הכל מעודכן", "אין בתי ספר שמחכים לעדכון", null));
+    if (wide && !items.length) items.push(cardItem("clear", H.text("clear-title"), H.text("schools-clear"), null));
     return items;
   }
   function digest(state, who, opts) {
@@ -503,14 +501,14 @@
     if (!state || !who || !today) return { greeting: "", items: [] };
     if (role === "student") {
       const kids = scopedKids(state, who);
-      return kids.length ? studentDigest(kids[0], today) : { greeting: "היי, זה מה שחשוב עכשיו.", items: [] };
+      return kids.length ? studentDigest(kids[0], today) : { greeting: H.greet("student"), items: [] };
     }
     if (role === "parent") return parentDigest(scopedKids(state, who), today);
     if (role === "teacher") return teacherDigest(findClass(state, who.classId), today);
-    if (role === "principal") return { greeting: "היי, זה מצב בית הספר.", items: schoolDigest(schoolsFor(state, who), today, false) };
+    if (role === "principal") return { greeting: H.greet("principal"), items: schoolDigest(schoolsFor(state, who), today, false) };
     if (role === "admin") {
       const wide = !who.schoolId;
-      return { greeting: wide ? "היי, אלה בתי הספר שמחכים." : "היי, זה מצב בית הספר.", items: schoolDigest(schoolsFor(state, who), today, wide) };
+      return { greeting: H.greet("admin", wide), items: schoolDigest(schoolsFor(state, who), today, wide) };
     }
     return { greeting: "", items: [] };
   }
@@ -531,7 +529,7 @@
       if (!kids.length) return null;
       const left = postedToday(kids[0].room, today, kids[0].kid).filter(function (row) { return !row.done; });
       if (!left.length) return null;
-      return { id: "student:" + today + ":" + time, title: "תזכורת ערב", body: "רק תזכורת. עוד נשאר: " + left.map(function (row) { return row.subject + (row.text ? " " + row.text : ""); }).join(", "), time: time };
+      return { id: "student:" + today + ":" + time, title: H.text("remind-evening"), body: H.studentReminder(left.map(function (row) { return row.subject + (row.text ? " " + row.text : ""); })), time: time };
     }
     if (role === "parent") {
       const lines = [];
@@ -540,14 +538,14 @@
         if (left.length) lines.push(found.kid.firstName + ": " + left.map(function (row) { return row.subject + (row.text ? " " + row.text : ""); }).join(", "));
       });
       if (!lines.length) return null;
-      return { id: "parent:" + today + ":" + time, title: "תזכורת ערב", body: "רק תזכורת. עוד נשאר: " + lines.join("; "), time: time };
+      return { id: "parent:" + today + ":" + time, title: H.text("remind-evening"), body: H.parentReminder(lines), time: time };
     }
     if (role === "teacher") {
       const room = findClass(state, who.classId);
       if (!room) return null;
       const missing = notUpdated(room, today);
       if (!missing.length) return null;
-      return { id: "teacher:" + today + ":" + time, title: "תזכורת", body: "רק תזכורת. עוד לא פורסם: " + missing.map(function (row) { return row.subject; }).join(", "), time: time };
+      return { id: "teacher:" + today + ":" + time, title: H.text("remind-title"), body: H.teacherReminder(missing.map(function (row) { return row.subject; })), time: time };
     }
     return null;
   }
@@ -589,9 +587,8 @@
     if (!state || !who || !ROLES[role] || !today) return pack;
     const when = parseWhen(opts.text || "");
     if (when) {
-      const about = when.about ? " על " + when.about : "";
       return {
-        text: "אזכיר לך ב-" + when.time + about + ".",
+        text: H.customReminder(when.time, when.about),
         intent: "custom-remind",
         photos: [],
         voices: [],
@@ -614,7 +611,7 @@
       const room = findClass(state, who.classId);
       if (room && intent === "remind") {
         const draft = remindDraft(room, today);
-        built = answer("הכנתי טיוטה.\nהשליחה נשארת אצלך, ידנית.\n" + draft, [], [], draft);
+        built = answer(H.draftIntro(draft), [], [], draft);
       } else built = teacherAnswer(room, intent, today);
     }
     else if (role === "principal" || role === "admin") {
@@ -622,7 +619,7 @@
       if (room && intent === "status") built = answer(classStatus(room, today));
       else if (!who.classId && intent === "status") {
         const card = digest(state, who, { today: today });
-        built = answer(card.items.map(function (item) { return item.text; }).filter(Boolean).join("\n") || "אין עדכון");
+        built = answer(card.items.map(function (item) { return item.text; }).filter(Boolean).join("\n") || H.text("no-update"));
       }
     }
     if (!built || !built.text) return pack;
