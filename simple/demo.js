@@ -427,7 +427,8 @@
         built.helper = { face: "fox", name: "שועל הכיתה" };
         built.messages = [
           { id: "m-class", text: "מבחן ביום א׳", photo: "", voice: "", photos: [], voices: [], audience: "class", alert: false, at: 1000, bump: 1000, edited: false },
-          { id: "m-parents", text: "שיחת הורים ביום ג׳", photo: BOARD_PHOTO, voice: BOARD_VOICE, photos: [BOARD_PHOTO], voices: [{ src: BOARD_VOICE, text: "שיחה" }], audience: "parents", alert: false, at: 2000, bump: 2000, edited: false }
+          { id: "m-parents", text: "שיחת הורים ביום ג׳", photo: BOARD_PHOTO, voice: BOARD_VOICE, photos: [BOARD_PHOTO], voices: [{ src: BOARD_VOICE, text: "שיחה" }], audience: "parents", alert: false, at: 2000, bump: 2000, edited: false },
+          { id: "m-reply", text: "סיימתי את החשבון", from: "student", kidId: "k-omer", photo: "", voice: "", photos: [], voices: [], audience: "class", alert: false, at: 500, bump: 500, edited: false }
         ];
         return pack("helper", "שיחה עם עוזר הכיתה", "s-k-noa", corePeople(), [school("s-alon", "אלון", "דנה כהן", [built])], "🤖");
       })()

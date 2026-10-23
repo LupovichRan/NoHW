@@ -2,6 +2,7 @@ const S = window.Nohw;
 const A = window.NohwAssist;
 const D = window.NohwDemo;
 const STORE = "nohw-simple-demo";
+const ASSIST = "nohw-simple-assist";
 const STATUS = { "not-updated": "לא עודכן", "no-homework": "אין שיעורים" };
 const ROLE_LABEL = { admin: "מנהל מערכת", principal: "מנהל/ת בית ספר", teacher: "מורה", student: "תלמיד", parent: "הורה" };
 const ROLE_ORDER = { admin: 0, principal: 1, teacher: 2, student: 3, parent: 4 };
@@ -35,6 +36,11 @@ let heard = "";
 let recognition = null;
 let chatRec = null;
 let chatLog = [];
+let assist = { prefs: {}, custom: [], seen: {}, fired: {} };
+let lastDigest = null;
+let activeReminder = null;
+let sysNote = null;
+let reminderTimer = 0;
 
 function ico(d) {
   const paths = Array.isArray(d) ? d : [d];
@@ -66,6 +72,7 @@ function render() {
   document.getElementById("app").innerHTML = html();
   if (view.recording) paintRecording();
   if (view.chat) paintChat();
+  mountAssist();
   if (view.fillDraft) {
     const input = document.querySelector('form input[name="text"]');
     if (input) input.value = view.text || "";
@@ -158,24 +165,44 @@ function helperContext() {
   if (!person) return null;
   if (person.role === "student") {
     const found = D.findKid(state, person.kidId);
-    return found ? { room: found.room } : null;
+    return found ? { room: found.room, schoolId: found.school.id } : null;
   }
   if (person.role === "parent") {
     const ids = person.kidIds || [];
     const found = ids.length ? D.findKid(state, ids[0]) : null;
-    return found ? { room: found.room } : null;
+    return found ? { room: found.room, schoolId: found.school.id } : null;
   }
   if (person.role === "teacher") {
     const found = D.findClass(state, person.classId);
-    return found ? { room: found.room } : null;
+    return found ? { room: found.room, schoolId: found.school.id } : null;
   }
-  if ((person.role === "principal" || person.role === "admin") && view.name === "kids" && view.classId) {
-    const found = D.findClass(state, view.classId);
-    if (!found) return null;
-    if (person.role === "principal" && person.schoolId && found.school.id !== person.schoolId) return null;
-    return { room: found.room };
+  if (person.role === "principal") {
+    const schoolId = person.schoolId || "";
+    let room = null;
+    if (view.name === "kids" && view.classId) {
+      const found = D.findClass(state, view.classId);
+      if (found && (!schoolId || found.school.id === schoolId)) room = found.room;
+    }
+    if (!schoolId && !room) return null;
+    return { room: room, schoolId: schoolId };
+  }
+  if (person.role === "admin") {
+    let schoolId = "";
+    let room = null;
+    if (view.name === "kids" && view.classId) {
+      const found = D.findClass(state, view.classId);
+      if (found) { room = found.room; schoolId = found.school.id; }
+    } else if (view.schoolId) schoolId = view.schoolId;
+    return { room: room, schoolId: schoolId };
   }
   return null;
+}
+function helperLook(ctx) {
+  if (ctx && ctx.room) return S.helperOf(ctx.room);
+  const schoolId = ctx && ctx.schoolId || (person && person.schoolId) || "";
+  const school = schoolId ? D.findSchool(state, schoolId) : (state.schools || [])[0];
+  const room = school && (school.classrooms || [])[0];
+  return S.helperOf(room || null);
 }
 function helperVisible() {
   if (!person || view.chat) return false;
@@ -183,21 +210,45 @@ function helperVisible() {
   if (view.name === "form" || view.name === "edit" || view.name === "confirm") return false;
   return !!helperContext();
 }
+function badgeCount() {
+  if (!person || !A || !A.digest) return 0;
+  const who = helperWho();
+  if (!who) return 0;
+  const card = A.digest(state, who, { today: D.schoolDay(today()) });
+  let count = A.unreadCount(card.items, assist.seen[person.id]);
+  if (activeReminder) count += 1;
+  return count;
+}
 function helperFab() {
   const ctx = helperContext();
   if (!helperVisible() || !ctx) return "";
-  const helper = S.helperOf(ctx.room);
-  return '<button class="helperfab" type="button" data-act="helper" aria-label="עוזר הכיתה">' + faceSvg(helper.face) + "</button>";
+  const helper = helperLook(ctx);
+  const count = badgeCount();
+  const ping = count ? '<span class="ping">' + count + "</span>" : "";
+  const label = count ? "עוזר הכיתה " + count : "עוזר הכיתה";
+  return '<button class="helperfab" type="button" data-act="helper" aria-label="' + label + '">' + faceSvg(helper.face) + ping + "</button>";
 }
 function helperWho() {
   const ctx = helperContext();
   if (!person || !ctx) return null;
-  return {
+  const who = {
     role: person.role,
-    classId: ctx.room.id,
+    classId: "",
+    schoolId: "",
     kidId: person.kidId || "",
     kidIds: person.role === "parent" ? (person.kidIds || []).slice() : []
   };
+  if (person.role === "student" || person.role === "parent" || person.role === "teacher") {
+    who.classId = ctx.room ? ctx.room.id : "";
+    who.schoolId = ctx.schoolId || "";
+  } else if (person.role === "principal") {
+    who.schoolId = ctx.schoolId || person.schoolId || "";
+    who.classId = view.name === "kids" && ctx.room ? ctx.room.id : "";
+  } else if (person.role === "admin") {
+    who.schoolId = ctx.schoolId || "";
+    who.classId = view.name === "kids" && ctx.room ? ctx.room.id : "";
+  }
+  return who;
 }
 function hush() {
   if (window.speechSynthesis) {
@@ -222,6 +273,17 @@ function askHelper(opts) {
   opts = opts || {};
   const typed = String(opts.text || "").slice(0, 200);
   const answer = A.ask(state, who, { intent: opts.intent || "", text: typed, today: D.schoolDay(today()) });
+  if (answer.reminder && person) {
+    assist.custom.push({
+      id: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      personId: person.id,
+      role: person.role,
+      time: answer.reminder.time,
+      about: String(answer.reminder.about || "").slice(0, 40)
+    });
+    if (assist.custom.length > 40) assist.custom.splice(0, assist.custom.length - 40);
+    saveAssist();
+  }
   if (typed) chatLog.push({ role: "me", text: typed });
   else if (opts.intent) {
     const chip = A.chips(who.role).filter(function (item) { return item.id === opts.intent; })[0];
@@ -230,6 +292,7 @@ function askHelper(opts) {
   chatLog.push({ role: "bot", text: answer.text, photos: answer.photos || [], voices: answer.voices || [], draft: answer.draft || "" });
   if (chatLog.length > 40) chatLog.splice(0, chatLog.length - 40);
   view.chat = true;
+  armReminders();
   render();
   if (view.readAloud) speakAnswer(answer.text);
 }
@@ -237,7 +300,7 @@ function paintChat() {
   const ctx = helperContext();
   const host = document.querySelector(".app");
   if (!ctx || !host || !A) return;
-  const helper = S.helperOf(ctx.room);
+  const helper = helperLook(ctx);
   const role = person.role;
   const scrim = document.createElement("div");
   scrim.className = "sheetscrim";
@@ -264,6 +327,9 @@ function paintChat() {
   const log = document.createElement("div");
   log.className = "chatlog";
   log.tabIndex = 0;
+  const card = currentDigest();
+  lastDigest = card;
+  if (card) log.appendChild(buildDigest(card));
   if (!chatLog.length) {
     const hello = document.createElement("p");
     hello.className = "bubble bot";
@@ -359,7 +425,13 @@ function paintChat() {
   sheet.appendChild(form);
   sheet.appendChild(tools);
   sheet.appendChild(hint);
-  if (S.canEdit(state, actor(), { kind: "homework", classId: ctx.room.id })) {
+  const prefs = document.createElement("button");
+  prefs.type = "button";
+  prefs.dataset.act = "helper-prefs";
+  prefs.textContent = "תזכורות";
+  if (A.defaults(role)) sheet.appendChild(prefs);
+  if (view.reminders && A.defaults(role)) sheet.appendChild(buildReminderSettings());
+  if (ctx.room && S.canEdit(state, actor(), { kind: "homework", classId: ctx.room.id })) {
     const settings = document.createElement("div");
     settings.className = "helperset";
     const label = document.createElement("span");
@@ -394,6 +466,261 @@ function paintChat() {
   host.appendChild(scrim);
   host.appendChild(sheet);
   log.scrollTop = log.scrollHeight;
+}
+function currentDigest() {
+  const who = helperWho();
+  if (!who || !A || !A.digest) return null;
+  return A.digest(state, who, { today: D.schoolDay(today()) });
+}
+function buildDigest(card) {
+  const box = document.createElement("section");
+  box.className = "digest";
+  const greet = document.createElement("p");
+  greet.className = "digestgreet";
+  greet.textContent = card.greeting || "";
+  box.appendChild(greet);
+  (card.items || []).forEach(function (item, index) {
+    const row = document.createElement("div");
+    row.className = "digestitem";
+    const body = item.go ? document.createElement("button") : document.createElement("div");
+    if (item.go) {
+      body.type = "button";
+      body.dataset.act = "digest-go";
+      body.dataset.index = String(index);
+    }
+    const title = document.createElement("strong");
+    title.textContent = item.title || "";
+    const text = document.createElement("span");
+    text.textContent = item.text || "";
+    body.appendChild(title);
+    body.appendChild(text);
+    if (item.progress && item.progress.total) {
+      const meter = document.createElement("span");
+      meter.className = "meter";
+      const fill = document.createElement("span");
+      const pct = Math.max(0, Math.min(100, Math.round(100 * item.progress.done / item.progress.total)));
+      fill.style.width = pct + "%";
+      meter.appendChild(fill);
+      const label = document.createElement("small");
+      label.textContent = item.progress.done + " מתוך " + item.progress.total + " הוכנו";
+      body.appendChild(meter);
+      body.appendChild(label);
+    }
+    row.appendChild(body);
+    (item.photos || []).slice(0, 1).forEach(function (photo) {
+      const src = srcOf(photo);
+      if (!src && photo.id) queueMedia(photo.id);
+      if (!src) return;
+      const img = document.createElement("img");
+      img.alt = "תמונה";
+      img.src = src;
+      row.appendChild(img);
+    });
+    (item.voices || []).slice(0, 1).forEach(function (voice) {
+      const src = srcOf(voice) || voice.src || voice.id || "";
+      if (!src && voice.id) queueMedia(voice.id);
+      const play = document.createElement("button");
+      play.type = "button";
+      play.className = "play";
+      play.dataset.act = "play";
+      play.dataset.voice = src;
+      play.setAttribute("aria-label", "השמעה");
+      play.textContent = "השמעה";
+      row.appendChild(play);
+    });
+    box.appendChild(row);
+  });
+  return box;
+}
+function loadAssist() {
+  const raw = readJSON(ASSIST) || {};
+  assist = {
+    prefs: raw.prefs && typeof raw.prefs === "object" ? raw.prefs : {},
+    custom: Array.isArray(raw.custom) ? raw.custom.filter(function (item) { return item && /^\d{2}:\d{2}$/.test(item.time); }).slice(0, 40) : [],
+    seen: raw.seen && typeof raw.seen === "object" ? raw.seen : {},
+    fired: raw.fired && typeof raw.fired === "object" ? raw.fired : {}
+  };
+}
+function saveAssist() {
+  try { localStorage.setItem(ASSIST, JSON.stringify({ prefs: assist.prefs, custom: assist.custom, seen: assist.seen, fired: assist.fired })); }
+  catch (e) {}
+}
+function currentPref() {
+  if (!person || !A || !A.defaults) return null;
+  const base = A.defaults(person.role);
+  if (!base) return null;
+  const saved = assist.prefs[person.id];
+  return {
+    on: saved ? saved.on !== false : !!base.on,
+    time: saved && /^\d{2}:\d{2}$/.test(saved.time) ? saved.time : base.time
+  };
+}
+function firedKey(id) {
+  return (person ? person.id : "") + ":" + id;
+}
+function clearReminderTimer() {
+  if (reminderTimer) clearTimeout(reminderTimer);
+  reminderTimer = 0;
+}
+function pendingReminders(who, day) {
+  const out = [];
+  const pref = currentPref();
+  if (pref && pref.on && A.reminderDue) {
+    const due = A.reminderDue(state, who, { today: day, time: pref.time });
+    if (due) out.push(due);
+  }
+  (assist.custom || []).forEach(function (item) {
+    if (!person || item.personId !== person.id || !/^\d{2}:\d{2}$/.test(item.time)) return;
+    out.push({ id: "custom:" + item.id, title: "תזכורת", body: "תזכורת: " + String(item.about || ""), time: item.time });
+  });
+  return out;
+}
+function showReminder(item, day, force) {
+  if (!item || !person) return;
+  const key = firedKey(item.id);
+  if (!force && assist.fired[key] === day) return;
+  assist.fired[key] = day;
+  saveAssist();
+  activeReminder = { title: String(item.title || "תזכורת").slice(0, 80), body: String(item.body || "").slice(0, 180) };
+  sysNote = { title: "עוזר הכיתה", body: activeReminder.body };
+  notifyReminder(sysNote.title, sysNote.body);
+}
+function notifyReminder(title, body) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted" || !navigator.serviceWorker) return;
+  const payload = { type: "remind", title: String(title || "עוזר הכיתה").slice(0, 80), body: String(body || "").slice(0, 180) };
+  navigator.serviceWorker.ready.then(function (reg) {
+    if (reg.active) reg.active.postMessage(payload);
+    else if (reg.showNotification) reg.showNotification(payload.title, { body: payload.body, lang: "he", dir: "rtl", tag: "nohw-remind" });
+  }).catch(function () {});
+}
+function armReminders(reset) {
+  clearReminderTimer();
+  const who = person && A && A.delayUntil ? helperWho() : null;
+  if (!who) {
+    activeReminder = null;
+    sysNote = null;
+    return;
+  }
+  const day = D.schoolDay(today());
+  const now = new Date();
+  if (reset) {
+    activeReminder = null;
+    sysNote = null;
+  }
+  let soonest = null;
+  pendingReminders(who, day).forEach(function (item) {
+    const delay = A.delayUntil(now, item.time);
+    if (delay <= 0) showReminder(item, day, false);
+    else if (!soonest || delay < soonest.delay) soonest = { delay: delay, item: item };
+  });
+  if (!soonest || assist.fired[firedKey(soonest.item.id)] === day) return;
+  reminderTimer = setTimeout(function () {
+    armReminders(false);
+    render();
+  }, Math.min(soonest.delay, 2147483647));
+}
+function triggerNow() {
+  const who = helperWho();
+  const pref = currentPref();
+  if (!who || !pref || !A.reminderDue) {
+    toast("אין מה להזכיר עכשיו");
+    return;
+  }
+  const day = D.schoolDay(today());
+  const due = A.reminderDue(state, who, { today: day, time: pref.time });
+  if (!due) {
+    toast("אין מה להזכיר עכשיו");
+    return;
+  }
+  showReminder(due, day, true);
+  render();
+}
+function buildReminderSettings() {
+  const pref = currentPref() || { on: false, time: "17:00" };
+  const block = document.createElement("div");
+  block.className = "remindset";
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.dataset.act = "helper-pref-on";
+  toggle.setAttribute("aria-pressed", pref.on ? "true" : "false");
+  toggle.textContent = pref.on ? "תזכורת פעילה" : "תזכורת כבויה";
+  const time = document.createElement("input");
+  time.type = "time";
+  time.value = pref.time;
+  time.dataset.act = "helper-pref-time";
+  time.setAttribute("aria-label", "שעה");
+  const now = document.createElement("button");
+  now.type = "button";
+  now.dataset.act = "helper-now";
+  now.textContent = "הצג עכשיו";
+  const perm = document.createElement("button");
+  perm.type = "button";
+  perm.dataset.act = "helper-notify";
+  perm.textContent = "הפעל התראות";
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = "תזכורת ברקע דורשת שרת בהמשך. כרגע התזכורת קופצת כשהאפליקציה פתוחה, ומתעדכנת בפתיחה.";
+  block.appendChild(toggle);
+  block.appendChild(time);
+  block.appendChild(now);
+  block.appendChild(perm);
+  (assist.custom || []).forEach(function (item) {
+    if (!person || item.personId !== person.id) return;
+    const line = document.createElement("p");
+    line.textContent = item.time + (item.about ? " · " + item.about : "");
+    block.appendChild(line);
+  });
+  block.appendChild(hint);
+  return block;
+}
+function mountAssist() {
+  const host = document.querySelector(".app");
+  if (!host) return;
+  if (activeReminder) {
+    const bar = document.createElement("div");
+    bar.className = "remindbar";
+    bar.setAttribute("role", "status");
+    const text = document.createElement("p");
+    text.textContent = activeReminder.body || "";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.dataset.act = "dismiss-remind";
+    close.setAttribute("aria-label", "סגירת תזכורת");
+    close.textContent = "✕";
+    bar.appendChild(text);
+    bar.appendChild(close);
+    host.appendChild(bar);
+  }
+  if (sysNote) {
+    const note = document.createElement("div");
+    note.className = "sysnote";
+    note.setAttribute("role", "status");
+    const title = document.createElement("strong");
+    title.textContent = sysNote.title || "עוזר הכיתה";
+    const body = document.createElement("p");
+    body.textContent = sysNote.body || "";
+    note.appendChild(title);
+    note.appendChild(body);
+    host.appendChild(note);
+  }
+  if (!helperVisible()) return;
+  const card = currentDigest();
+  lastDigest = card;
+  if (!card) return;
+  host.appendChild(buildDigest(card));
+}
+function goDigest(item) {
+  const go = item && item.go;
+  if (!go || !go.name) return;
+  view.chat = false;
+  view.reminders = false;
+  hush();
+  if (go.name === "day") push({ name: "day", kidId: go.kidId, date: go.date });
+  else if (go.name === "messages") push({ name: "messages" });
+  else if (go.name === "homework") push({ name: "homework", classId: go.classId });
+  else if (go.name === "kids") push({ name: "kids", classId: go.classId, schoolId: go.schoolId || "" });
+  else if (go.name === "classes") push({ name: "classes", schoolId: go.schoolId || "" });
+  else if (go.name === "compose") push({ name: "compose", classId: go.classId, text: go.text || "", photos: [], voices: [], audience: "class", alert: false, fillDraft: true });
 }
 function personForKid(id) {
   return people.find(function (item) { return item.role === "student" && item.kidId === id; }) || null;
@@ -464,6 +791,9 @@ function adopt(pack, next) {
   focusSuggested = next.name === "people" && !!suggestedId;
   stack = next.stack || [];
   view = { name: next.name };
+  activeReminder = null;
+  sysNote = null;
+  clearReminderTimer();
   saveStore();
   render();
 }
@@ -1500,14 +1830,52 @@ function onClick(event) {
   }
   if (act === "close-sheet") { view.sheet = ""; view.avatarPick = false; render(); return; }
   if (act === "helper") {
+    const card = currentDigest();
+    if (card && person && A.markSeen) {
+      assist.seen[person.id] = A.markSeen(card.items, assist.seen[person.id]);
+      saveAssist();
+    }
     view.sheet = "";
+    view.reminders = false;
     view.chat = true;
     render();
     const field = document.querySelector(".chatsheet input[name='q']");
     if (field) field.focus();
     return;
   }
-  if (act === "close-chat") { view.chat = false; hush(); render(); return; }
+  if (act === "close-chat") { view.chat = false; view.reminders = false; hush(); render(); return; }
+  if (act === "digest-go") {
+    const item = lastDigest && lastDigest.items[Number(el.dataset.index)];
+    if (item && person) {
+      const seen = assist.seen[person.id] || {};
+      const next = {};
+      Object.keys(seen).forEach(function (key) { next[key] = seen[key]; });
+      next[item.id] = item.text;
+      assist.seen[person.id] = next;
+      saveAssist();
+    }
+    goDigest(item);
+    return;
+  }
+  if (act === "dismiss-remind") { activeReminder = null; render(); return; }
+  if (act === "helper-prefs") { view.reminders = !view.reminders; render(); return; }
+  if (act === "helper-pref-on") {
+    const pref = currentPref();
+    if (!pref || !person) return;
+    pref.on = !pref.on;
+    assist.prefs[person.id] = pref;
+    saveAssist();
+    armReminders(true);
+    render();
+    return;
+  }
+  if (act === "helper-now") { triggerNow(); return; }
+  if (act === "helper-notify") {
+    if (typeof Notification !== "undefined" && Notification.requestPermission) {
+      try { Notification.requestPermission().catch(function () {}); } catch (e) {}
+    }
+    return;
+  }
   if (act === "helper-ask") { askHelper({ intent: el.dataset.intent || "" }); return; }
   if (act === "helper-read") {
     view.readAloud = !view.readAloud;
@@ -1575,6 +1943,7 @@ function onClick(event) {
     person = who;
     view = { name: "main" };
     saveStore();
+    armReminders(true);
     render();
   } else if (act === "enter") {
     const who = people.find(function (item) { return item.id === el.dataset.id; });
@@ -1584,6 +1953,7 @@ function onClick(event) {
     stack = [];
     view = { name: "main" };
     saveStore();
+    armReminders(true);
     render();
   } else if (act === "cast") {
     resetChat();
@@ -1592,6 +1962,7 @@ function onClick(event) {
     stack = [{ name: "start" }];
     view = { name: "people" };
     saveStore();
+    armReminders(true);
     render();
   } else if (act === "back") {
     haltMic();
@@ -1779,7 +2150,7 @@ function onSubmit(event) {
   if (event.target && event.target.classList.contains("helpername")) {
     const ctx = helperContext();
     const field = event.target.querySelector("input");
-    if (ctx && field) {
+    if (ctx && ctx.room && field) {
       try { S.setHelper(state, actor(), { classId: ctx.room.id, name: field.value }); saveStore(); }
       catch (e) { fail(e); return; }
     }
@@ -1894,6 +2265,17 @@ function boot() {
   const app = document.getElementById("app");
   app.addEventListener("click", onClick);
   app.addEventListener("submit", onSubmit);
+  app.addEventListener("change", function (event) {
+    const node = event.target;
+    if (!node || node.dataset.act !== "helper-pref-time" || !person) return;
+    const pref = currentPref();
+    if (!pref || !/^\d{2}:\d{2}$/.test(node.value)) return;
+    pref.time = node.value;
+    assist.prefs[person.id] = pref;
+    saveAssist();
+    armReminders(true);
+    render();
+  });
   app.addEventListener("input", function (event) {
     const node = event.target;
     if (!node || node.dataset.act !== "transcript") return;
@@ -1906,6 +2288,9 @@ function boot() {
     document.getElementById("face").addEventListener("change", onFile);
     document.getElementById("lib").addEventListener("change", onFile);
   }
+  loadAssist();
+  render();
+  armReminders(true);
   render();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {});
 }

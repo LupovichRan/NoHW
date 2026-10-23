@@ -315,12 +315,18 @@ try {
   record("profile photos show on the character picker", true);
 
   await openScenario("שיחה עם עוזר הכיתה");
-  const fab = page.locator('[aria-label="עוזר הכיתה"]');
+  const fab = page.locator(".helperfab");
   if ((await fab.count()) !== 1) throw new Error("student fab");
   await page.emulateMedia({ reducedMotion: "reduce" });
   const still = await page.locator(".helperfab .eye").first().evaluate((el) => getComputedStyle(el).animationName);
   if (still !== "none") throw new Error("reduced motion " + still);
   await page.emulateMedia({ reducedMotion: "no-preference" });
+  const digest = await page.locator(".digest").innerText();
+  if (!digest.includes("עמ׳ 18") || !digest.includes("קריאה") || !digest.includes("כתיב") || !digest.includes("מבחן ביום א׳")) throw new Error(digest);
+  if (digest.includes("שיחת הורים") || digest.includes("עומר") || digest.includes("סיימתי")) throw new Error(digest);
+  const badge = Number(await page.locator(".ping").innerText());
+  if (!(badge > 0)) throw new Error("badge " + badge);
+  await page.locator(".digest").screenshot({ path: "/opt/cursor/artifacts/digest_student.png" });
   await fab.click();
   await page.waitForSelector(".chatsheet");
   if (await page.locator("[data-act='helper-face']").count()) throw new Error("student can restyle the helper");
@@ -358,9 +364,52 @@ try {
   record("student helper answers stay inside the class", true);
 
   await page.locator('[aria-label="סגירה"]').click();
+  if (await page.locator(".ping").count()) throw new Error("badge stayed after the digest was seen");
+  await page.context().grantPermissions(["notifications"]);
+  await fab.click();
+  await clickText("תזכורות");
+  if (!(await page.locator(".remindset .hint").innerText()).includes("דורשת שרת")) throw new Error("missing reminder note");
+  await clickText("הצג עכשיו");
+  await page.locator('[aria-label="סגירה"]').click();
+  await page.waitForSelector(".remindbar");
+  await page.waitForSelector(".sysnote");
+  const banner = await page.locator(".remindbar").innerText();
+  if (!banner.includes("כתיב") || banner.includes("עומר") || banner.includes("נשלח")) throw new Error(banner);
+  await page.locator(".remindbar").screenshot({ path: "/opt/cursor/artifacts/reminder_banner.png" });
+  await page.locator(".sysnote").screenshot({ path: "/opt/cursor/artifacts/reminder_notification.png" });
+  const notes = await page.evaluate(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    const list = typeof reg.getNotifications === "function" ? await reg.getNotifications() : [];
+    return list.map((item) => item.body || "");
+  });
+  if (!notes.some((item) => item.includes("כתיב"))) throw new Error("notification " + notes.join("|"));
+  record("evening reminder banner and notification", true);
+  await fab.click();
+  await page.locator('.askbox input[name="q"]').fill("תזכיר לי ב-18:00 על חשבון");
+  await clickText("שאל");
+  const reminded = await page.locator(".bubble.bot").last().innerText();
+  if (!reminded.includes("18:00") || !reminded.includes("חשבון")) throw new Error(reminded);
+  const reminderStore = await page.evaluate(() => ({
+    assist: localStorage.getItem("nohw-simple-assist") || "",
+    demo: localStorage.getItem("nohw-simple-demo") || ""
+  }));
+  if (!reminderStore.assist.includes("18:00") || !reminderStore.assist.includes("חשבון") || reminderStore.demo.includes("תזכיר לי")) throw new Error("reminder storage");
+  await page.locator('.askbox input[name="q"]').fill('תזכיר לי ב-18:00 על <img src=x onerror="window.__xss=1">');
+  await clickText("שאל");
+  const remindedXss = await page.evaluate(() => {
+    const last = [...document.querySelectorAll(".bubble.bot")].pop();
+    return { flag: window.__xss || "", images: last ? last.querySelectorAll("img").length : -1, text: last ? last.textContent : "" };
+  });
+  if (remindedXss.flag || remindedXss.images || !remindedXss.text.includes("<img")) throw new Error(JSON.stringify(remindedXss));
+  record("custom reminder stays text", true);
+
+  await page.locator('[aria-label="סגירה"]').click();
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("יעל");
   if ((await fab.count()) !== 1) throw new Error("parent fab");
+  const parentDigest = await page.locator(".digest").innerText();
+  if (!parentDigest.includes("נועה") || !parentDigest.includes("שיחת הורים") || parentDigest.includes("עומר")) throw new Error(parentDigest);
+  await page.locator(".digest").screenshot({ path: "/opt/cursor/artifacts/digest_parent.png" });
   await fab.click();
   await clickText("מה המצב?");
   const parentStatus = await page.locator(".bubble.bot").last().innerText();
@@ -376,6 +425,9 @@ try {
   await page.locator('[aria-label="סגירה"]').click();
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("מיכל");
+  const teacherDigest = await page.locator(".digest").innerText();
+  if (!teacherDigest.includes("מקצוע אחד לא עודכן") || !teacherDigest.includes("אנגלית") || !teacherDigest.includes("נועה") || !teacherDigest.includes("עומר") || !teacherDigest.includes("סיימתי")) throw new Error(teacherDigest);
+  await page.locator(".digest").screenshot({ path: "/opt/cursor/artifacts/digest_teacher.png" });
   await fab.click();
   if ((await page.locator("[data-act='helper-face']").count()) < 4) throw new Error("teacher cannot set the face");
   await clickText("מה עוד לא פורסם?");
@@ -394,7 +446,9 @@ try {
 
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("דנה");
-  if (await fab.count()) throw new Error("principal home shows the helper");
+  if ((await fab.count()) !== 1) throw new Error("principal home helper");
+  const schoolDigest = await page.locator(".digest").innerText();
+  if (!schoolDigest.includes("לא עודכן") || !schoolDigest.includes("הוכן") || schoolDigest.includes("נועה") || schoolDigest.includes("עומר")) throw new Error(schoolDigest);
   await clickText("ה'2");
   if ((await fab.count()) !== 1) throw new Error("principal drill-down fab");
   await fab.click();

@@ -442,8 +442,16 @@
     found.msg.bump = stamp(input && input.at);
     found.msg.alert = true;
   }
-  function messagesFor(room, role) {
+  function isReply(item) {
+    return !!(item && (item.from === "student" || item.from === "parent"));
+  }
+  function messagesFor(room, role, scope) {
+    const kidId = scope && scope.kidId || "";
     return ((room && room.messages) || []).filter(function (item) {
+      if (isReply(item)) {
+        if (role === "teacher") return true;
+        return !!kidId && item.kidId === kidId && (role === "student" || role === "parent");
+      }
       return role !== "student" || item.audience !== "parents";
     }).slice().sort(function (a, b) {
       return (b.bump || b.at || 0) - (a.bump || a.at || 0);
@@ -718,7 +726,8 @@
         const voices = cleanVoices(item);
         if (!text && !photos.length && !voices.length) return null;
         const at = stamp(item.at);
-        return {
+        const from = item.from === "student" || item.from === "parent" ? item.from : "";
+        const msg = {
           id: String(item.id || "").slice(0, 40),
           text: text,
           photo: photos[0] || "",
@@ -731,6 +740,11 @@
           bump: stamp(item.bump || at),
           edited: !!item.edited
         };
+        if (from) {
+          msg.from = from;
+          msg.kidId = String(item.kidId || "").slice(0, 40);
+        }
+        return msg;
       }).filter(Boolean);
     }
     for (const kid of incoming.kids || []) mergeKid(room, kid);

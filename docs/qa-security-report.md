@@ -2,12 +2,12 @@
 
 Date: 23 October 2026. Build under test is the `simple` branch, the Hebrew PWA in `simple/`. Nothing was merged.
 
-The report covers the final build: the approved product changes (principal home, scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, profile photos) and the class assistant, עוזר הכיתה. The assistant answers only from the class data already on the device. It does not call a language model, use an API key, or open a network request.
+The report covers the final build: the approved product changes (principal home, scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, profile photos) and the class assistant, עוזר הכיתה. The assistant organizes a short digest for each role and can remind them from the class data already on the device. It does not call a language model, use an API key, or open a network request. A reliable background push still needs a backend later; reminders fire while the app is open and are checked again on open.
 
 ## How it was run
 
 - Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`, `node tests/assist.cjs`.
-- Browser walk at 390×844 in headless Chromium: `node tests/e2e/walk.mjs` against a local static server. 55 checks passed, 0 failed. WebKit is not installed in this environment, so that browser was not run.
+- Browser walk at 390×844 in headless Chromium: `node tests/e2e/walk.mjs` against a local static server. 57 checks passed, 0 failed. WebKit is not installed in this environment, so that browser was not run.
 - axe-core on the start hub, the principal home, the timetable, a student day, the message list, the profile sheet, and the assistant chat as a student, a parent, and a principal. No serious or critical violations.
 - Lighthouse mobile, local server: performance 94, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA).
 - gitleaks 8.28.0 on the current tree, no leaks. `npm audit` in `tests/e2e` reported 0 vulnerabilities.
@@ -67,6 +67,10 @@ The report covers the final build: the approved product changes (principal home,
 | A reminder draft fills the composer and is not sent until the teacher sends it | Pass |
 | Principal and admin class drill-down reports counts only, with no child names | Pass |
 | Assistant questions are kept in memory for the session and are not written to localStorage | Pass |
+| Proactive digest: student, parent, teacher, principal, and admin cards match the seeded class, in priority order, and omit other children | Pass |
+| Reminder rules fire only for unfinished homework or unposted subjects, and a typed time creates a custom reminder | Pass |
+| The avatar badge counts unread digest items and clears once the card is opened | Pass |
+| An in-app reminder banner and a service-worker notification show for the demo trigger; the screen says background push needs a backend | Pass |
 
 ## Bugs found and fixed
 
@@ -80,6 +84,7 @@ The report covers the final build: the approved product changes (principal home,
 8. The principal opened straight into class management, the teacher day had no whole-day clear and no save-and-next, and several labels still said מערכת, נתונים, or מנהל. Those are the approved product changes, and the checks above were run after them.
 9. People had only emoji avatars. Each person can now keep a square 256px profile photo in IndexedDB. You can change your own photo, and someone above you can change a person below them. A normal share pack does not include those photos.
 10. A parent's done mark was a `span` with `aria-label`, which axe rejects on a generic element. It is now `role="img"`, so the name is allowed and the chat sheet can sit on top of that screen without a serious violation.
+11. The avatar badge showed a count while the button name was only «עוזר הכיתה», which axe reports as a name mismatch. The accessible name now includes the count.
 
 ## Remaining risks
 
@@ -87,6 +92,7 @@ The report covers the final build: the approved product changes (principal home,
 | --- | --- | --- |
 | Web Speech may send audio to the browser's own speech service | Medium | The app does not upload homework or chat text. Recording, read-aloud, and the assistant microphone use the browser's speech APIs. The recording screen and the chat say the browser may use its own speech service. |
 | A `#pack=` link can still change the local demo | Low | The pack cannot run code or pollute prototypes. It can merge names and homework into the on-device demo, which has no accounts. |
-| Most of the page is drawn with `innerHTML` | Low | User-entered strings go through `esc()`. The assistant chat does not: questions, answers, and the helper name are set with `textContent`. A later edit that interpolates a field without `esc()` would be an XSS bug. The CSP blocks injected scripts. |
+| Most of the page is drawn with `innerHTML` | Low | User-entered strings go through `esc()`. The assistant chat, digest, reminder banner, and notification card set questions, answers, and reminder text with `textContent`. A later edit that interpolates a field without `esc()` would be an XSS bug. The CSP blocks injected scripts. |
+| Reminders do not arrive if the app is closed | Low | Times are stored on the device and checked with `setTimeout` while the app is open, plus a catch-up when it opens. The reminder settings and the demo script say a reliable background push needs a backend later. |
 | WebKit was not executed here | Low | Chromium at 390×844 passed, including the camera file input and the recording bar. A real iPhone pass is still the check for Safari's camera picker. |
 | The service worker caches later same-origin GETs inside its directory | Low | It does not cache other origins, and it does not cache the rest of `/NoHW/`. |

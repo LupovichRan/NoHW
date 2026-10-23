@@ -1,4 +1,4 @@
-const CACHE = "nohw-simple-v15";
+const CACHE = "nohw-simple-v16";
 const SHELL = ["./","index.html","app.css","app.js","logic.js","assistant.js","demo.js","media.js","manifest.webmanifest","icon-192.png","icon-512.png","fonts/rubik-hebrew-400-normal.woff2","fonts/rubik-hebrew-500-normal.woff2","fonts/rubik-hebrew-600-normal.woff2","fonts/rubik-hebrew-700-normal.woff2","fonts/rubik-latin-400-normal.woff2","fonts/rubik-latin-500-normal.woff2","fonts/rubik-latin-600-normal.woff2","fonts/rubik-latin-700-normal.woff2"];
 
 self.addEventListener("install", function (event) {
@@ -10,6 +10,14 @@ self.addEventListener("activate", function (event) {
   event.waitUntil(caches.keys().then(function (keys) {
     return Promise.all(keys.filter(function (key) { return key.indexOf("nohw-simple-") === 0 && key !== CACHE; }).map(function (key) { return caches.delete(key); }));
   }).then(function () { return self.clients.claim(); }));
+});
+
+self.addEventListener("message", function (event) {
+  const data = event.data || {};
+  if (data.type !== "remind") return;
+  const title = String(data.title || "עוזר הכיתה").slice(0, 80);
+  const body = String(data.body || "").slice(0, 180);
+  event.waitUntil(self.registration.showNotification(title, { body: body, lang: "he", dir: "rtl", tag: "nohw-remind" }));
 });
 
 self.addEventListener("fetch", function (event) {
