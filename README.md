@@ -1,3 +1,9 @@
+# Nohomework
+
+Nohomework is a Hebrew-first homework board for one school. The student checks the evening list and marks work done. The parent sees the week. The teacher posts homework for a subject, or marks that subject as having no homework. A subject with no post stays "not updated" and is never shown as "no homework".
+
+This branch is a local-first pilot: a static PWA in `dist/`, with no database, no accounts, and no email. Data stays in the browser. People in the demo (נועם לוי, מיכל שפירא, and the rest) are fictional. The license is MIT. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+
 # Nohomework — פיילוט מקומי
 
 אפליקציית שיעורי בית בעברית, לטלפון, לבית ספר אחד (כיתות ה׳–ו׳). זו אפליקציית דפדפן שאפשר להתקין למסך הבית. אין שרת, אין חשבון ואין אימייל. כל הנתונים נשמרים במכשיר (localStorage). מעבר בין מכשירים נעשה בקובץ או בקישור, לא בבסיס נתונים.
@@ -63,3 +69,7 @@ npx wrangler pages deploy dist --project-name nohw
 ```
 
 זה מחליף את האתר שבפרויקט `nohw`. לפרוס לפרויקט אחר אם הפרודקשן צריך להישאר כמו שהוא.
+
+## רישיון
+
+[MIT](LICENSE). שמות האנשים בדמו בדויים. אין להכניס למאגר שמות אמיתיים, טלפונים, או מפתחות.
