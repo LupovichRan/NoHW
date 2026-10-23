@@ -9,7 +9,7 @@ function pilotRead(key){try{return localStorage.getItem(key)}catch{return null}}
 function readRecent(){try{return JSON.parse(pilotRead('homework-tree-recent')||'[]')}catch{return []}}
 function writeRecent(list){pilotStore('homework-tree-recent',JSON.stringify(list))}
 function consentGiven(){return pilotRead('homework-parent-consent')==='1'}
-function pageBase(){return location.origin+location.pathname}
+function pageBase(){return appDirectory(document.baseURI)}
 function activeClassGrade(){const row=school.classes.find(item=>item.id===school.classId);if(!row)return null;if(row.grade!=null&&row.grade!=='')return Number(row.grade);return gradeFromName(row.name)}
 function pilotPersona(){return {role,teacherId:school.teacherId,parentId:school.parentId,childId:school.childId,managerId:school.managerId}}
 function canSetupSchool(){return role==='admin'||role==='manager'||role==='teacher'}

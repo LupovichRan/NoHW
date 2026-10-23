@@ -220,6 +220,17 @@ function mergeRecords(local,incoming){
  for(const row of local||[])if(row&&row.classId&&row.day&&row.subject)map.set(key(row),row);
  for(const row of incoming||[])if(row&&row.classId&&row.day&&row.subject)map.set(key(row),{...map.get(key(row)),...row});
  return [...map.values()]}
+function appDirectory(href){
+ const url=new URL(href);
+ if(!url.pathname.endsWith('/')){
+  const parts=url.pathname.split('/');
+  const last=parts[parts.length-1]||'';
+  if(/\.[a-z0-9]+$/i.test(last))parts.pop();else parts.push('');
+  url.pathname=parts.join('/')||'/';
+  if(!url.pathname.endsWith('/'))url.pathname+='/';
+ }
+ url.search='';url.hash='';
+ return url.href}
 function packSnapshot(school,records){
  ensureLists(school);
  return {v:1,organizations:school.organizations,schools:school.schools,classes:school.classes.map(row=>({id:row.id,name:row.name,schoolId:row.schoolId,grade:row.grade??null,joinCode:row.joinCode,subjects:row.subjects||PILOT_SUBJECTS.slice()})),students:school.students.map(row=>({id:row.id,name:row.name,classIds:row.classIds,parentCode:row.parentCode})),teachers:school.teachers,parents:school.parents,managers:school.managers,staff:school.staff,invites:school.invites,records:(records||[]).map(row=>({classId:row.classId,day:row.day,subject:row.subject,teacher:row.teacher,kind:row.kind,details:row.details,due:row.due,dueTime:row.dueTime,completions:row.completions,lesson:row.lesson}))}}

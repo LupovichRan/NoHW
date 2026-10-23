@@ -3,7 +3,10 @@
 (function(){
 const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 const ios=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
+ const root=typeof appDirectory==='function'?appDirectory(document.baseURI):new URL('./',document.baseURI).href;
+ navigator.serviceWorker.register(new URL('sw.js',root).href,{scope:new URL(root).pathname}).catch(()=>{});
+}
 const demo=document.querySelector('.demo');
 if(window.NOHOMEWORK_POC?.enabled&&demo&&!document.getElementById('pocReset')){
  const b=document.createElement('button');b.type='button';b.id='pocReset';b.textContent='איפוס נתוני דמו';

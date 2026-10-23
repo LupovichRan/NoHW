@@ -48,6 +48,12 @@ for t in tests/*.cjs; do node "$t" || exit 1; done
 
 אין מספר זהות, אין חשבון ואין שליחה אוטומטית לשרת. ההורה מסמן הסכמה. הפירוט בעברית: [מדיניות הפרטיות](dist/privacy.html).
 
+## תצוגה בטלפון (GitHub Pages)
+
+הענף `cursor/nohw-pilot-775c` מפרסם את `dist/` ל-GitHub Pages. הכתובת היא `https://lupovichran.github.io/NoHW/`.
+
+הקישורים באתר יחסיים. ב-`manifest.webmanifest` השדות `start_url`, `scope` ו-`id` הם `./`, ולכן הם מחושבים מתוך תיקיית המניפסט (`/NoHW/` ב-Pages, `/` בהרצה מקומית). ה-service worker נרשם מאותה תיקייה, והמטמון שלו משתמש בנתיבים יחסיים לקובץ `sw.js`. אין כאן פריסה ל-Cloudflare.
+
 ## פריסה
 
 האתר הוא קבצים סטטיים מתוך `dist/`. `wrangler.jsonc` מצביע על Cloudflare Pages בשם `nohw`. לא לפרוס מהענף הזה אל הפרויקט החי בלי בדיקה. כשמחליטים לפרסם סביבת תצוגה:

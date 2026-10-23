@@ -1,5 +1,5 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
-const ctx=vm.createContext({Math,Date,JSON,TextEncoder,TextDecoder,Uint8Array,Set,Map,Object,Array,String,Number,Error,isNaN,encodeURIComponent,decodeURIComponent});
+const ctx=vm.createContext({Math,Date,JSON,TextEncoder,TextDecoder,Uint8Array,Set,Map,Object,Array,String,Number,Error,isNaN,encodeURIComponent,decodeURIComponent,URL});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'..','dist','pilot-model.js'),'utf8'),ctx);
 function demoSchool(){
  return {organizations:[{id:'org1',name:'עיריית הדגמה'}],schools:[{id:'s1',name:'אופק',orgId:'org1',ownerId:'m1'},{id:'s2',name:'ניצנים',orgId:null,ownerId:'m2'}],classes:[{id:'c1',name:'ה׳1',schoolId:'s1',grade:5,joinCode:'AAAAAA'},{id:'c2',name:'ה׳2',schoolId:'s1',grade:5,joinCode:'BBBBBB'},{id:'c3',name:'ו׳1',schoolId:'s2',grade:6,joinCode:'CCCCCC'}],students:[{id:'st1',name:'נועם',classIds:['c1'],parentCode:'PPPPPP'},{id:'st2',name:'מאיה',classIds:['c3'],parentCode:'QQQQQQ'}],teachers:[{id:'t1',name:'מיכל',classIds:['c1','c2']}],parents:[{id:'p1',name:'דנה',studentIds:['st1','st2']}],managers:[{id:'m1',name:'יוסי',schoolIds:['s1']},{id:'m2',name:'שרה',schoolIds:['s2']}],staff:[],invites:[]};
@@ -114,5 +114,24 @@ assert.equal(vm.runInContext("gradeFromName('ד׳2')",ctx),4);
 assert.equal(vm.runInContext("gradeFromName('ה׳2')",ctx),5);
 assert.equal(vm.runInContext("gradeFromName('ו׳1')",ctx),6);
 assert.equal(vm.runInContext("gradeFromName('חשבון')",ctx),null);
+
+// GitHub Pages serves this repo at /NoHW/. The app directory must stay on that path, and also at / when opened locally.
+assert.equal(vm.runInContext("appDirectory('https://lupovichran.github.io/NoHW/')",ctx),'https://lupovichran.github.io/NoHW/');
+assert.equal(vm.runInContext("appDirectory('https://lupovichran.github.io/NoHW/index.html')",ctx),'https://lupovichran.github.io/NoHW/');
+assert.equal(vm.runInContext("appDirectory('https://lupovichran.github.io/NoHW')",ctx),'https://lupovichran.github.io/NoHW/');
+assert.equal(vm.runInContext("new URL(appDirectory('https://lupovichran.github.io/NoHW/index.html')).pathname",ctx),'/NoHW/');
+assert.equal(vm.runInContext("appDirectory('http://127.0.0.1:8099/')",ctx),'http://127.0.0.1:8099/');
+assert.equal(vm.runInContext("appDirectory('http://127.0.0.1:8099/index.html')",ctx),'http://127.0.0.1:8099/');
+const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'..','dist','manifest.webmanifest'),'utf8'));
+assert.equal(manifest.start_url,'./');
+assert.equal(manifest.scope,'./');
+assert.equal(manifest.id,'./');
+for(const icon of manifest.icons)assert.ok(!icon.src.startsWith('/'),icon.src);
+const pwa=fs.readFileSync(path.join(__dirname,'..','dist','pwa.js'),'utf8');
+assert.ok(pwa.includes("register(new URL('sw.js',root).href"));
+assert.ok(!pwa.includes("register('/sw.js'"));
+const worker=fs.readFileSync(path.join(__dirname,'..','dist','sw.js'),'utf8');
+assert.ok(worker.includes("'./'"));
+assert.ok(!worker.includes("'/sw.js'")&&!worker.includes('"/index.html"'));
 
 console.log('Passed tree picker, not-updated rule, class-code join, owner invites and AI grade gate.');
