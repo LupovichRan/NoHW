@@ -97,7 +97,9 @@
     ["saved-homework", "שמרתי את השיעור."],
     ["saved-message", "ההודעה נשלחה."],
     ["more-intro", "עוד משהו שכדאי לראות."],
-    ["lead-clear", "כרגע אין משהו דחוף."]
+    ["lead-clear", "כרגע אין משהו דחוף."],
+    ["hear-timeout", "לא שמעתי. אפשר לדבר שוב."],
+    ["mic-students-off", "המיקרופון כבוי לתלמידים בכיתה."]
   ];
   const byId = {};
   FIXED.forEach(function (row) { byId[row[0]] = row[1]; });

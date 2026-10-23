@@ -6,6 +6,8 @@
 
 ההקראה כבויה כברירת מחדל, ובמיוחד אצל תלמיד בכיתה, עד שלוחצים «הקראה». בחלון יש בחירת קול וכפתור «בדיקת קול».
 
+אפשר גם לדבר אל העוזר. כפתור המיקרופון הגדול מקשיב, מראה נקודה אדומה מהבהבת, שעון ותמלול חי, ואז שם את המשפט כבועה של המשתמש. «דיבור רצוף» משמיע את התשובה ואז מקשיב שוב, עד שנגמר הזמן. «הכתבה» ממלאת טקסט של שיעור או הודעה. רשימת ילדים כמו «נועה, תמר, אורי» נשארת שלושה ילדים. המורה יכולה לכבות את המיקרופון לתלמידי הכיתה. זיהוי הדיבור בדפדפן עשוי לשלוח שמע לספק הדפדפן. אין מפתח במכשיר. שרת דיבור עתידי, אם יופעל, חייב להיות באותו אתר, והוא כבוי כברירת מחדל.
+
 ## משפטים קבועים
 
 | מזהה | מוצג |
@@ -103,6 +105,8 @@
 | `saved-message` | ההודעה נשלחה. |
 | `more-intro` | עוד משהו שכדאי לראות. |
 | `lead-clear` | כרגע אין משהו דחוף. |
+| `hear-timeout` | לא שמעתי. אפשר לדבר שוב. |
+| `mic-students-off` | המיקרופון כבוי לתלמידים בכיתה. |
 
 ## תבניות עם פרטים מהכיתה
 
@@ -133,10 +137,10 @@
 
 הקול נבחר מ-`speechSynthesis.getVoices()` אחרי `voiceschanged`. קודם קול he-IL של Google או Microsoft שמכיל Online, Natural, Neural, Hila, Avri או Asaf. הקצב 0.95 והגובה 1.
 
-אם יש קובץ מוכן למזהה המשפט, הוא מתנגן. אם אין, נופלים ל-`speechSynthesis` עם הטקסט אחרי מילון ההגייה. המילון מכסה מקצועות, תנ״ך, שיעורי בית, שמות ילדים מהדמו, תוויות כיתה כמו ד׳1, שעות, מספרים ותאריכים שמופיעים כשעה.
+סדר ההשמעה הוא קובץ מוכן למזהה המשפט, אחר כך שרת מאותו אתר אם הוגדרה כתובת, ואז `speechSynthesis` עם הטקסט אחרי מילון ההגייה. המילון מכסה מקצועות, תנ״ך, שיעורי בית, שמות ילדים מהדמו, תוויות כיתה כמו ד׳1, שעות, מספרים ותאריכים שמופיעים כשעה. זיהוי דיבור הוא Web Speech בשפה he-IL. אם אין תמיכה, נשארת הקלדה. כתובת לשרת מרוחק אחר לא בשימוש.
 
 ## Voice quality
 
-The spoken voice is only as good as the Hebrew voice installed on the device. Chrome on a desktop often has no he-IL voice at all, and a local voice can still mispronounce names, geresh grades, and hours. This build does not download a voice and does not call a speech service of its own.
+The spoken voice is only as good as the Hebrew voice installed on the device. Chrome on a desktop often has no he-IL voice at all, and a local voice can still mispronounce names, geresh grades, and hours. This build does not download a voice and does not put a speech key in the client. Browser speech recognition may send audio to the browser vendor. A teacher can turn the microphone off for students in a class. A remote speech proxy stays off unless a same-origin URL is set.
 
 A later upgrade can keep the same phrase ids. Fixed lines in the table above can be rendered at build time to audio clips with Azure `he-IL-HilaNeural` or `he-IL-AvriNeural`, or with Google Cloud he-IL Wavenet, and stored next to the app. `speak-he.js` already plays `clips[phraseId]` when that file is registered, and falls back to `speechSynthesis` when it is not. Dynamic sentences, the ones with a child name or a homework line, need a backend text-to-speech call in the full version. They should stay on the device-only voice until that backend exists.

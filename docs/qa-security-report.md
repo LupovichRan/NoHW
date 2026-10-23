@@ -4,16 +4,16 @@ Date: 23 October 2026. Build under test is the `simple` branch, the Hebrew PWA i
 
 The report covers the final build. After a character is chosen, the home is the avatar conversation: the face on top and a Hebrew RTL bubble feed below. A local relevance engine in `simple/lead.js` opens the two to four cards that fit the role, the time of day, and the data. Old dashboards (the teacher tiles, the principal stats home, the admin lists, the student and parent screens) appear only when the avatar shares them, as compact widgets with `פתח מסך מלא`. A chip starts an existing composer as a sheet and returns to the chat with a confirmation bubble. A small `☰` menu is the fallback to any full screen. There is no tab bar and no tile grid. Setup-incomplete users see the setup wizard first.
 
-The same assistant, עוזר הכיתה, still answers only from data already on the device, walks setup, and speaks the lines in `simple/avatar-he.js` (listed in `docs/avatar-hebrew-lines.md`). Read-aloud stays off until turned on. It does not call a language model, use an API key, or open a network request. A change waits for כן. A reminder arrives as a new bubble in the feed plus a notification while the app is open. A reliable background push still needs a backend later.
+The same assistant, עוזר הכיתה, still answers only from data already on the device, walks setup, and speaks the lines in `simple/avatar-he.js` (listed in `docs/avatar-hebrew-lines.md`). Read-aloud stays off until turned on. A big microphone listens in Hebrew and sends the transcript through the same path as typed text. Hands-free mode speaks the answer, then listens again until a timeout. Dictation fills homework text, message text, and kid lists. `simple/speech.js` picks the provider: Web Speech he-IL by default, then a same-origin proxy only if a URL is set (off by default), and for speech-out a clip, then that proxy, then `speechSynthesis`. There is no key in the client. Browser speech recognition may send audio to the browser vendor, and a teacher can turn the student microphone off for a class. It does not call a language model. A change waits for כן. A reminder arrives as a new bubble in the feed plus a notification while the app is open. A reliable background push still needs a backend later.
 
 Earlier product work is still in this build: scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, and profile photos.
 
 ## How it was run
 
-- Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`, `node tests/assist.cjs`, `node tests/setup.cjs`, `node tests/speak-he.cjs`, `node tests/lead.cjs`.
+- Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`, `node tests/assist.cjs`, `node tests/setup.cjs`, `node tests/speak-he.cjs`, `node tests/lead.cjs`, `node tests/speech.cjs`.
 - Browser walk at 390×844 in headless Chromium: `node tests/e2e/walk.mjs` against a local static server. 62 product checks passed, 0 failed. WebKit is not installed in this environment, so that browser was not run.
 - axe-core on the start hub, the principal avatar home, the timetable, a student day, the message list, the profile sheet, the avatar conversation as a student, a parent, and a principal, and the teacher setup screen (the lead home). No serious or critical violations.
-- Lighthouse mobile, local server, two runs, both the same: performance 86, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA). The performance score is first-contentful-paint on this static server (render-blocking CSS, no gzip). The scripts were not minified.
+- Lighthouse mobile, local server, two runs, both the same: performance 85, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA). The performance score is first-contentful-paint on this static server (render-blocking CSS, no gzip). The scripts were not minified.
 - gitleaks 8.28.0 on the current tree, no leaks. `npm audit` in `tests/e2e` reported 0 vulnerabilities.
 
 ## Pass / fail
@@ -52,7 +52,7 @@ Earlier product work is still in this build: scoped live data, specific media er
 | RTL (`dir=rtl`) and no horizontal overflow on every scenario | Pass |
 | Manifest, service worker, and a reload while offline | Pass |
 | axe-core, no serious or critical issues | Pass |
-| Lighthouse performance / accessibility / best practices / PWA | 86 / 100 / 100 / 100 |
+| Lighthouse performance / accessibility / best practices / PWA | 85 / 100 / 100 / 100 |
 | WebKit | Not run. The browser is not installed here. |
 | XSS payloads in a school name, a student name, homework text, a transcript, and a custom subject stay as text | Pass |
 | Content-Security-Policy and referrer policy | Pass |
@@ -61,7 +61,12 @@ Earlier product work is still in this build: scoped live data, specific media er
 | gitleaks | Pass, no leaks |
 | npm audit of the e2e dev dependencies | Pass, 0 vulnerabilities |
 | No third-party requests during the walk | Pass |
-| Speech screen says the browser may use its own speech service | Pass |
+| Speech screen says the browser may use its own speech service, and that recognition may send audio to the browser vendor | Pass |
+| A simulated transcript follows the same intent path as typed text, including כן and לא | Pass |
+| `נועה, תמר, אורי` stays three kid names, and the wizard confirm lists those three | Pass |
+| Speech providers: a clip plays before a same-origin proxy, and the proxy before speechSynthesis. A cross-origin URL is ignored. Web Speech is the default listener | Pass |
+| Hands-free mode speaks, then listens, then goes idle on timeout. One tap listens once and stops | Pass |
+| A teacher can turn the class microphone off for students. A student cannot change that setting | Pass |
 | Profile photo: set, remove, emoji fallback, teacher may set a student, student cannot set someone else | Pass |
 | Profile photos stay out of a normal `#pack=` and are included only when a profile export is requested | Pass |
 | Service worker cache stays on the app's own directory | Pass |
@@ -110,7 +115,7 @@ Earlier product work is still in this build: scoped live data, specific media er
 
 | Risk | Severity | Notes |
 | --- | --- | --- |
-| Web Speech may send audio to the browser's own speech service | Medium | The app does not upload homework or chat text. Recording, read-aloud, and the assistant microphone use the browser's speech APIs. The recording screen and the chat say the browser may use its own speech service. Hebrew pronunciation is only as good as the installed he-IL voice. Fixed phrases can later be replaced by pre-generated neural clips without changing the phrase ids. |
+| Web Speech may send audio to the browser's own speech service | Medium | The app does not upload homework or chat text by itself. Recording, read-aloud, and the microphone use the browser's speech APIs. The chat says recognition may send audio to the browser vendor. A teacher can turn the student microphone off per class. A remote proxy is off unless its URL is same-origin, and the client sends no key. Hebrew pronunciation is only as good as the installed he-IL voice. Fixed phrases can later be replaced by pre-generated neural clips without changing the phrase ids. |
 | Read-aloud quality varies by device | Low | There is no bundled Hebrew voice. The picker ranks Google or Microsoft he-IL voices when they exist and otherwise uses speechSynthesis. Dynamic lines still need a backend voice in a later version. |
 | A `#pack=` link can still change the local demo | Low | The pack cannot run code or pollute prototypes. It can merge names and homework into the on-device demo, which has no accounts. |
 | Most of the page is drawn with `innerHTML` | Low | User-entered strings go through `esc()`. The lead cards, widgets, chips, confirmation bubbles, assistant chat, reminder banner, notification card, and setup confirmations set questions, answers, and names with `textContent`. A later edit that interpolates a field without `esc()` would be an XSS bug. The CSP blocks injected scripts. |

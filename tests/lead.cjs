@@ -158,7 +158,7 @@ assert.match(app, /lead-chip/);
 assert.match(app, /פתח מסך מלא/);
 assert.match(app, /textContent/);
 const sw = fs.readFileSync(path.join(__dirname, "..", "simple", "sw.js"), "utf8");
-assert.match(sw, /nohw-simple-v20/);
+assert.match(sw, /nohw-simple-v21/);
 assert.match(sw, /lead\.js/);
 
 console.log("lead ok");

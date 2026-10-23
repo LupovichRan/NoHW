@@ -883,6 +883,17 @@ svg.mirror { transform: scaleX(-1); }
 .askline { display: flex; gap: 6px; align-items: center; }
 .askline .askbox { flex: 1; min-width: 0; }
 .askline > button { width: 44px; height: 44px; flex: none; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.askline > button.micbig {
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  border: 2px solid #dc2626;
+  background: #fff7e8;
+  font-size: 28px;
+}
+.askline > button.micbig[aria-pressed="true"] { background: #fee2e2; }
+.recscrim.listenlive { z-index: 27; }
+.reclive.listenlive { z-index: 28; }
 .widget { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .widget .wrow { display: flex; align-items: center; gap: 6px; }
 .widget .wrow .row, .widget .wrow span { flex: 1; min-width: 0; text-align: start; }

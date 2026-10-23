@@ -328,6 +328,15 @@
     node.room.helper = { face: face, name: name };
     return helperOf(node.room);
   }
+  function studentMicOn(room) {
+    return !(room && room.mic && room.mic.students === false);
+  }
+  function setStudentMic(state, actor, input) {
+    const node = requireEdit(state, actor, { kind: "homework", classId: ownClassId(state, actor, input) });
+    if (input && input.on === false) node.room.mic = { students: false };
+    else delete node.room.mic;
+    return { students: studentMicOn(node.room) };
+  }
   function ownClassId(state, actor, input) {
     let classId = input && input.classId;
     if (!classId && actor && actor.role === "teacher") {
@@ -571,6 +580,7 @@
       kids: role === "teacher" ? clone(room.kids || []) : [kidSlice(found.kid, role)]
     };
     if (room.helper) packedRoom.helper = helperOf(room);
+    if (room.mic && room.mic.students === false) packedRoom.mic = { students: false };
     school.classrooms = [packedRoom];
     return finishPack({ v: 1, role, code: found.code, schools: [school] }, arguments[3]);
   }
@@ -718,6 +728,8 @@
       room.timetable = table;
     }
     if (incoming.helper && typeof incoming.helper === "object") room.helper = helperOf({ helper: incoming.helper });
+    if (incoming.mic && incoming.mic.students === false) room.mic = { students: false };
+    else if (incoming.mic && incoming.mic.students === true) delete room.mic;
     if (Array.isArray(incoming.messages)) {
       room.messages = incoming.messages.slice(0, 80).map(function (item) {
         if (!item || typeof item !== "object") return null;
@@ -795,6 +807,8 @@
     nextSchoolDay,
     helperOf,
     setHelper,
+    studentMicOn,
+    setStudentMic,
     subjectsFor,
     setSlot,
     setHomework,

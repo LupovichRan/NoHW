@@ -37,6 +37,16 @@ let toastTimer = 0;
 let heard = "";
 let recognition = null;
 let chatRec = null;
+let talk = null;
+let listenToken = 0;
+let listenStream = null;
+let listenRec = null;
+let listenRecorder = null;
+let listenTimer = 0;
+let listenStarted = 0;
+let listenTarget = "chat";
+let heardTalk = "";
+const speechProxy = { sttUrl: "", ttsUrl: "" };
 let chatLog = [];
 let wizard = null;
 let setupPending = null;
@@ -116,6 +126,7 @@ function render() {
   applySpeechPref();
   document.getElementById("app").innerHTML = html();
   if (view.recording) paintRecording();
+  if (view.hearing) paintLive(heardTalk);
   if (document.querySelector(".leadhome")) paintLead();
   else if (view.chat) paintChat();
   mountAssist();
@@ -135,11 +146,16 @@ function recordOverlay() {
   if (!view.recording) return "";
   return '<div class="recscrim"></div><div class="reclive" role="status"><div class="recbar"><div class="recrow"><span class="recdot" aria-hidden="true"></span><b data-rec-time>00:00</b><span>מקליט...</span></div><div class="meter" aria-hidden="true"><span data-rec-level></span></div><p class="said live" data-live-transcript></p><p class="warn" data-rec-warn hidden></p></div><button class="stop" type="button" data-act="record">⏹ עצור</button></div>';
 }
+function listenOverlay() {
+  if (!view.hearing) return "";
+  const label = talkMachine() && talkMachine().handsFree() ? "מקשיב לשיחה..." : "מקשיב...";
+  return '<div class="recscrim listenlive"></div><div class="reclive listenlive" role="status"><div class="recbar"><div class="recrow"><span class="recdot" aria-hidden="true"></span><b data-rec-time>00:00</b><span>' + label + '</span></div><p class="said live" data-live-transcript></p></div><button class="stop" type="button" data-act="listen-stop">⏹ עצור</button></div>';
+}
 function shell(head, body) {
   const note = toastText ? '<p class="toast" role="status">' + esc(toastText) + "</p>" : "";
-  const busy = view.recording ? " busy" : "";
+  const busy = view.recording || view.hearing ? " busy" : "";
   const lead = head.indexOf("leadhead") >= 0 ? " leadapp" : "";
-  return '<section class="app' + busy + lead + '" lang="he" dir="rtl">' + head + body + recordOverlay() + sheetHtml() + helperFab() + note + "</section>";
+  return '<section class="app' + busy + lead + '" lang="he" dir="rtl">' + head + body + recordOverlay() + listenOverlay() + sheetHtml() + helperFab() + note + "</section>";
 }
 function toast(text) {
   toastText = text;
@@ -325,26 +341,51 @@ function markSaying(bubble, on) {
   if (face) face.classList.toggle("talking", !!on);
   if (bubble && on) bubble.classList.add("saying");
 }
+function shouldSpeak() {
+  if (view.readAloud) return true;
+  const machine = talkMachine();
+  return !!(machine && machine.handsFree());
+}
 function speakBubbles(bubbles) {
   hush();
-  if (!view.readAloud || !window.NohwSpeak || !bubbles || !bubbles.length) return;
+  if (view.hearing) stopListenTracks();
+  if (!shouldSpeak() || !bubbles || !bubbles.length) return;
   const items = bubbles.map(function (bubble) {
     return { id: bubble.dataset.phrase || "", text: bubble.dataset.say || "" };
   }).filter(function (item) { return item.text; });
   if (!items.length) return;
-  window.NohwSpeak.speakQueue(items, {
+  const machine = talkMachine();
+  if (machine && machine.handsFree()) machine.beginSpeak();
+  const hooks = {
     phrase: function (index) {
       const match = bubbles.filter(function (bubble) { return bubble.dataset.say; })[index];
       markSaying(match, true);
     },
-    done: function () { markSaying(null, false); }
-  });
+    done: function () {
+      markSaying(null, false);
+      if (!machine || !machine.handsFree()) return;
+      machine.endSpeak();
+      if (studentMicAllowed()) startListen("chat");
+    }
+  };
+  if (window.NohwSpeech && window.NohwSpeech.speak) {
+    window.NohwSpeech.speak(items, hooks, {
+      speaker: window.NohwSpeak,
+      origin: location.origin,
+      settings: speechProxy
+    });
+    return;
+  }
+  if (window.NohwSpeak) window.NohwSpeak.speakQueue(items, hooks);
 }
 function speakLatest() {
   const turns = document.querySelectorAll(".chatsheet .turn.bot");
   const last = turns[turns.length - 1];
   if (!last) return;
   speakBubbles([].slice.call(last.querySelectorAll(".bubble")));
+}
+function maybeSpeak() {
+  if (shouldSpeak()) speakLatest();
 }
 function speakSample() {
   const sample = window.NohwHebrew ? window.NohwHebrew.text("voice-test") : "";
@@ -458,7 +499,7 @@ function askHelper(opts) {
   view.chat = true;
   armReminders();
   render();
-  if (view.readAloud) speakLatest();
+  maybeSpeak();
 }
 function askSetup(who, typed, intent, choiceLabel) {
   if (setupPending && !intent) {
@@ -498,7 +539,7 @@ function showSetup(turn, typed, intent, choiceLabel) {
   }
   view.chat = true;
   render();
-  if (view.readAloud) speakLatest();
+  maybeSpeak();
 }
 function declineSetup() {
   const who = helperWho();
@@ -510,6 +551,7 @@ function declineSetup() {
   pushBot(turn.text);
   view.chat = true;
   render();
+  maybeSpeak();
 }
 function backSetup() {
   const who = helperWho();
@@ -521,6 +563,7 @@ function backSetup() {
   pushBot(turn.text, { confirm: !!turn.confirm });
   view.chat = true;
   render();
+  maybeSpeak();
 }
 function applySetup(pending) {
   if (!pending || !pending.action || !G) return;
@@ -578,6 +621,7 @@ function applySetup(pending) {
     pushBot(failed);
     view.chat = true;
     render();
+    maybeSpeak();
     return;
   }
   saveStore();
@@ -589,6 +633,7 @@ function applySetup(pending) {
   pushBot(turn.text);
   view.chat = true;
   render();
+  maybeSpeak();
 }
 function paintChat() {
   const ctx = helperContext();
@@ -737,15 +782,14 @@ function paintChat() {
   read.setAttribute("aria-pressed", view.readAloud ? "true" : "false");
   read.setAttribute("aria-label", "הקראה");
   read.textContent = view.readAloud ? "הקראה פעילה" : "הקראה";
-  const mic = document.createElement("button");
-  mic.type = "button";
-  mic.dataset.act = "helper-mic";
-  mic.textContent = "🎤 דיבור";
+  const mic = makeMicButton();
   tools.appendChild(read);
-  tools.appendChild(mic);
+  const hands = makeHandsFree();
+  if (hands) tools.appendChild(hands);
+  if (mic) tools.appendChild(mic);
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = speechCtor() ? "הדפדפן עשוי להשתמש בשירות דיבור משלו" : "הדיבור לא זמין בדפדפן זה";
+  hint.textContent = speechHint();
   const voiceBox = document.createElement("div");
   voiceBox.className = "voiceset";
   const voicePick = document.createElement("select");
@@ -787,6 +831,7 @@ function paintChat() {
     const label = document.createElement("span");
     label.textContent = "הפנים של העוזר";
     settings.appendChild(label);
+    settings.appendChild(makeStudentMicToggle(ctx.room));
     ["sun", "fox", "moon", "star"].forEach(function (face) {
       const button = document.createElement("button");
       button.type = "button";
@@ -1026,15 +1071,11 @@ function paintLeadDock(dock, role) {
   send.textContent = "שאל";
   form.appendChild(input);
   form.appendChild(send);
-  const mic = document.createElement("button");
-  mic.type = "button";
-  mic.dataset.act = "helper-mic";
-  mic.setAttribute("aria-label", "דיבור");
-  mic.textContent = "🎤";
+  const mic = makeMicButton();
   const row = document.createElement("div");
   row.className = "askline";
   row.appendChild(form);
-  row.appendChild(mic);
+  if (mic) row.appendChild(mic);
   dock.appendChild(chips);
   dock.appendChild(row);
   const tools = document.createElement("div");
@@ -1046,6 +1087,8 @@ function paintLeadDock(dock, role) {
   read.setAttribute("aria-label", "הקראה");
   read.textContent = view.readAloud ? "הקראה פעילה" : "הקראה";
   tools.appendChild(read);
+  const hands = makeHandsFree();
+  if (hands) tools.appendChild(hands);
   if (A && A.defaults(role)) {
     const prefs = document.createElement("button");
     prefs.type = "button";
@@ -1056,7 +1099,7 @@ function paintLeadDock(dock, role) {
   dock.appendChild(tools);
   const hint = document.createElement("p");
   hint.className = "hint";
-  hint.textContent = speechCtor() ? "הדפדפן עשוי להשתמש בשירות דיבור משלו" : "הדיבור לא זמין בדפדפן זה";
+  hint.textContent = speechHint();
   dock.appendChild(hint);
   const voiceBox = document.createElement("div");
   voiceBox.className = "voiceset";
@@ -1086,6 +1129,7 @@ function paintLeadDock(dock, role) {
     const label = document.createElement("span");
     label.textContent = "הפנים של העוזר";
     settings.appendChild(label);
+    settings.appendChild(makeStudentMicToggle(ctx.room));
     ["sun", "fox", "moon", "star"].forEach(function (kind) {
       const button = document.createElement("button");
       button.type = "button";
@@ -1472,10 +1516,9 @@ function resetChat() {
   leadSession = null;
   leadFocus = "";
   hush();
-  if (chatRec) {
-    try { chatRec.onresult = null; chatRec.stop(); } catch (e) {}
-    chatRec = null;
-  }
+  view.hearing = false;
+  if (talkMachine()) talkMachine().disable();
+  stopListenTracks();
 }
 function adopt(pack, next) {
   resetChat();
@@ -1886,7 +1929,7 @@ function voicePanel() {
 }
 function postHtml() {
   noteSpeech();
-  const form = '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="80" value="' + esc(view.text || "") + '" placeholder="שיעורי בית" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, subject: view.subject }) + pickButtons() + voicePanel() + err() + '<button class="ghost" type="button" data-act="none">אין שיעורים</button><div class="pair"><button class="ghost" type="button" data-act="save-next">שמור והבא</button><button class="primary" type="submit">שמירה</button></div></form>';
+  const form = '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="80" value="' + esc(view.text || "") + '" placeholder="שיעורי בית" aria-label="טקסט"></label><button class="ghost" type="button" data-act="dictate">🎤 הכתבה</button>' + photoThumbs(view.photos, { remove: true, subject: view.subject }) + pickButtons() + voicePanel() + err() + '<button class="ghost" type="button" data-act="none">אין שיעורים</button><div class="pair"><button class="ghost" type="button" data-act="save-next">שמור והבא</button><button class="primary" type="submit">שמירה</button></div></form>';
   if (view.fromLead) return leadFrame(form);
   return shell(bar(view.subject || "שיעור", "לשיעור הבא"), form);
 }
@@ -1950,7 +1993,7 @@ function composeHtml() {
   const picks = '<div class="pair"><button class="ghost' + (audience === "class" ? " on" : "") + '" type="button" data-act="audience" data-audience="class">כל הכיתה</button><button class="ghost' + (audience === "parents" ? " on" : "") + '" type="button" data-act="audience" data-audience="parents">הורים בלבד</button></div>';
   const alert = '<button class="ghost' + (alertOn ? " on" : "") + '" type="button" data-act="alert" aria-pressed="' + (alertOn ? "true" : "false") + '">התראה</button>';
   const draftValue = view.fillDraft ? "" : esc(view.text || "");
-  const form = '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="280" value="' + draftValue + '" placeholder="הודעה" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, msgId: view.id || "" }) + pickButtons() + voicePanel() + picks + alert + err() + '<button class="primary" type="submit">' + (view.id ? "שמירה" : "שליחה") + "</button></form>";
+  const form = '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="280" value="' + draftValue + '" placeholder="הודעה" aria-label="טקסט"></label><button class="ghost" type="button" data-act="dictate">🎤 הכתבה</button>' + photoThumbs(view.photos, { remove: true, msgId: view.id || "" }) + pickButtons() + voicePanel() + picks + alert + err() + '<button class="primary" type="submit">' + (view.id ? "שמירה" : "שליחה") + "</button></form>";
   if (view.fromLead) return leadFrame(form);
   return shell(bar(view.id ? "עריכת הודעה" : "הודעה חדשה"), form);
 }
@@ -2090,6 +2133,8 @@ function haltMic() {
   }
   recorder = null;
   view.recording = false;
+  view.hearing = false;
+  stopListenTracks();
 }
 function notify(body) {
   const title = "התראה";
@@ -2705,7 +2750,11 @@ function onClick(event) {
     speakSample();
     return;
   }
-  if (act === "helper-mic") { startChatMic(); return; }
+  if (act === "helper-mic") { startListen(listenTargetForView()); return; }
+  if (act === "dictate") { startListen(view.name === "compose" ? "message" : "homework"); return; }
+  if (act === "listen-stop") { userStopListen(); return; }
+  if (act === "hands-free") { toggleHandsFree(); return; }
+  if (act === "student-mic") { toggleStudentMic(); return; }
   if (act === "helper-face") {
     const ctx = helperContext();
     if (!ctx) return;
@@ -2959,35 +3008,301 @@ function onClick(event) {
     render();
   }
 }
-function startChatMic() {
-  const Ctor = speechCtor();
-  const hint = document.querySelector(".chatsheet .hint");
-  if (!Ctor) {
-    if (hint) hint.textContent = "הדיבור לא זמין בדפדפן זה";
-    return;
+function talkMachine() {
+  if (!talk && window.NohwSpeech) talk = window.NohwSpeech.conversation();
+  return talk;
+}
+function studentMicAllowed() {
+  if (!person || person.role !== "student") return true;
+  const ctx = helperContext();
+  const room = ctx && ctx.room;
+  if (window.NohwSpeech) return window.NohwSpeech.studentsMaySpeak(room);
+  return S.studentMicOn ? S.studentMicOn(room) : true;
+}
+function speechHint() {
+  if (!studentMicAllowed()) return "המיקרופון כבוי לתלמידים בכיתה";
+  const remote = window.NohwSpeech && window.NohwSpeech.sameOriginUrl(speechProxy.sttUrl, location.origin);
+  if (!speechCtor() && !remote) return "הדיבור לא זמין בדפדפן זה";
+  return "הדפדפן עשוי להשתמש בשירות דיבור משלו. זיהוי הדיבור בדפדפן עשוי לשלוח שמע לספק הדפדפן.";
+}
+function makeMicButton() {
+  if (!studentMicAllowed()) return null;
+  const mic = document.createElement("button");
+  mic.type = "button";
+  mic.className = "micbig";
+  mic.dataset.act = "helper-mic";
+  mic.setAttribute("aria-label", "דיבור");
+  mic.setAttribute("aria-pressed", view.hearing ? "true" : "false");
+  mic.textContent = "🎤";
+  return mic;
+}
+function makeHandsFree() {
+  if (!studentMicAllowed()) return null;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.act = "hands-free";
+  const on = talkMachine() && talkMachine().handsFree();
+  button.setAttribute("aria-pressed", on ? "true" : "false");
+  button.setAttribute("aria-label", "דיבור רצוף");
+  button.textContent = on ? "דיבור רצוף פעיל" : "דיבור רצוף";
+  return button;
+}
+function makeStudentMicToggle(room) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.act = "student-mic";
+  const on = window.NohwSpeech ? window.NohwSpeech.studentsMaySpeak(room) : true;
+  button.setAttribute("aria-pressed", on ? "true" : "false");
+  button.textContent = on ? "מיקרופון לתלמידים" : "מיקרופון כבוי";
+  return button;
+}
+function listenTargetForView() {
+  if (view.name === "post") return "homework";
+  if (view.name === "compose") return "message";
+  const holder = wizard && wizard.placeholder || "";
+  if (wizardOn() && holder.indexOf(",") >= 0) return "kids";
+  return "chat";
+}
+function stopListenTracks() {
+  listenToken += 1;
+  if (listenTimer) clearInterval(listenTimer);
+  listenTimer = 0;
+  if (listenRec) {
+    try { listenRec.onresult = null; listenRec.onerror = null; listenRec.onend = null; listenRec.stop(); } catch (e) {}
+    listenRec = null;
+  }
+  if (listenRecorder) {
+    try { listenRecorder.onstop = null; if (listenRecorder.state !== "inactive") listenRecorder.stop(); } catch (e) {}
+    listenRecorder = null;
+  }
+  if (listenStream) {
+    listenStream.getTracks().forEach(function (track) { try { track.stop(); } catch (e) {} });
+    listenStream = null;
   }
   if (chatRec) {
     try { chatRec.onresult = null; chatRec.stop(); } catch (e) {}
     chatRec = null;
+  }
+}
+function deliverTranscript(routed) {
+  if (!routed || !routed.ok) { render(); return; }
+  if (routed.kind === "field") {
+    const cap = listenTarget === "homework" ? 80 : 280;
+    const input = document.querySelector('form input[name="text"]');
+    const prev = String((input && input.value) || view.text || "").trim();
+    view.text = (prev ? prev + " " : "") + routed.text;
+    view.text = view.text.replace(/\s+/g, " ").trim().slice(0, cap);
+    view.fillDraft = true;
+    render();
+    return;
+  }
+  askHelper({ text: routed.text });
+}
+function finishListen(submit) {
+  if (!view.hearing) return;
+  const text = heardTalk;
+  const target = listenTarget;
+  view.hearing = false;
+  heardTalk = "";
+  stopListenTracks();
+  const machine = talkMachine();
+  if (!submit || !text || !window.NohwSpeech) {
+    if (machine && machine.mode() === "listening") machine.stop();
+    render();
+    return;
+  }
+  const routed = window.NohwSpeech.routeTranscript(text, target);
+  if (machine) machine.final(routed.text || text);
+  deliverTranscript(routed);
+}
+function userStopListen() {
+  if (listenRecorder && listenRecorder.state === "recording") {
+    try { listenRecorder.stop(); } catch (e) { finishListen(false); }
+    return;
+  }
+  finishListen(!!heardTalk);
+}
+function tickListen() {
+  if (!view.hearing) return;
+  const node = document.querySelector("[data-rec-time]");
+  if (node) node.textContent = clockText(Date.now() - listenStarted);
+  paintLive(heardTalk);
+  if (!window.NohwSpeech || Date.now() - listenStarted < window.NohwSpeech.LISTEN_MS) return;
+  if (listenRecorder && listenRecorder.state === "recording") {
+    try { listenRecorder.stop(); } catch (e) {}
+    return;
+  }
+  const machine = talkMachine();
+  view.hearing = false;
+  heardTalk = "";
+  stopListenTracks();
+  if (machine && machine.timeout() && machine.handsFree()) pushBot(window.NohwHebrew.text("hear-timeout"));
+  render();
+}
+function bindWebRecognizer(token) {
+  const Ctor = speechCtor();
+  if (!Ctor) {
+    view.speechMissing = true;
+    view.hearing = false;
+    stopListenTracks();
+    render();
     return;
   }
   try {
-    chatRec = new Ctor();
-    chatRec.lang = "he-IL";
-    chatRec.onresult = function (event) {
-      const field = document.querySelector(".chatsheet input[name='q']");
-      if (!field) return;
-      let said = "";
-      for (let i = event.resultIndex; i < event.results.length; i++) said += event.results[i][0].transcript;
-      field.value = String(said || "").slice(0, 200);
+    const rec = new Ctor();
+    listenRec = rec;
+    chatRec = rec;
+    rec.lang = window.NohwSpeech && window.NohwSpeech.LANG || "he-IL";
+    rec.interimResults = true;
+    rec.continuous = true;
+    rec.onresult = function (event) {
+      if (token !== listenToken) return;
+      let finalText = "";
+      let interim = "";
+      for (let i = 0; i < event.results.length; i++) {
+        const piece = event.results[i][0] ? event.results[i][0].transcript : "";
+        if (event.results[i].isFinal) finalText += piece;
+        else interim += piece;
+      }
+      heardTalk = String(finalText || interim || "").replace(/\s+/g, " ").trim().slice(0, 200);
+      paintLive(heardTalk);
+      if (finalText.trim()) finishListen(true);
     };
-    chatRec.onend = function () { chatRec = null; };
-    chatRec.onerror = function () { chatRec = null; };
-    chatRec.start();
+    rec.onerror = function (event) {
+      if (token !== listenToken) return;
+      const name = event && event.error || "";
+      if (name === "not-allowed" || name === "service-not-allowed") {
+        view.hearing = false;
+        stopListenTracks();
+        toast("אין הרשאה למיקרופון");
+      }
+    };
+    rec.onend = function () {
+      if (token !== listenToken || !view.hearing) return;
+      if (heardTalk) finishListen(true);
+    };
+    rec.start();
   } catch (e) {
-    chatRec = null;
-    if (hint) hint.textContent = "הדיבור לא זמין בדפדפן זה";
+    view.speechMissing = true;
+    view.hearing = false;
+    stopListenTracks();
+    render();
   }
+}
+function bindRemoteRecognizer(token, url, stream) {
+  if (!stream || !window.MediaRecorder || !window.NohwSpeech) {
+    view.speechMissing = true;
+    view.hearing = false;
+    stopListenTracks();
+    render();
+    return;
+  }
+  const chunks = [];
+  const rec = new window.MediaRecorder(stream);
+  listenRecorder = rec;
+  rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+  rec.onstop = function () {
+    if (token !== listenToken) return;
+    const blob = new Blob(chunks, { type: (chunks[0] && chunks[0].type) || "audio/webm" });
+    view.hearing = false;
+    window.NohwSpeech.transcribeRemote(fetch, url, blob, location.origin).then(function (text) {
+      stopListenTracks();
+      heardTalk = text;
+      const machine = talkMachine();
+      const routed = window.NohwSpeech.routeTranscript(text, listenTarget);
+      if (machine && routed.ok) machine.final(routed.text);
+      if (routed.ok) deliverTranscript(routed);
+      else render();
+    }).catch(function () {
+      stopListenTracks();
+      view.speechMissing = true;
+      toast("הדיבור לא זמין בדפדפן זה");
+    });
+  };
+  rec.start();
+}
+function startListen(target) {
+  if (view.recording) return;
+  if (!studentMicAllowed()) {
+    view.hearing = false;
+    if (talkMachine()) talkMachine().disable();
+    render();
+    return;
+  }
+  const plan = window.NohwSpeech ? window.NohwSpeech.chooseStt({ webSpeech: !!speechCtor(), origin: location.origin }, speechProxy) : { id: speechCtor() ? "web" : "none" };
+  if (!plan || plan.id === "none") {
+    view.speechMissing = true;
+    view.hearing = false;
+    render();
+    return;
+  }
+  if (view.hearing && listenTarget === (target || "chat")) {
+    userStopListen();
+    return;
+  }
+  stopListenTracks();
+  const token = listenToken;
+  listenTarget = target || "chat";
+  const machine = talkMachine();
+  if (machine && machine.mode() !== "listening") machine.tap();
+  heardTalk = "";
+  view.hearing = true;
+  view.speechMissing = false;
+  listenStarted = Date.now();
+  if (listenTimer) clearInterval(listenTimer);
+  listenTimer = setInterval(tickListen, 200);
+  render();
+  const open = navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? navigator.mediaDevices.getUserMedia({ audio: true }) : Promise.resolve(null);
+  open.then(function (stream) {
+    if (token !== listenToken || !view.hearing) {
+      if (stream) stream.getTracks().forEach(function (track) { try { track.stop(); } catch (e) {} });
+      return;
+    }
+    listenStream = stream;
+    if (plan.id === "remote") bindRemoteRecognizer(token, plan.url, stream);
+    else bindWebRecognizer(token);
+    render();
+  }).catch(function (error) {
+    if (token !== listenToken) return;
+    view.hearing = false;
+    if (talkMachine() && talkMachine().mode() === "listening") talkMachine().stop();
+    stopListenTracks();
+    view.error = micMessage(error);
+    toast(view.error || "אין הרשאה למיקרופון");
+  });
+}
+function toggleHandsFree() {
+  const machine = talkMachine();
+  if (!machine || !studentMicAllowed()) return;
+  if (machine.handsFree()) {
+    machine.disable();
+    view.hearing = false;
+    stopListenTracks();
+    hush();
+    render();
+    return;
+  }
+  const plan = window.NohwSpeech ? window.NohwSpeech.chooseStt({ webSpeech: !!speechCtor(), origin: location.origin }, speechProxy) : { id: "none" };
+  if (!plan || plan.id === "none") {
+    view.speechMissing = true;
+    render();
+    return;
+  }
+  machine.enable();
+  startListen("chat");
+}
+function toggleStudentMic() {
+  const ctx = helperContext();
+  if (!ctx || !ctx.room) return;
+  const on = window.NohwSpeech ? window.NohwSpeech.studentsMaySpeak(ctx.room) : true;
+  try { S.setStudentMic(state, actor(), { classId: ctx.room.id, on: !on }); saveStore(); }
+  catch (e) { fail(e); return; }
+  if (on) {
+    view.hearing = false;
+    if (talkMachine()) talkMachine().disable();
+    stopListenTracks();
+  }
+  render();
 }
 function onSubmit(event) {
   event.preventDefault();
@@ -3143,6 +3458,11 @@ function boot() {
     document.getElementById("face").addEventListener("change", onFile);
     document.getElementById("lib").addEventListener("change", onFile);
   }
+  window.addEventListener("pagehide", function () {
+    view.hearing = false;
+    stopListenTracks();
+    haltMic();
+  });
   loadAssist();
   render();
   armReminders(true);
