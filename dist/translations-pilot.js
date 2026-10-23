@@ -59,7 +59,9 @@ const rows=[
 ['קוד כיתה','Class code','Код класса','رمز الصف'],
 ['אין תלמידים','No students','Нет учеников','لا يوجد تلاميذ'],
 ['ערב','Evening','Вечер','المساء'],
-['שבוע','Week','Неделя','أسبوع']
+['שבוע','Week','Неделя','أسبوع'],
+['הכל מוכן','All done','Всё готово','كل شيء جاهز'],
+['כל הכבוד','Kudos','Молодец','أحسنت']
 ];
 const T=window.NOHOMEWORK_TRANSLATIONS=window.NOHOMEWORK_TRANSLATIONS||{};
 for(const [he,en,ru,ar] of rows)T[he]={he,en,ru,ar};

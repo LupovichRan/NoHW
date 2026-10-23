@@ -357,11 +357,115 @@ function base64urlEncode(bytes){const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi
 function base64urlDecode(text){const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';const map=new Map([...chars].map((ch,i)=>[ch,i]));const clean=String(text||'').replace(/=+$/,'');const bytes=[];for(let i=0;i<clean.length;i+=4){const n=((map.get(clean[i])||0)<<18)|((map.get(clean[i+1])||0)<<12)|((i+2<clean.length?map.get(clean[i+2])||0:0)<<6)|(i+3<clean.length?map.get(clean[i+3])||0:0);bytes.push((n>>>16)&255);if(i+2<clean.length)bytes.push((n>>>8)&255);if(i+3<clean.length)bytes.push(n&255)}return new Uint8Array(bytes)}
 function encodePack(obj){return base64urlEncode(utf8Bytes(JSON.stringify(obj)))}
 function decodePack(text){try{return JSON.parse(utf8Text(base64urlDecode(text)))}catch{return null}}
+const XP_PER_TICK=10;
+const LEVEL_STEP=50;
+function parseISODate(day){const [y,m,d]=String(day||'').split('-').map(Number);return new Date(y,(m||1)-1,d||1)}
+function formatISODate(date){return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`}
+function todayISO(){return formatISODate(new Date())}
+function previousSchoolDay(day){const date=parseISODate(day);date.setDate(date.getDate()-1);if(date.getDay()===6)date.setDate(date.getDate()-1);return formatISODate(date)}
+function ensurePlay(school){
+ if(!school.play||typeof school.play!=='object')school.play={students:{},teachers:{},kudos:[],effects:false};
+ school.play.students=school.play.students||{};
+ school.play.teachers=school.play.teachers||{};
+ if(!Array.isArray(school.play.kudos))school.play.kudos=[];
+ if(school.play.effects!==true)school.play.effects=false;
+ return school.play}
+function studentPlay(school,studentId){
+ const play=ensurePlay(school);
+ if(!play.students[studentId])play.students[studentId]={xp:0,streak:0,lastComplete:null,checked:{},credited:{},badges:[],completeDays:0,celebrated:null};
+ const row=play.students[studentId];
+ row.checked=row.checked||{};row.credited=row.credited||{};row.badges=row.badges||[];
+ row.xp=row.xp||0;row.streak=row.streak||0;row.completeDays=row.completeDays||0;
+ return row}
+function teacherPlay(school,teacherId){
+ const play=ensurePlay(school);
+ if(!play.teachers[teacherId])play.teachers[teacherId]={streak:0,lastPost:null};
+ return play.teachers[teacherId]}
+function levelFromXp(xp){const n=Math.max(0,Number(xp)||0);const level=Math.floor(n/LEVEL_STEP)+1;const into=n%LEVEL_STEP;return {level,into,span:LEVEL_STEP,ratio:into/LEVEL_STEP,xp:n}}
+function homeworkSlots(school,records,classId,day,studentId,subjects){
+ const slots=[];
+ for(const subject of (subjects?.length?subjects:subjectsForClass(school,classId))){
+  const info=eveningStatus(records,{classId,subject,day});
+  if(info.status==='homework')slots.push({subject,done:!!info.record?.completions?.[studentId]?.done});
+ }
+ return slots}
+function anchorStreak(row,day,field){const last=row&&row[field];if(!last)return 0;if(last===day||last===previousSchoolDay(day))return row.streak||0;return 0}
+function addBadge(row,id){if(id&&!row.badges.includes(id))row.badges.push(id)}
+function syncStudentDay(school,records,{studentId,classId,day,hour,markChecked,subjects}={}){
+ const row=studentPlay(school,studentId);
+ let changed=false;
+ if(markChecked&&!row.checked[day]){row.checked[day]=true;changed=true}
+ const slots=homeworkSlots(school,records,classId,day,studentId,subjects);
+ let granted=0;
+ for(const slot of slots)if(slot.done){const key=day+'|'+slot.subject;if(!row.credited[key]){row.credited[key]=true;row.xp+=XP_PER_TICK;granted+=XP_PER_TICK;changed=true}}
+ const complete=!!row.checked[day]&&slots.every(slot=>slot.done);
+ let justCompleted=false;
+ if(complete&&row.lastComplete!==day){
+  row.streak=row.lastComplete===previousSchoolDay(day)?row.streak+1:1;
+  row.lastComplete=day;row.completeDays+=1;justCompleted=true;changed=true;
+  if(slots.length)addBadge(row,'all-done');
+  if(row.streak>=5)addBadge(row,'streak-5');
+  if(row.completeDays>=5)addBadge(row,'first-week');
+  if(hour!=null&&Number(hour)<16)addBadge(row,'early-bird');
+ }
+ return {xp:row.xp,level:levelFromXp(row.xp),streak:anchorStreak(row,day,'lastComplete'),badges:row.badges.slice(),justCompleted,nothingLeft:complete,pending:slots.filter(slot=>!slot.done).length,granted,changed}}
+function markCelebrated(school,studentId,day){studentPlay(school,studentId).celebrated=day}
+function classWeekGoal(school,records,classId,day){
+ ensureLists(school);
+ const date=parseISODate(day);const start=new Date(date);start.setDate(date.getDate()-date.getDay());
+ const kids=school.students.filter(row=>(row.classIds||[]).includes(classId));
+ let posted=0,done=0;
+ for(let i=0;i<6;i++){
+  const cursor=new Date(start);cursor.setDate(start.getDate()+i);const key=formatISODate(cursor);
+  for(const subject of subjectsForClass(school,classId)){
+   const info=eveningStatus(records,{classId,subject,day:key});
+   if(info.status!=='homework')continue;
+   for(const kid of kids){posted++;if(info.record?.completions?.[kid.id]?.done)done++}
+  }
+ }
+ const ratio=posted?done/posted:0;
+ return {done,posted,ratio,goal:0.8,met:posted>0&&ratio>=0.8}}
+function classUpdatedToday(school,records,classId,day){return subjectsForClass(school,classId).every(subject=>subjectDayStatus(records,{classId,day,subject})!=='not_updated')}
+function syncTeacherDay(school,records,{teacherId,classIds,day}={}){
+ const ids=(classIds||[]).filter(Boolean);
+ const updated=ids.length>0&&ids.every(id=>classUpdatedToday(school,records,id,day));
+ const row=teacherPlay(school,teacherId);
+ let changed=false;
+ if(updated&&row.lastPost!==day){row.streak=row.lastPost===previousSchoolDay(day)?row.streak+1:1;row.lastPost=day;changed=true}
+ return {updated,streak:anchorStreak(row,day,'lastPost'),changed}}
+function addKudos(school,{studentId,parentId,emoji,day}={}){
+ const play=ensurePlay(school);
+ const mark=emoji||'🌟';
+ const existing=play.kudos.find(row=>row.studentId===studentId&&row.parentId===parentId&&row.day===day);
+ if(existing)return {ok:true,kudos:existing,reused:true};
+ const kudos={id:'kudos-'+studentId+'-'+parentId+'-'+day,studentId,parentId,emoji:mark,day};
+ play.kudos.push(kudos);
+ return {ok:true,kudos,reused:false}}
+function mergePlay(local,incoming){
+ const play=ensurePlay(local);const extra=incoming?.play;if(!extra)return play;
+ for(const [id,row] of Object.entries(extra.students||{})){
+  const mine=studentPlay(local,id);
+  if((row.xp||0)>mine.xp)mine.xp=row.xp;
+  if((row.completeDays||0)>mine.completeDays)mine.completeDays=row.completeDays;
+  if((row.streak||0)>mine.streak){mine.streak=row.streak;mine.lastComplete=row.lastComplete||mine.lastComplete}
+  mine.badges=[...new Set([...(mine.badges||[]),...(row.badges||[])])];
+  mine.checked={...mine.checked,...(row.checked||{})};
+  mine.credited={...mine.credited,...(row.credited||{})};
+ }
+ for(const [id,row] of Object.entries(extra.teachers||{})){
+  const mine=teacherPlay(local,id);
+  if((row.streak||0)>mine.streak){mine.streak=row.streak;mine.lastPost=row.lastPost||mine.lastPost}
+ }
+ const seen=new Set(play.kudos.map(row=>row.id));
+ for(const row of extra.kudos||[])if(row?.id&&!seen.has(row.id))play.kudos.push(row);
+ play.effects=false;
+ return play}
 function mergePilotState(local,incoming){
  ensureLists(local);ensureLists(incoming);
  for(const key of ['organizations','schools','classes','students','teachers','parents','managers','invites'])local[key]=mergeById(local[key],incoming[key]);
  const staffKey=row=>row.schoolId+'|'+row.userId+'|'+row.role;const staff=new Map(local.staff.map(row=>[staffKey(row),row]));
- for(const row of incoming.staff)if(row)staff.set(staffKey(row),row);local.staff=[...staff.values()];return local}
+ for(const row of incoming.staff||[])if(row)staff.set(staffKey(row),row);local.staff=[...staff.values()];
+ mergePlay(local,incoming);return local}
 function mergeRecords(local,incoming){
  const key=row=>row.classId+'|'+row.day+'|'+row.subject;const map=new Map();
  for(const row of local||[])if(row&&row.classId&&row.day&&row.subject)map.set(key(row),row);
@@ -380,4 +484,4 @@ function appDirectory(href){
  return url.href}
 function packSnapshot(school,records){
  ensureLists(school);
- return {v:1,organizations:school.organizations,schools:school.schools,classes:school.classes.map(row=>({id:row.id,name:row.name,schoolId:row.schoolId,grade:row.grade??null,joinCode:row.joinCode,subjects:row.subjects||PILOT_SUBJECTS.slice()})),students:school.students.map(row=>({id:row.id,name:row.name,classIds:row.classIds,parentCode:row.parentCode})),teachers:school.teachers,parents:school.parents,managers:school.managers,staff:school.staff,invites:school.invites,records:(records||[]).map(row=>({classId:row.classId,day:row.day,subject:row.subject,teacher:row.teacher,kind:row.kind,details:row.details,due:row.due,dueTime:row.dueTime,completions:row.completions,lesson:row.lesson}))}}
+ return {v:1,organizations:school.organizations,schools:school.schools,classes:school.classes.map(row=>({id:row.id,name:row.name,schoolId:row.schoolId,grade:row.grade??null,joinCode:row.joinCode,subjects:row.subjects||PILOT_SUBJECTS.slice()})),students:school.students.map(row=>({id:row.id,name:row.name,classIds:row.classIds,parentCode:row.parentCode})),teachers:school.teachers,parents:school.parents,managers:school.managers,staff:school.staff,invites:school.invites,play:ensurePlay(school),records:(records||[]).map(row=>({classId:row.classId,day:row.day,subject:row.subject,teacher:row.teacher,kind:row.kind,details:row.details,due:row.due,dueTime:row.dueTime,completions:row.completions,lesson:row.lesson}))}}

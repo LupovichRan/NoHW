@@ -1,7 +1,7 @@
 /* Offline app shell and the CDN libraries used for teacher voice and OCR.
    There is no push handler: reminders are local, while the app is open or installed. */
 /* Shell paths are relative to this script, so a worker at /NoHW/sw.js stays inside /NoHW/. */
-const CACHE='nohomework-v1.5.1';
+const CACHE='nohomework-v1.6.0';
 const SHELL=[
  './','./index.html','./privacy.html','./accessibility.html','./manifest.webmanifest',
  './theme.css','./a11y.css','./mobile.css','./calm.css','./pilot.css','./light.css',

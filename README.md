@@ -1,6 +1,6 @@
 # Nohomework
 
-Nohomework is a Hebrew-first homework board. One admin looks after many schools. Each school has a principal, and each class has a teacher. The student checks the evening list and marks work done. The parent sees the week. The teacher posts homework for a subject, or marks that subject as having no homework. A subject with no post stays "not updated" and is never shown as "no homework".
+Nohomework is a Hebrew-first homework board. One admin looks after many schools. Each school has a principal, and each class has a teacher. The student checks the evening list and marks work done. A local streak, stars, and a few badges stay on the device. The class has one shared weekly goal, with no ranking of individual children. The parent sees the week and can send a kudos emoji. The teacher posts homework for a subject, or marks that subject as having no homework. A subject with no post stays "not updated" and is never shown as "no homework".
 
 This branch is a local-first pilot: a static PWA in `dist/`, with no database, no accounts, and no email. Data stays in the browser. People in the demo (נועם לוי, מיכל שפירא, and the rest) are fictional. The license is MIT. See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
@@ -26,11 +26,9 @@ for t in tests/*.cjs; do node "$t" || exit 1; done
 
 ## מה יש בפיילוט
 
-- עץ ניווט: אדמין › בית ספר › כיתה › תלמיד והורה. לחיצה על צומת פותחת את הלוח של אותה רמה, ופירורי לחם מחזירים למעלה. כל תפקיד רואה רק את התת-עץ שלו.
-- לוח אדמין: כל בתי הספר. הוספה ועריכה של בית ספר, ומינוי מנהל. כרטיסי סטטיסטיקה ופסים: שיעור עדכון, חלק «לא עודכן», ותלמידים פעילים — לכל בית ספר ולכולם.
-- לוח מנהל: הכיתות של בית הספר שלו. הוספת כיתה ומינוי מורה, עם אותם פסים לכל כיתה.
-- לוח מורה: התלמידים וההורים של הכיתה. הוספה, קוד כיתה וקוד הורה בוואטסאפ, ופסים לכל מקצוע (פורסם / הוכן) ולכל תלמיד.
-- תלמיד והורה נשארים במסך הערב ובמסך השבוע, בלי לוח ניהול.
+- מסך הבית של אדמין הוא רשימת בתי ספר: שם, אחוז אחד, וחץ. כפתור `+` פותח הוספה. הפס למעלה פותח את שאר המספרים. מנהל ומורה באותו דפוס: רשימה, `+`, וסטטיסטיקה מאחורי לחיצה. פירור לחם חוזר למעלה.
+- לוח מורה: התלמידים של הכיתה, קוד כיתה וקוד הורה בוואטסאפ, ויעד כיתתי אחד לשבוע (למשל 80% הוכנו) בלי דירוג ילדים.
+- תלמיד והורה נשארים במסך הערב ובמסך השבוע, בלי לוח ניהול. לתלמיד יש רצף, כוכבים, רמה ותגים על המכשיר. יום שהושלם מקבל אנימציה קצרה ו«הכל מוכן». ההורה רואה את הרצף והתגים ויכול לשלוח «כל הכבוד». צליל ורטט כבויים כברירת מחדל.
 - תלמיד מצטרף עם קוד כיתה ושם פרטי בלבד. אין מספר זהות. הורה מתקשר עם קוד הורה, אחרי סימון הסכמה.
 - מסך ערב לתלמיד עם סימון «הוכן», ומסך שבוע להורה.
 - תמלול קולי (Whisper) וזיהוי טקסט מצילום נשארים אצל המורה. הסבר AI לתלמיד כבוי בכיתות ד׳–ז׳.
@@ -41,7 +39,7 @@ for t in tests/*.cjs; do node "$t" || exit 1; done
 
 בבורר: «שיתוף בין מכשירים».
 
-- קובץ JSON (`nohomework-pilot.json`) מייצא ומייבא את בית הספר, הכיתות, האנשים והעדכונים. בלי הקלטות ובלי תמונות.
+- קובץ JSON (`nohomework-pilot.json`) מייצא ומייבא את בית הספר, הכיתות, האנשים, העדכונים, הרצף והתגים. בלי הקלטות ובלי תמונות.
 - קישור `#pack=` עושה את אותו הדבר כשהחבילה קצרה מספיק. חבילה ארוכה יורדת כקובץ.
 - קוד כיתה: `#join=CODE`. קוד הורה: `#parent=CODE`. קוד מורה: `#teach=CODE`.
 
