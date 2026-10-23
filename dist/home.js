@@ -29,6 +29,7 @@ function renderHome(){
  const box=document.getElementById('homePanel');if(!box)return;
  const on=role==='parent'||role==='child';box.hidden=!on;if(!on)return;
  box.textContent='';
+ if(role==='parent'&&typeof appendConsent==='function')appendConsent(box);
  const kids=homeKids();
  if(!kids.length){box.append(hEl('p','',role==='parent'?'עוד לא נוספו ילדים. אפשר להוסיף בצ׳אט: "הוספת ילד".':'לא נמצא תלמיד.'));return}
  if(!kids.some(k=>k.id===school.studentId))school.studentId=kids[0].id;
@@ -53,6 +54,7 @@ function renderHome(){
  // tasks
  box.append(hEl('h3','',tasks.length?'להכין':'אין משימות להכנה'));
  for(const t of tasks){const row=hEl('label','taskRow');row.style.setProperty('--sc',subjectColor(t.subject));const cb=document.createElement('input');cb.type='checkbox';cb.checked=homeDone(t,kid.id);cb.onchange=async()=>{await setStudentCompletion(t,cb.checked)};const txt=hEl('span','');const s=hEl('strong','',t.subject);txt.append(s,document.createTextNode(' '+t.details));row.append(cb,txt);box.append(row)}
+ if(typeof appendEveningBoard==='function')appendEveningBoard(box,cls,home.day);
  // lessons
  const lessons=ttDayFor(cls,selDate.getDay());
  if(lessons.length){box.append(hEl('h3','','מערכת השעות'));const list=hEl('div','lessonList');for(const r of lessons){const li=hEl('div','lessonRow');li.style.setProperty('--sc',subjectColor(r.subject));li.append(hEl('span','t',r.start),hEl('span','s',r.subject));list.append(li)}box.append(list)}
@@ -60,6 +62,7 @@ function renderHome(){
  const learned=records.filter(r=>r.classId===cls&&r.day===todayKey()&&r.lesson?.summary);
  if(learned.length){box.append(hEl('h3','','מה למדו היום'));for(const r of learned){const p=hEl('p','learned');p.style.setProperty('--sc',subjectColor(r.subject));p.append(hEl('strong','',r.subject+': '),document.createTextNode(r.lesson.summary));box.append(p)}}
  // actions
+ if(role==='parent'&&typeof appendParentWeek==='function')appendParentWeek(box);
  const acts=hEl('div','homeActions');
  const wa=hEl('button','secondary','📤 שליחה בווטסאפ');wa.type='button';wa.onclick=()=>window.open('https://wa.me/?text='+encodeURIComponent(homeSummaryText(kid,selDate)),'_blank');acts.append(wa);
  const rem=hEl('button','secondary',homeReminderOn()?'🔔 תזכורת בערב פעילה':'🔔 תזכורת בערב');rem.type='button';rem.onclick=homeEnableReminder;acts.append(rem);

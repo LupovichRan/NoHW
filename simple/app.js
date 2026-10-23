@@ -1,0 +1,3416 @@
+const S = window.Nohw;
+const A = window.NohwAssist;
+const G = window.NohwSetup;
+const D = window.NohwDemo;
+const L = window.NohwLead;
+const STORE = "nohw-simple-demo";
+const ASSIST = "nohw-simple-assist";
+const STATUS = { "not-updated": "לא עודכן", "no-homework": "אין שיעורים" };
+const ROLE_LABEL = { admin: "מנהל מערכת", principal: "מנהל/ת בית ספר", teacher: "מורה", student: "תלמיד", parent: "הורה" };
+const ROLE_ORDER = { admin: 0, principal: 1, teacher: 2, student: 3, parent: 4 };
+const DAY_LABEL = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳"];
+const I = {
+  back: "M9 5l7 7-7 7",
+  check: "M5 12.5 9.2 16.8 19 7.2",
+  pencil: "M14.5 5.5l4 4M4 20l4.2-.8L19.2 8.2a2 2 0 0 0-2.8-2.8L5.4 16.4 4 20z",
+  live: "M4 12h2.8l2-6 3.4 12 2.2-6H20",
+  cast: "M8 11.2a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2zM16.2 10.2a2.1 2.1 0 1 1 0-4.2 2.1 2.1 0 0 1 0 4.2zM3.6 18.6c.7-2.2 2.4-3.4 4.4-3.4s3.7 1.2 4.4 3.4M13 18.6c.4-1.5 1.6-2.4 3.2-2.4 1.5 0 2.7.8 3.2 2.4"
+};
+
+let scenarioId = "cast";
+let scenarioTitle = "";
+let suggestedId = "";
+let roleFilter = "all";
+let focusSuggested = false;
+let people = [];
+let state = S.emptyState();
+let person = null;
+let view = { name: "people" };
+let stack = [];
+const urls = {};
+const pendingMedia = {};
+const missingMedia = {};
+let mediaBox = null;
+let mediaOpening = null;
+let toastText = "";
+let toastTimer = 0;
+let heard = "";
+let recognition = null;
+let chatRec = null;
+let talk = null;
+let listenToken = 0;
+let listenStream = null;
+let listenRec = null;
+let listenTimer = 0;
+let listenStarted = 0;
+let listenTarget = "chat";
+let heardTalk = "";
+let chatLog = [];
+let wizard = null;
+let setupPending = null;
+let assist = { prefs: {}, custom: [], seen: {}, fired: {}, leadSeen: {} };
+let leadSession = null;
+let leadFocus = "";
+let lastDigest = null;
+let activeReminder = null;
+let sysNote = null;
+let reminderTimer = 0;
+
+function ico(d) {
+  const paths = Array.isArray(d) ? d : [d];
+  return '<svg viewBox="0 0 24 24" aria-hidden="true">' + paths.map(function (p) {
+    return '<path d="' + p + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';
+  }).join("") + "</svg>";
+}
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, function (ch) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+  });
+}
+function today() {
+  const date = new Date();
+  return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+}
+function readJSON(key) {
+  try { return JSON.parse(localStorage.getItem(key) || ""); } catch (e) { return null; }
+}
+function saveStore() {
+  try {
+    localStorage.setItem(STORE, JSON.stringify({ scenarioId: scenarioId, scenarioTitle: scenarioTitle, personId: person && person.id || "", suggestedId: suggestedId, people: people, state: state }));
+  } catch (e) {
+    const full = e && (e.name === "QuotaExceededError" || e.code === 22);
+    toast(full ? "האחסון מלא" : "השמירה נכשלה");
+  }
+}
+function fillVoices(select) {
+  if (!select || !window.NohwSpeak || !window.NohwHebrew) return;
+  window.NohwSpeak.ensureVoices(function (voices) {
+    if (!select.isConnected) return;
+    const ranked = window.NohwSpeak.rankVoices(voices);
+    const current = speechPref().voice;
+    select.textContent = "";
+    const auto = document.createElement("option");
+    auto.value = "";
+    auto.textContent = ranked.length ? window.NohwHebrew.text("voice-best") : window.NohwHebrew.text("voice-empty");
+    select.appendChild(auto);
+    ranked.forEach(function (voice) {
+      const option = document.createElement("option");
+      option.value = voice.name;
+      option.textContent = voice.name;
+      select.appendChild(option);
+    });
+    select.value = current && ranked.some(function (voice) { return voice.name === current; }) ? current : "";
+  });
+}
+function speechPref() {
+  if (!person) return { on: false, voice: "" };
+  const saved = assist.speech && assist.speech[person.id];
+  if (saved && typeof saved.on === "boolean") return { on: !!saved.on, voice: String(saved.voice || "") };
+  return { on: false, voice: "" };
+}
+function applySpeechPref() {
+  const pref = speechPref();
+  view.readAloud = !!pref.on;
+  if (window.NohwSpeak) window.NohwSpeak.setPreferredVoice(pref.voice);
+}
+function saveSpeech(next) {
+  if (!person) return;
+  if (!assist.speech) assist.speech = {};
+  assist.speech[person.id] = { on: !!next.on, voice: String(next.voice || "") };
+  saveAssist();
+  applySpeechPref();
+}
+function render() {
+  applySpeechPref();
+  document.getElementById("app").innerHTML = html();
+  if (view.recording) paintRecording();
+  if (view.hearing) paintLive(heardTalk);
+  if (document.querySelector(".leadhome")) paintLead();
+  else if (view.chat) paintChat();
+  mountAssist();
+  if (view.fillDraft) {
+    const input = document.querySelector('form input[name="text"]');
+    if (input) input.value = view.text || "";
+    view.fillDraft = false;
+  }
+  if (!focusSuggested) return;
+  focusSuggested = false;
+  const picked = document.querySelector(".person.on");
+  if (picked) picked.scrollIntoView({ block: "center" });
+}
+function push(next) { stack.push(view); view = next; render(); }
+function actor() { return D.personActor(state, person); }
+function recordOverlay() {
+  if (!view.recording) return "";
+  return '<div class="recscrim"></div><div class="reclive" role="status"><div class="recbar"><div class="recrow"><span class="recdot" aria-hidden="true"></span><b data-rec-time>00:00</b><span>מקליט...</span></div><div class="meter" aria-hidden="true"><span data-rec-level></span></div><p class="said live" data-live-transcript></p><p class="warn" data-rec-warn hidden></p></div><button class="stop" type="button" data-act="record">⏹ עצור</button></div>';
+}
+function listenOverlay() {
+  if (!view.hearing) return "";
+  const label = talkMachine() && talkMachine().handsFree() ? "מקשיב לשיחה..." : "מקשיב...";
+  return '<div class="recscrim listenlive"></div><div class="reclive listenlive" role="status"><div class="recbar"><div class="recrow"><span class="recdot" aria-hidden="true"></span><b data-rec-time>00:00</b><span>' + label + '</span></div><p class="said live" data-live-transcript></p></div><button class="stop" type="button" data-act="listen-stop">⏹ עצור</button></div>';
+}
+function shell(head, body) {
+  const note = toastText ? '<p class="toast" role="status">' + esc(toastText) + "</p>" : "";
+  const busy = view.recording || view.hearing ? " busy" : "";
+  const lead = head.indexOf("leadhead") >= 0 ? " leadapp" : "";
+  return '<section class="app' + busy + lead + '" lang="he" dir="rtl">' + head + body + recordOverlay() + listenOverlay() + sheetHtml() + helperFab() + note + "</section>";
+}
+function toast(text) {
+  toastText = text;
+  render();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () {
+    toastText = "";
+    render();
+  }, 3200);
+}
+function castButton() {
+  return '<button class="icon" type="button" data-act="cast" aria-label="החלפת דמות">' + ico(I.cast) + "</button>";
+}
+function liveButton() {
+  if (!person) return "";
+  return '<button class="icon" type="button" data-act="live" aria-label="נתונים חיים">' + ico(I.live) + "</button>";
+}
+function bar(title, sub, extra) {
+  const back = stack.length ? '<button class="icon" type="button" data-act="back" aria-label="חזרה">' + ico(I.back) + "</button>" : "";
+  return '<header class="top">' + back + '<div class="titles"><h1>' + esc(title) + "</h1>" + (sub ? "<p>" + esc(sub) + "</p>" : "") + "</div>" + (extra || "") + selfAvatar() + liveButton() + castButton() + "</header>";
+}
+function profileId(who) {
+  const id = String(who && who.profile || "");
+  return /^[A-Za-z0-9_-]{1,48}$/.test(id) ? id : "";
+}
+function faceHtml(who) {
+  if (!who) return "";
+  const id = profileId(who);
+  const src = id && urls[id];
+  if (id && !src) queueMedia(id);
+  if (src) return '<img alt="" src="' + esc(src) + '">';
+  return esc(who.emoji || "🙂");
+}
+function photoActor() {
+  const base = actor() || { role: person ? person.role : "" };
+  if (person) base.personId = person.id;
+  return base;
+}
+function canPhoto(who) {
+  return !!(who && S.canSetPhoto(state, photoActor(), who));
+}
+function faceNode(who) {
+  if (!who) return "";
+  const inner = '<span class="face">' + faceHtml(who) + "</span>";
+  if (!canPhoto(who)) return inner;
+  return '<button class="face" type="button" data-act="avatar" data-id="' + esc(who.id) + '" aria-label="תמונת פרופיל">' + faceHtml(who) + "</button>";
+}
+function selfAvatar() {
+  if (!person) return "";
+  return faceNode(person);
+}
+function sheetHtml() {
+  if (!view.sheet) return "";
+  const who = people.find(function (item) { return item.id === view.sheet; });
+  if (!who || !canPhoto(who)) return "";
+  return '<div class="sheetscrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-label="תמונת פרופיל"><div class="face big">' + faceHtml(who) + '</div><button type="button" data-act="avatar-cam">📷 צלם</button><button type="button" data-act="avatar-lib">🖼️ מהגלריה</button><button type="button" data-act="avatar-clear">הסר</button></div>';
+}
+function faceSvg(kind) {
+  const eyes = '<ellipse class="eye" cx="36" cy="42" rx="4" ry="5" fill="#1f2937"/><ellipse class="eye" cx="60" cy="42" rx="4" ry="5" fill="#1f2937"/>';
+  const mouth = '<path class="mouth" d="M38 60c6 8 14 8 20 0" fill="none" stroke="#1f2937" stroke-width="3" stroke-linecap="round"/>';
+  const head = {
+    sun: '<circle cx="48" cy="48" r="22" fill="#fbbf24"/>' + eyes + mouth + '<g stroke="#f59e0b" stroke-width="3" stroke-linecap="round"><path d="M48 8v8M48 80v8M8 48h8M80 48h8M18 18l6 6M72 72l6 6M78 18l-6 6M24 72l-6 6"/></g>',
+    fox: '<polygon points="20,44 30,16 40,42" fill="#e76f51"/><polygon points="76,44 66,16 56,42" fill="#e76f51"/><circle cx="48" cy="50" r="26" fill="#f4a261"/>' + eyes + mouth,
+    moon: '<circle cx="48" cy="48" r="26" fill="#fde68a"/><circle cx="60" cy="40" r="18" fill="#fff7e6"/>' + eyes + mouth,
+    star: '<polygon points="48,6 58,34 88,36 64,54 72,84 48,66 24,84 32,54 8,36 38,34" fill="#facc15"/>' + eyes + mouth
+  };
+  return '<svg class="helperface" viewBox="0 0 96 96" aria-hidden="true">' + (head[kind] || head.sun) + "</svg>";
+}
+function helperContext() {
+  if (!person) return null;
+  if (person.role === "student") {
+    const found = D.findKid(state, person.kidId);
+    return found ? { room: found.room, schoolId: found.school.id } : null;
+  }
+  if (person.role === "parent") {
+    const ids = person.kidIds || [];
+    const found = ids.length ? D.findKid(state, ids[0]) : null;
+    return found ? { room: found.room, schoolId: found.school.id } : null;
+  }
+  if (person.role === "teacher") {
+    const found = D.findClass(state, person.classId);
+    return found ? { room: found.room, schoolId: found.school.id } : null;
+  }
+  if (person.role === "principal") {
+    const schoolId = person.schoolId || "";
+    let room = null;
+    if (view.name === "kids" && view.classId) {
+      const found = D.findClass(state, view.classId);
+      if (found && (!schoolId || found.school.id === schoolId)) room = found.room;
+    }
+    if (!schoolId && !room) return null;
+    return { room: room, schoolId: schoolId };
+  }
+  if (person.role === "admin") {
+    let schoolId = "";
+    let room = null;
+    if (view.name === "kids" && view.classId) {
+      const found = D.findClass(state, view.classId);
+      if (found) { room = found.room; schoolId = found.school.id; }
+    } else if (view.schoolId) schoolId = view.schoolId;
+    return { room: room, schoolId: schoolId };
+  }
+  return null;
+}
+function helperLook(ctx) {
+  if (ctx && ctx.room) return S.helperOf(ctx.room);
+  const schoolId = ctx && ctx.schoolId || (person && person.schoolId) || "";
+  const school = schoolId ? D.findSchool(state, schoolId) : (state.schools || [])[0];
+  const room = school && (school.classrooms || [])[0];
+  return S.helperOf(room || null);
+}
+function helperVisible() {
+  return false;
+}
+function badgeCount() {
+  if (!person || !A || !A.digest) return 0;
+  const who = helperWho();
+  if (!who) return 0;
+  const card = A.digest(state, who, { today: D.schoolDay(today()) });
+  let count = A.unreadCount(card.items, assist.seen[person.id]);
+  if (activeReminder) count += 1;
+  return count;
+}
+function setupStatus() {
+  if (!G || !person) return null;
+  if (person.role !== "admin" && person.role !== "principal" && person.role !== "teacher") return null;
+  const who = helperWho();
+  if (!who) return null;
+  return G.checklist(state, who, { today: D.schoolDay(today()), people: people });
+}
+function setupOpen() {
+  const status = setupStatus();
+  return !!(status && status.progress.total > 0 && !status.complete);
+}
+function helperFab() {
+  const ctx = helperContext();
+  if (!helperVisible() || !ctx) return "";
+  const helper = helperLook(ctx);
+  const count = badgeCount();
+  const ping = count ? '<span class="ping">' + count + "</span>" : "";
+  const label = count ? "עוזר הכיתה " + count : "עוזר הכיתה";
+  const open = setupOpen();
+  const status = open ? setupStatus() : null;
+  const p = status ? String(status.progress.done / status.progress.total) : "";
+  const face = open ? '<span class="ringhost">' + faceSvg(helper.face) + "</span>" : faceSvg(helper.face);
+  const style = open ? ' style="--p:' + p + '"' : "";
+  return '<button class="helperfab' + (open ? " setup" : "") + '" type="button" data-act="helper" aria-label="' + label + '"' + style + ">" + face + ping + "</button>";
+}
+function helperWho() {
+  const ctx = helperContext();
+  if (!person || !ctx) return null;
+  const who = {
+    role: person.role,
+    classId: "",
+    schoolId: "",
+    kidId: person.kidId || "",
+    kidIds: person.role === "parent" ? (person.kidIds || []).slice() : []
+  };
+  if (person.role === "student" || person.role === "parent" || person.role === "teacher") {
+    who.classId = ctx.room ? ctx.room.id : "";
+    who.schoolId = ctx.schoolId || "";
+  } else if (person.role === "principal") {
+    who.schoolId = ctx.schoolId || person.schoolId || "";
+    who.classId = view.name === "kids" && ctx.room ? ctx.room.id : (leadFocus || "");
+  } else if (person.role === "admin") {
+    who.schoolId = ctx.schoolId || "";
+    who.classId = view.name === "kids" && ctx.room ? ctx.room.id : (leadFocus || "");
+  }
+  return who;
+}
+function hush() {
+  if (window.NohwSpeak) window.NohwSpeak.cancel();
+  else if (window.speechSynthesis) {
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+  }
+  document.querySelectorAll(".bubble.saying").forEach(function (node) { node.classList.remove("saying"); });
+  const face = document.querySelector(".chatsheet .helperface");
+  if (face) face.classList.remove("talking");
+}
+function markSaying(bubble, on) {
+  document.querySelectorAll(".bubble.saying").forEach(function (node) { node.classList.remove("saying"); });
+  const face = document.querySelector(".chatsheet .helperface");
+  if (face) face.classList.toggle("talking", !!on);
+  if (bubble && on) bubble.classList.add("saying");
+}
+function shouldSpeak() {
+  if (view.readAloud) return true;
+  const machine = talkMachine();
+  return !!(machine && machine.handsFree());
+}
+function speakBubbles(bubbles) {
+  hush();
+  if (view.hearing) stopListenTracks();
+  if (!shouldSpeak() || !bubbles || !bubbles.length) return;
+  const items = bubbles.map(function (bubble) {
+    return { id: bubble.dataset.phrase || "", text: bubble.dataset.say || "" };
+  }).filter(function (item) { return item.text; });
+  if (!items.length) return;
+  const machine = talkMachine();
+  if (machine && machine.handsFree()) machine.beginSpeak();
+  const hooks = {
+    phrase: function (index) {
+      const match = bubbles.filter(function (bubble) { return bubble.dataset.say; })[index];
+      markSaying(match, true);
+    },
+    done: function () {
+      markSaying(null, false);
+      if (!machine || !machine.handsFree()) return;
+      machine.endSpeak();
+      if (studentMicAllowed()) startListen("chat");
+    }
+  };
+  if (window.NohwSpeak) window.NohwSpeak.speakQueue(items, hooks);
+}
+function speakLatest() {
+  const turns = document.querySelectorAll(".chatsheet .turn.bot");
+  const last = turns[turns.length - 1];
+  if (!last) return;
+  speakBubbles([].slice.call(last.querySelectorAll(".bubble")));
+}
+function maybeSpeak() {
+  if (shouldSpeak()) speakLatest();
+}
+function speakSample() {
+  const sample = window.NohwHebrew ? window.NohwHebrew.text("voice-test") : "";
+  if (!sample || !window.NohwSpeak) return;
+  const was = view.readAloud;
+  view.readAloud = true;
+  window.NohwSpeak.speakQueue([{ id: "voice-test", text: sample }], {
+    phrase: function () {
+      const face = document.querySelector(".chatsheet .helperface");
+      if (face) face.classList.add("talking");
+    },
+    done: function () {
+      const face = document.querySelector(".chatsheet .helperface");
+      if (face) face.classList.remove("talking");
+      view.readAloud = was;
+    }
+  });
+}
+function talkLines(text) {
+  return String(text || "").split(/\n+/).map(function (line) { return line.trim(); }).filter(Boolean);
+}
+function typingNode() {
+  const row = document.createElement("div");
+  row.className = "typing";
+  row.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 3; i++) row.appendChild(document.createElement("i"));
+  return row;
+}
+function miniFace(kind) {
+  const face = document.createElement("span");
+  face.className = "miniface";
+  face.setAttribute("aria-hidden", "true");
+  face.insertAdjacentHTML("beforeend", faceSvg(kind || "sun"));
+  return face;
+}
+function buildTurn(kind, lines, opts) {
+  opts = opts || {};
+  const turn = document.createElement("div");
+  turn.className = "turn " + kind + (opts.confirm ? " confirm" : "");
+  turn.lang = "he";
+  turn.dir = "rtl";
+  if (kind === "bot") turn.appendChild(miniFace(opts.face));
+  const stack = document.createElement("div");
+  stack.className = "bubbles";
+  if (kind === "bot") stack.appendChild(typingNode());
+  const list = lines && lines.length ? lines : [""];
+  list.forEach(function (line, index) {
+    const last = index === list.length - 1;
+    const bubble = document.createElement("div");
+    bubble.className = "bubble " + kind + (last ? " tail" : "") + (opts.confirm && index === 0 ? " confirm" : "");
+    if (line) {
+      const text = document.createElement("p");
+      text.textContent = line;
+      bubble.dataset.say = line;
+      const phrase = window.NohwHebrew && window.NohwHebrew.idFor(line);
+      if (phrase) bubble.dataset.phrase = phrase;
+      bubble.appendChild(text);
+    }
+    if (last && opts.fill) opts.fill(bubble);
+    stack.appendChild(bubble);
+  });
+  turn.appendChild(stack);
+  return turn;
+}
+function trimChat() {
+  if (chatLog.length > 40) chatLog.splice(0, chatLog.length - 40);
+}
+function pushBot(text, extra) {
+  const turn = { role: "bot", text: text || "" };
+  extra = extra || {};
+  if (extra.draft) turn.draft = extra.draft;
+  if (extra.classId) turn.classId = extra.classId;
+  if (extra.audience) turn.audience = extra.audience;
+  if (extra.confirm) turn.confirm = true;
+  if (extra.photos) turn.photos = extra.photos;
+  if (extra.voices) turn.voices = extra.voices;
+  chatLog.push(turn);
+  trimChat();
+}
+function wizardOn() {
+  return !!(wizard && wizard.session && wizard.session.flow);
+}
+function askHelper(opts) {
+  const who = helperWho();
+  if (!who || !A) return;
+  opts = opts || {};
+  const typed = String(opts.text || "").slice(0, 200);
+  const intent = opts.intent || "";
+  if (G && (intent.indexOf("setup-") === 0 || (wizardOn() && !intent))) {
+    askSetup(who, typed, intent, opts.choiceLabel || "");
+    return;
+  }
+  const answer = A.ask(state, who, { intent: intent, text: typed, today: D.schoolDay(today()) });
+  if (answer.reminder && person) {
+    assist.custom.push({
+      id: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      personId: person.id,
+      role: person.role,
+      time: answer.reminder.time,
+      about: String(answer.reminder.about || "").slice(0, 40)
+    });
+    if (assist.custom.length > 40) assist.custom.splice(0, assist.custom.length - 40);
+    saveAssist();
+  }
+  if (typed) chatLog.push({ role: "me", text: typed });
+  else if (intent) {
+    const chip = A.chips(who.role).filter(function (item) { return item.id === intent; })[0];
+    if (chip) chatLog.push({ role: "me", text: chip.label });
+  }
+  pushBot(answer.text, { photos: answer.photos || [], voices: answer.voices || [], draft: answer.draft || "" });
+  view.chat = true;
+  armReminders();
+  render();
+  maybeSpeak();
+}
+function askSetup(who, typed, intent, choiceLabel) {
+  if (setupPending && !intent) {
+    if (typed === "כן") { applySetup(setupPending); return; }
+    if (typed === "לא") { declineSetup(); return; }
+    if (typed) chatLog.push({ role: "me", text: typed });
+    pushBot(setupPending.title || (window.NohwHebrew ? window.NohwHebrew.text("yes-or-no") : ""), { confirm: true });
+    view.chat = true;
+    render();
+    return;
+  }
+  const turn = G.guide(state, who, (wizard && wizard.session) || { flow: "", step: "", bag: {}, history: [] }, typed, {
+    today: D.schoolDay(today()),
+    intent: intent,
+    people: people
+  });
+  showSetup(turn, typed, intent, choiceLabel);
+}
+function showSetup(turn, typed, intent, choiceLabel) {
+  wizard = turn;
+  setupPending = turn.confirm || null;
+  if (choiceLabel) chatLog.push({ role: "me", text: choiceLabel });
+  else if (typed) chatLog.push({ role: "me", text: typed });
+  else if (intent && person) {
+    const found = G.setupChips(person.role).filter(function (item) { return item.id === intent; })[0];
+    if (found) chatLog.push({ role: "me", text: found.label });
+  }
+  pushBot(turn.text, { draft: turn.draft || "", classId: turn.classId || "", audience: turn.audience || "", confirm: !!turn.confirm });
+  if (turn.go && turn.go.name) {
+    const go = turn.go.name;
+    view.chat = false;
+    wizard = null;
+    setupPending = null;
+    hush();
+    if (go === "data" || go === "reset") push({ name: go });
+    return;
+  }
+  view.chat = true;
+  render();
+  maybeSpeak();
+}
+function declineSetup() {
+  const who = helperWho();
+  if (!who || !G) return;
+  const turn = G.guide(state, who, (wizard && wizard.session) || {}, "", { today: D.schoolDay(today()), declined: true, people: people });
+  chatLog.push({ role: "me", text: "לא" });
+  wizard = turn;
+  setupPending = null;
+  pushBot(turn.text);
+  view.chat = true;
+  render();
+  maybeSpeak();
+}
+function backSetup() {
+  const who = helperWho();
+  if (!who || !G) return;
+  const turn = G.guide(state, who, (wizard && wizard.session) || {}, "", { today: D.schoolDay(today()), back: true, people: people });
+  chatLog.push({ role: "me", text: "אחורה" });
+  wizard = turn;
+  setupPending = turn.confirm || null;
+  pushBot(turn.text, { confirm: !!turn.confirm });
+  view.chat = true;
+  render();
+  maybeSpeak();
+}
+function applySetup(pending) {
+  if (!pending || !pending.action || !G) return;
+  const payload = pending.payload || {};
+  let failed = "";
+  try {
+    if (pending.action === "add-school") {
+      const code = S.addPrincipal(state, actor(), payload, Math.random);
+      remember("principal", code);
+    } else if (pending.action === "add-classes") {
+      const schoolId = payload.schoolId || (person && person.schoolId) || "";
+      (payload.names || []).forEach(function (name) {
+        S.addClassroom(state, actor(), { schoolId: schoolId, className: name, teacherName: "" }, Math.random);
+      });
+    } else if (pending.action === "assign-teacher") {
+      S.rename(state, actor(), { kind: "class", id: payload.classId, name: payload.className, extra: payload.teacherName });
+      const found = D.findClass(state, payload.classId);
+      if (found) {
+        let teacher = people.find(function (item) { return item.role === "teacher" && item.classId === payload.classId; });
+        if (!teacher) people.push({ id: "t-" + found.room.id, name: payload.teacherName, emoji: "👩‍🏫", role: "teacher", schoolId: found.school.id, classId: found.room.id });
+        else teacher.name = payload.teacherName;
+      }
+    } else if (pending.action === "rename-school") {
+      S.rename(state, actor(), { kind: "school", id: payload.id, name: payload.name, extra: payload.extra });
+      syncPeople();
+    } else if (pending.action === "delete-school") {
+      S.removeNode(state, actor(), { kind: "school", id: payload.id });
+      syncPeople();
+    } else if (pending.action === "template") {
+      const slots = payload.slots || [];
+      for (let day = 0; day <= 5; day++) {
+        for (let lesson = 0; lesson <= 5; lesson++) S.setSlot(state, actor(), { classId: payload.classId, day: day, lesson: lesson, subject: slots[lesson] || "" });
+      }
+    } else if (pending.action === "add-kids") {
+      (payload.names || []).forEach(function (name) {
+        const created = S.addKid(state, actor(), { classId: payload.classId, firstName: name }, Math.random);
+        remember("student", created.kidCode);
+      });
+    } else if (pending.action === "add-parent") {
+      linkParent(payload.kidId, payload.parentName);
+    } else if (pending.action === "avatar") {
+      S.setHelper(state, actor(), { classId: payload.classId, face: payload.face, name: payload.name });
+    } else if (pending.action === "none-day") {
+      const found = D.findClass(state, payload.classId);
+      if (found) S.rowsFor(found.room, payload.date, null).forEach(function (row) {
+        S.setHomework(state, actor(), { classId: payload.classId, date: payload.date, subject: row.subject, mode: "none" });
+      });
+    }
+  } catch (e) {
+    failed = e && e.message === "forbidden" ? (window.NohwHebrew ? window.NohwHebrew.text("deny") : "") : (window.NohwHebrew ? window.NohwHebrew.text("not-done") : "");
+  }
+  if (failed) {
+    setupPending = null;
+    wizard = null;
+    pushBot(failed);
+    view.chat = true;
+    render();
+    maybeSpeak();
+    return;
+  }
+  saveStore();
+  const who = helperWho();
+  const turn = who ? G.guide(state, who, {}, "", { today: D.schoolDay(today()), applied: true, done: pending.done, people: people }) : { text: pending.done || (window.NohwHebrew ? window.NohwHebrew.text("done") : ""), session: { flow: "", step: "", bag: {}, history: [] }, chips: [] };
+  chatLog.push({ role: "me", text: "כן" });
+  wizard = turn;
+  setupPending = null;
+  pushBot(turn.text);
+  view.chat = true;
+  render();
+  maybeSpeak();
+}
+function paintChat() {
+  const ctx = helperContext();
+  const host = document.querySelector(".app");
+  if (!ctx || !host || !A) return;
+  const helper = helperLook(ctx);
+  const role = person.role;
+  const scrim = document.createElement("div");
+  scrim.className = "sheetscrim";
+  scrim.dataset.act = "close-chat";
+  const sheet = document.createElement("div");
+  sheet.className = "chatsheet";
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-modal", "true");
+  sheet.setAttribute("aria-label", helper.name);
+  sheet.lang = "he";
+  sheet.dir = "rtl";
+  const head = document.createElement("div");
+  head.className = "chathead";
+  const settingUp = setupOpen();
+  if (settingUp) {
+    const status = setupStatus();
+    const ring = document.createElement("span");
+    ring.className = "ring";
+    ring.style.setProperty("--p", String(status.progress.done / status.progress.total));
+    const host = document.createElement("span");
+    host.className = "ringhost";
+    host.insertAdjacentHTML("beforeend", faceSvg(helper.face));
+    ring.appendChild(host);
+    head.appendChild(ring);
+  } else head.insertAdjacentHTML("beforeend", faceSvg(helper.face));
+  const title = document.createElement("strong");
+  title.textContent = helper.name;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.dataset.act = "close-chat";
+  close.setAttribute("aria-label", "סגירה");
+  close.textContent = "✕";
+  head.appendChild(title);
+  head.appendChild(close);
+  const log = document.createElement("div");
+  log.className = "chatlog";
+  log.tabIndex = 0;
+  log.lang = "he";
+  log.dir = "rtl";
+  const card = currentDigest();
+  lastDigest = card;
+  if (settingUp) log.appendChild(buildSetupCard(setupStatus(), false));
+  else if (card) log.appendChild(buildDigest(card));
+  if (!chatLog.length && !settingUp && !(card && card.greeting)) {
+    log.appendChild(buildTurn("bot", [window.NohwHebrew.text("chat-hello")], { face: helper.face }));
+  }
+  chatLog.forEach(function (turn) {
+    const kind = turn.role === "me" ? "me" : "bot";
+    log.appendChild(buildTurn(kind, talkLines(turn.text), {
+      face: helper.face,
+      confirm: !!turn.confirm,
+      fill: function (bubble) {
+        (turn.photos || []).forEach(function (item) {
+          const src = srcOf(item);
+          if (!src && item.id) queueMedia(item.id);
+          if (!src) return;
+          const img = document.createElement("img");
+          img.alt = "תמונה";
+          img.src = src;
+          bubble.appendChild(img);
+        });
+        (turn.voices || []).forEach(function (item) {
+          const src = srcOf(item) || item.src || item.id || "";
+          if (!src && item.id) queueMedia(item.id);
+          const play = document.createElement("button");
+          play.type = "button";
+          play.className = "play";
+          play.dataset.act = "play";
+          play.dataset.voice = src;
+          play.setAttribute("aria-label", "השמעה");
+          play.textContent = "🎤 השמעה";
+          bubble.appendChild(play);
+          if (item.text) {
+            const said = document.createElement("p");
+            said.className = "said";
+            said.textContent = item.text;
+            bubble.appendChild(said);
+          }
+        });
+        if (turn.draft) {
+          const open = document.createElement("button");
+          open.type = "button";
+          open.dataset.act = "helper-draft";
+          open.textContent = "פתח בטיוטה";
+          bubble.appendChild(open);
+        }
+      }
+    }));
+  });
+  const chips = document.createElement("div");
+  const inFlow = wizardOn();
+  chips.className = inFlow ? "chips big" : "chips";
+  if (inFlow) {
+    (wizard.chips || []).forEach(function (item) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "setup-chip";
+      button.dataset.choice = item.id;
+      button.textContent = item.label;
+      chips.appendChild(button);
+    });
+  } else {
+    if (G) G.setupChips(role).forEach(function (item) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "big";
+      button.dataset.act = "helper-ask";
+      button.dataset.intent = item.id;
+      button.textContent = item.label;
+      chips.appendChild(button);
+    });
+    A.chips(role).forEach(function (item) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "helper-ask";
+      button.dataset.intent = item.id;
+      button.textContent = item.label;
+      chips.appendChild(button);
+    });
+  }
+  const form = document.createElement("form");
+  form.className = "askbox";
+  const input = document.createElement("input");
+  input.name = "q";
+  input.dir = "rtl";
+  input.maxLength = 200;
+  input.autocomplete = "off";
+  input.setAttribute("aria-label", "שאלה");
+  input.placeholder = inFlow && wizard.placeholder ? wizard.placeholder : (settingUp ? "תשובה" : "שאלה על הכיתה");
+  const send = document.createElement("button");
+  send.type = "submit";
+  send.textContent = "שאל";
+  form.appendChild(input);
+  form.appendChild(send);
+  const tools = document.createElement("div");
+  tools.className = "pair";
+  const read = document.createElement("button");
+  read.type = "button";
+  read.dataset.act = "helper-read";
+  read.setAttribute("aria-pressed", view.readAloud ? "true" : "false");
+  read.setAttribute("aria-label", "הקראה");
+  read.textContent = view.readAloud ? "הקראה פעילה" : "הקראה";
+  const mic = makeMicButton();
+  tools.appendChild(read);
+  const hands = makeHandsFree();
+  if (hands) tools.appendChild(hands);
+  if (mic) tools.appendChild(mic);
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = speechHint();
+  const voiceBox = document.createElement("div");
+  voiceBox.className = "voiceset";
+  const voicePick = document.createElement("select");
+  voicePick.setAttribute("aria-label", "קול");
+  const voiceTest = document.createElement("button");
+  voiceTest.type = "button";
+  voiceTest.dataset.act = "helper-voice-test";
+  voiceTest.textContent = "בדיקת קול";
+  const voiceNote = document.createElement("p");
+  voiceNote.className = "voicehint";
+  voiceNote.textContent = window.NohwHebrew.text(person && person.role === "student" ? "voice-hint" : "voice-device");
+  voiceBox.appendChild(voicePick);
+  voiceBox.appendChild(voiceTest);
+  voiceBox.appendChild(voiceNote);
+  const botTurns = log.querySelectorAll(".turn.bot");
+  const lastBot = botTurns.length ? botTurns[botTurns.length - 1].querySelector(".bubbles") : null;
+  if (lastBot) lastBot.appendChild(chips);
+  else log.appendChild(chips);
+  sheet.appendChild(head);
+  sheet.appendChild(log);
+  sheet.appendChild(form);
+  sheet.appendChild(tools);
+  sheet.appendChild(voiceBox);
+  sheet.appendChild(hint);
+  fillVoices(voicePick);
+  voicePick.addEventListener("change", function () {
+    const pref = speechPref();
+    saveSpeech({ on: pref.on, voice: voicePick.value || "" });
+  });
+  const prefs = document.createElement("button");
+  prefs.type = "button";
+  prefs.dataset.act = "helper-prefs";
+  prefs.textContent = "תזכורות";
+  if (A.defaults(role)) sheet.appendChild(prefs);
+  if (view.reminders && A.defaults(role)) sheet.appendChild(buildReminderSettings());
+  if (!inFlow && ctx.room && S.canEdit(state, actor(), { kind: "homework", classId: ctx.room.id })) {
+    const settings = document.createElement("div");
+    settings.className = "helperset";
+    const label = document.createElement("span");
+    label.textContent = "הפנים של העוזר";
+    settings.appendChild(label);
+    settings.appendChild(makeStudentMicToggle(ctx.room));
+    ["sun", "fox", "moon", "star"].forEach(function (face) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "helper-face";
+      button.dataset.face = face;
+      button.setAttribute("aria-label", face);
+      button.setAttribute("aria-pressed", helper.face === face ? "true" : "false");
+      button.insertAdjacentHTML("beforeend", faceSvg(face));
+      settings.appendChild(button);
+    });
+    const nameForm = document.createElement("form");
+    nameForm.className = "askbox helpername";
+    const name = document.createElement("input");
+    name.name = "helper-name";
+    name.dir = "rtl";
+    name.maxLength = 24;
+    name.setAttribute("aria-label", "שם העוזר");
+    name.value = helper.name;
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.textContent = "שמירת שם";
+    nameForm.appendChild(name);
+    nameForm.appendChild(save);
+    settings.appendChild(nameForm);
+    sheet.appendChild(settings);
+  }
+  host.appendChild(scrim);
+  host.appendChild(sheet);
+  log.scrollTop = log.scrollHeight;
+}
+function rememberLead(day, item) {
+  if (!person || !item) return;
+  if (!assist.leadSeen) assist.leadSeen = {};
+  if (!assist.leadSeen[person.id] || typeof assist.leadSeen[person.id] !== "object") assist.leadSeen[person.id] = {};
+  const bucket = assist.leadSeen[person.id][day] && typeof assist.leadSeen[person.id][day] === "object" ? assist.leadSeen[person.id][day] : {};
+  bucket[item.id] = item.fingerprint;
+  assist.leadSeen[person.id][day] = bucket;
+}
+function ensureLead() {
+  if (!person || !L || !L.opening) return null;
+  const who = helperWho();
+  if (!who) return null;
+  const day = D.schoolDay(today());
+  const seen = assist.leadSeen && assist.leadSeen[person.id] && assist.leadSeen[person.id][day] || {};
+  const stamp = L.signature(state, who, { today: day, people: people });
+  if (leadSession && leadSession.personId === person.id && leadSession.day === day && leadSession.stamp === stamp) return leadSession;
+  const pack = L.opening(state, who, { today: day, hour: new Date().getHours(), people: people, seen: seen });
+  (pack.cards || []).forEach(function (item) { rememberLead(day, item); });
+  saveAssist();
+  leadSession = { personId: person.id, day: day, stamp: stamp, pack: pack, extra: [] };
+  return leadSession;
+}
+function leadCardById(id) {
+  const session = ensureLead();
+  if (!session || !session.pack) return null;
+  const all = (session.pack.cards || []).concat(session.extra || [], session.pack.more || []);
+  return all.filter(function (item) { return item.id === id; })[0] || null;
+}
+function appendWidget(bubble, item) {
+  const widget = item && item.widget;
+  if (!widget || !widget.rows || !widget.rows.length) return;
+  const box = document.createElement("div");
+  box.className = "widget " + (widget.kind || "");
+  widget.rows.forEach(function (row) {
+    const line = document.createElement("div");
+    line.className = "wrow";
+    const openable = row.id && (widget.kind === "stats" || widget.kind === "schools");
+    const kidJump = row.kidId && person && person.role === "parent" && widget.kind === "kids";
+    if (openable || kidJump) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "row";
+      button.dataset.act = "open";
+      button.dataset.id = openable ? row.id : row.kidId;
+      button.textContent = row.label || row.name || "";
+      line.appendChild(button);
+    } else {
+      const label = document.createElement("span");
+      label.textContent = row.label || "";
+      line.appendChild(label);
+    }
+    if (row.tick && person && person.role === "student") {
+      const tick = document.createElement("button");
+      tick.type = "button";
+      tick.className = "tick" + (row.done ? " on" : "");
+      tick.dataset.act = "tick";
+      tick.dataset.subject = row.subject || "";
+      tick.dataset.date = row.date || "";
+      tick.setAttribute("aria-pressed", row.done ? "true" : "false");
+      tick.setAttribute("aria-label", "הוכן");
+      tick.textContent = row.done ? "✓" : "○";
+      line.appendChild(tick);
+    } else if (row.done === true || row.done === false) {
+      const mark = document.createElement("span");
+      mark.className = "mark";
+      mark.textContent = row.done ? "✓" : "○";
+      line.appendChild(mark);
+    }
+    box.appendChild(line);
+  });
+  bubble.appendChild(box);
+}
+function buildLeadCard(item, face) {
+  const lines = talkLines((item.title ? item.title + "\n" : "") + (item.text || ""));
+  return buildTurn("bot", lines.length ? lines : [item.title || ""], {
+    face: face,
+    fill: function (bubble) {
+      bubble.classList.add("leadcard");
+      appendWidget(bubble, item);
+      if (item.expand && item.expand.name) {
+        const open = document.createElement("button");
+        open.type = "button";
+        open.dataset.act = "lead-expand";
+        open.dataset.id = item.id;
+        open.textContent = "פתח מסך מלא";
+        bubble.appendChild(open);
+      }
+      (item.chips || []).forEach(function (chip) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.dataset.act = "lead-chip";
+        button.dataset.card = item.id;
+        button.dataset.chip = chip.id;
+        button.textContent = chip.label;
+        bubble.appendChild(button);
+      });
+    }
+  });
+}
+function paintLeadLog(log, face) {
+  const session = ensureLead();
+  const pack = session && session.pack;
+  if (pack && pack.mode === "setup") {
+    const status = setupStatus();
+    if (status) log.appendChild(buildSetupCard(status, false));
+  } else if (pack) {
+    const box = document.createElement("section");
+    box.className = "digest";
+    box.lang = "he";
+    box.dir = "rtl";
+    if (pack.greeting) box.appendChild(buildTurn("bot", [pack.greeting], { face: face }));
+    (pack.cards || []).concat(session.extra || []).forEach(function (item) {
+      box.appendChild(buildLeadCard(item, face));
+    });
+    log.appendChild(box);
+  }
+  chatLog.forEach(function (turn) {
+    const kind = turn.role === "me" ? "me" : "bot";
+    log.appendChild(buildTurn(kind, talkLines(turn.text), {
+      face: face,
+      confirm: !!turn.confirm,
+      fill: function (bubble) {
+        (turn.photos || []).forEach(function (item) {
+          const src = srcOf(item);
+          if (!src && item.id) queueMedia(item.id);
+          if (!src) return;
+          const img = document.createElement("img");
+          img.alt = "תמונה";
+          img.src = src;
+          bubble.appendChild(img);
+        });
+        (turn.voices || []).forEach(function (item) {
+          const src = srcOf(item) || item.src || item.id || "";
+          if (!src && item.id) queueMedia(item.id);
+          const play = document.createElement("button");
+          play.type = "button";
+          play.className = "play";
+          play.dataset.act = "play";
+          play.dataset.voice = src;
+          play.setAttribute("aria-label", "השמעה");
+          play.textContent = "🎤 השמעה";
+          bubble.appendChild(play);
+        });
+        if (turn.draft) {
+          const open = document.createElement("button");
+          open.type = "button";
+          open.dataset.act = "helper-draft";
+          open.textContent = "פתח בטיוטה";
+          bubble.appendChild(open);
+        }
+      }
+    }));
+  });
+}
+function paintLeadDock(dock, role) {
+  const session = ensureLead();
+  const pack = session && session.pack;
+  const inFlow = wizardOn();
+  const chips = document.createElement("div");
+  chips.className = inFlow ? "chips big" : "chips";
+  if (inFlow) {
+    (wizard.chips || []).forEach(function (item) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "setup-chip";
+      button.dataset.choice = item.id;
+      button.textContent = item.label;
+      chips.appendChild(button);
+    });
+  } else if (pack && pack.mode === "setup" && G) {
+    G.setupChips(role).forEach(function (item) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "helper-ask";
+      button.dataset.intent = item.id;
+      button.textContent = item.label;
+      chips.appendChild(button);
+    });
+  } else if (A) {
+    A.chips(role).forEach(function (item) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "helper-ask";
+      button.dataset.intent = item.id;
+      button.textContent = item.label;
+      chips.appendChild(button);
+    });
+    if (pack && pack.more && pack.more.length) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.dataset.act = "lead-more";
+      more.textContent = "מה עוד?";
+      chips.appendChild(more);
+    }
+  }
+  const form = document.createElement("form");
+  form.className = "askbox";
+  const input = document.createElement("input");
+  input.name = "q";
+  input.dir = "rtl";
+  input.maxLength = 200;
+  input.autocomplete = "off";
+  input.setAttribute("aria-label", "שאלה");
+  input.placeholder = inFlow && wizard.placeholder ? wizard.placeholder : "שאלה על הכיתה";
+  const send = document.createElement("button");
+  send.type = "submit";
+  send.textContent = "שאל";
+  form.appendChild(input);
+  form.appendChild(send);
+  const mic = makeMicButton();
+  const row = document.createElement("div");
+  row.className = "askline";
+  row.appendChild(form);
+  if (mic) row.appendChild(mic);
+  dock.appendChild(chips);
+  dock.appendChild(row);
+  const tools = document.createElement("div");
+  tools.className = "pair";
+  const read = document.createElement("button");
+  read.type = "button";
+  read.dataset.act = "helper-read";
+  read.setAttribute("aria-pressed", view.readAloud ? "true" : "false");
+  read.setAttribute("aria-label", "הקראה");
+  read.textContent = view.readAloud ? "הקראה פעילה" : "הקראה";
+  tools.appendChild(read);
+  const hands = makeHandsFree();
+  if (hands) tools.appendChild(hands);
+  if (A && A.defaults(role)) {
+    const prefs = document.createElement("button");
+    prefs.type = "button";
+    prefs.dataset.act = "helper-prefs";
+    prefs.textContent = "תזכורות";
+    tools.appendChild(prefs);
+  }
+  dock.appendChild(tools);
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = speechHint();
+  dock.appendChild(hint);
+  const voiceBox = document.createElement("div");
+  voiceBox.className = "voiceset";
+  const voicePick = document.createElement("select");
+  voicePick.setAttribute("aria-label", "קול");
+  const voiceTest = document.createElement("button");
+  voiceTest.type = "button";
+  voiceTest.dataset.act = "helper-voice-test";
+  voiceTest.textContent = "בדיקת קול";
+  const voiceNote = document.createElement("p");
+  voiceNote.className = "voicehint";
+  voiceNote.textContent = window.NohwHebrew.text(person && person.role === "student" ? "voice-hint" : "voice-device");
+  voiceBox.appendChild(voicePick);
+  voiceBox.appendChild(voiceTest);
+  voiceBox.appendChild(voiceNote);
+  dock.appendChild(voiceBox);
+  fillVoices(voicePick);
+  voicePick.addEventListener("change", function () {
+    const pref = speechPref();
+    saveSpeech({ on: pref.on, voice: voicePick.value || "" });
+  });
+  if (view.reminders && A && A.defaults(role)) dock.appendChild(buildReminderSettings());
+  const ctx = helperContext();
+  if (!inFlow && ctx && ctx.room && S.canEdit(state, actor(), { kind: "homework", classId: ctx.room.id })) {
+    const settings = document.createElement("div");
+    settings.className = "helperset";
+    const label = document.createElement("span");
+    label.textContent = "הפנים של העוזר";
+    settings.appendChild(label);
+    settings.appendChild(makeStudentMicToggle(ctx.room));
+    ["sun", "fox", "moon", "star"].forEach(function (kind) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "helper-face";
+      button.dataset.face = kind;
+      button.setAttribute("aria-label", kind);
+      button.setAttribute("aria-pressed", helperLook(ctx).face === kind ? "true" : "false");
+      button.insertAdjacentHTML("beforeend", faceSvg(kind));
+      settings.appendChild(button);
+    });
+    dock.appendChild(settings);
+  }
+}
+function paintLead() {
+  const host = document.querySelector(".leadhome");
+  if (!host || !person) return;
+  const log = host.querySelector(".chatlog");
+  const dock = host.querySelector(".leaddock");
+  if (!log || !dock) return;
+  const face = helperLook(helperContext()).face;
+  paintLeadLog(log, face);
+  paintLeadDock(dock, person.role);
+  log.scrollTop = log.scrollHeight;
+}
+function currentDigest() {
+  const who = helperWho();
+  if (!who || !A || !A.digest) return null;
+  return A.digest(state, who, { today: D.schoolDay(today()) });
+}
+function buildDigest(card) {
+  const box = document.createElement("section");
+  box.className = "digest";
+  box.lang = "he";
+  box.dir = "rtl";
+  const face = helperLook(helperContext()).face;
+  const turn = document.createElement("div");
+  turn.className = "turn bot";
+  turn.appendChild(miniFace(face));
+  const stack = document.createElement("div");
+  stack.className = "bubbles";
+  stack.appendChild(typingNode());
+  if (card.greeting) {
+    const hello = document.createElement("div");
+    hello.className = "bubble bot";
+    const text = document.createElement("p");
+    text.textContent = card.greeting;
+    hello.appendChild(text);
+    stack.appendChild(hello);
+  }
+  const items = card.items || [];
+  items.forEach(function (item, index) {
+    const lines = talkLines((item.title ? item.title + "\n" : "") + (item.text || ""));
+    const chunks = lines.length ? lines : [""];
+    chunks.forEach(function (line, lineIndex) {
+      const last = index === items.length - 1 && lineIndex === chunks.length - 1;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble bot" + (last ? " tail" : "");
+      const row = item.go ? document.createElement("button") : document.createElement("div");
+      if (item.go) {
+        row.type = "button";
+        row.className = "row";
+        row.dataset.act = "digest-go";
+        row.dataset.index = String(index);
+      }
+      const text = document.createElement("span");
+      text.textContent = line;
+      row.appendChild(text);
+      if (lineIndex === chunks.length - 1 && item.progress && item.progress.total) {
+        const meter = document.createElement("span");
+        meter.className = "meter";
+        const fill = document.createElement("span");
+        const pct = Math.max(0, Math.min(100, Math.round(100 * item.progress.done / item.progress.total)));
+        fill.style.width = pct + "%";
+        meter.appendChild(fill);
+        const label = document.createElement("small");
+        label.textContent = item.progress.done + " מתוך " + item.progress.total + " הוכנו";
+        row.appendChild(meter);
+        row.appendChild(label);
+      }
+      bubble.appendChild(row);
+      if (lineIndex === chunks.length - 1) {
+        (item.photos || []).slice(0, 1).forEach(function (photo) {
+          const src = srcOf(photo);
+          if (!src && photo.id) queueMedia(photo.id);
+          if (!src) return;
+          const img = document.createElement("img");
+          img.alt = "תמונה";
+          img.src = src;
+          bubble.appendChild(img);
+        });
+        (item.voices || []).slice(0, 1).forEach(function (voice) {
+          const src = srcOf(voice) || voice.src || voice.id || "";
+          if (!src && voice.id) queueMedia(voice.id);
+          const play = document.createElement("button");
+          play.type = "button";
+          play.className = "play";
+          play.dataset.act = "play";
+          play.dataset.voice = src;
+          play.setAttribute("aria-label", "השמעה");
+          play.textContent = "השמעה";
+          bubble.appendChild(play);
+        });
+      }
+      stack.appendChild(bubble);
+    });
+  });
+  if (!stack.querySelector(".tail") && stack.querySelector(".bubble")) stack.querySelector(".bubble:last-child").classList.add("tail");
+  turn.appendChild(stack);
+  box.appendChild(turn);
+  return box;
+}
+function loadAssist() {
+  const raw = readJSON(ASSIST) || {};
+  assist = {
+    prefs: raw.prefs && typeof raw.prefs === "object" ? raw.prefs : {},
+    custom: Array.isArray(raw.custom) ? raw.custom.filter(function (item) { return item && /^\d{2}:\d{2}$/.test(item.time); }).slice(0, 40) : [],
+    seen: raw.seen && typeof raw.seen === "object" ? raw.seen : {},
+    fired: raw.fired && typeof raw.fired === "object" ? raw.fired : {},
+    speech: raw.speech && typeof raw.speech === "object" ? raw.speech : {},
+    leadSeen: raw.leadSeen && typeof raw.leadSeen === "object" ? raw.leadSeen : {}
+  };
+}
+function saveAssist() {
+  try { localStorage.setItem(ASSIST, JSON.stringify({ prefs: assist.prefs, custom: assist.custom, seen: assist.seen, fired: assist.fired, speech: assist.speech, leadSeen: assist.leadSeen })); }
+  catch (e) {}
+}
+function currentPref() {
+  if (!person || !A || !A.defaults) return null;
+  const base = A.defaults(person.role);
+  if (!base) return null;
+  const saved = assist.prefs[person.id];
+  return {
+    on: saved ? saved.on !== false : !!base.on,
+    time: saved && /^\d{2}:\d{2}$/.test(saved.time) ? saved.time : base.time
+  };
+}
+function firedKey(id) {
+  return (person ? person.id : "") + ":" + id;
+}
+function clearReminderTimer() {
+  if (reminderTimer) clearTimeout(reminderTimer);
+  reminderTimer = 0;
+}
+function pendingReminders(who, day) {
+  const out = [];
+  const pref = currentPref();
+  if (pref && pref.on && A.reminderDue) {
+    const due = A.reminderDue(state, who, { today: day, time: pref.time });
+    if (due) out.push(due);
+  }
+  (assist.custom || []).forEach(function (item) {
+    if (!person || item.personId !== person.id || !/^\d{2}:\d{2}$/.test(item.time)) return;
+    out.push({ id: "custom:" + item.id, title: "תזכורת", body: "תזכורת: " + String(item.about || ""), time: item.time });
+  });
+  return out;
+}
+function showReminder(item, day, force) {
+  if (!item || !person) return;
+  const key = firedKey(item.id);
+  if (!force && assist.fired[key] === day) return;
+  assist.fired[key] = day;
+  saveAssist();
+  activeReminder = { title: String(item.title || "תזכורת").slice(0, 80), body: String(item.body || "").slice(0, 180) };
+  sysNote = { title: "עוזר הכיתה", body: activeReminder.body };
+  pushBot(activeReminder.body);
+  notifyReminder(sysNote.title, sysNote.body);
+}
+function notifyReminder(title, body) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted" || !navigator.serviceWorker) return;
+  const payload = { type: "remind", title: String(title || "עוזר הכיתה").slice(0, 80), body: String(body || "").slice(0, 180) };
+  navigator.serviceWorker.ready.then(function (reg) {
+    if (reg.active) reg.active.postMessage(payload);
+    else if (reg.showNotification) reg.showNotification(payload.title, { body: payload.body, lang: "he", dir: "rtl", tag: "nohw-remind" });
+  }).catch(function () {});
+}
+function armReminders(reset) {
+  clearReminderTimer();
+  const who = person && A && A.delayUntil ? helperWho() : null;
+  if (!who) {
+    activeReminder = null;
+    sysNote = null;
+    return;
+  }
+  const day = D.schoolDay(today());
+  const now = new Date();
+  if (reset) {
+    activeReminder = null;
+    sysNote = null;
+  }
+  let soonest = null;
+  pendingReminders(who, day).forEach(function (item) {
+    const delay = A.delayUntil(now, item.time);
+    if (delay <= 0) showReminder(item, day, false);
+    else if (!soonest || delay < soonest.delay) soonest = { delay: delay, item: item };
+  });
+  if (!soonest || assist.fired[firedKey(soonest.item.id)] === day) return;
+  reminderTimer = setTimeout(function () {
+    armReminders(false);
+    render();
+  }, Math.min(soonest.delay, 2147483647));
+}
+function triggerNow() {
+  const who = helperWho();
+  const pref = currentPref();
+  if (!who || !pref || !A.reminderDue) {
+    toast("אין מה להזכיר עכשיו");
+    return;
+  }
+  const day = D.schoolDay(today());
+  const due = A.reminderDue(state, who, { today: day, time: pref.time });
+  if (!due) {
+    toast("אין מה להזכיר עכשיו");
+    return;
+  }
+  showReminder(due, day, true);
+  render();
+}
+function buildReminderSettings() {
+  const pref = currentPref() || { on: false, time: "17:00" };
+  const block = document.createElement("div");
+  block.className = "remindset";
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.dataset.act = "helper-pref-on";
+  toggle.setAttribute("aria-pressed", pref.on ? "true" : "false");
+  toggle.textContent = pref.on ? "תזכורת פעילה" : "תזכורת כבויה";
+  const time = document.createElement("input");
+  time.type = "time";
+  time.value = pref.time;
+  time.dataset.act = "helper-pref-time";
+  time.setAttribute("aria-label", "שעה");
+  const now = document.createElement("button");
+  now.type = "button";
+  now.dataset.act = "helper-now";
+  now.textContent = "הצג עכשיו";
+  const perm = document.createElement("button");
+  perm.type = "button";
+  perm.dataset.act = "helper-notify";
+  perm.textContent = "הפעל התראות";
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = "תזכורת ברקע דורשת שרת בהמשך. כרגע התזכורת קופצת כשהאפליקציה פתוחה, ומתעדכנת בפתיחה.";
+  block.appendChild(toggle);
+  block.appendChild(time);
+  block.appendChild(now);
+  block.appendChild(perm);
+  (assist.custom || []).forEach(function (item) {
+    if (!person || item.personId !== person.id) return;
+    const line = document.createElement("p");
+    line.textContent = item.time + (item.about ? " · " + item.about : "");
+    block.appendChild(line);
+  });
+  block.appendChild(hint);
+  return block;
+}
+function mountAssist() {
+  const host = document.querySelector(".app");
+  if (!host) return;
+  const faceKind = helperLook(helperContext()).face;
+  if (activeReminder) {
+    const bar = document.createElement("div");
+    bar.className = "remindbar";
+    bar.setAttribute("role", "status");
+    bar.lang = "he";
+    bar.dir = "rtl";
+    bar.appendChild(buildTurn("bot", talkLines(activeReminder.body), { face: faceKind }));
+    const close = document.createElement("button");
+    close.type = "button";
+    close.dataset.act = "dismiss-remind";
+    close.setAttribute("aria-label", "סגירת תזכורת");
+    close.textContent = "✕";
+    bar.appendChild(close);
+    host.appendChild(bar);
+  }
+  if (sysNote) {
+    const note = document.createElement("div");
+    note.className = "sysnote";
+    note.setAttribute("role", "status");
+    note.lang = "he";
+    note.dir = "rtl";
+    note.appendChild(buildTurn("bot", talkLines((sysNote.title || "עוזר הכיתה") + "\n" + (sysNote.body || "")), { face: faceKind }));
+    host.appendChild(note);
+  }
+  if (!helperVisible()) return;
+  if (setupOpen()) {
+    host.appendChild(buildSetupCard(setupStatus(), true));
+    return;
+  }
+  const card = currentDigest();
+  lastDigest = card;
+  if (!card) return;
+  host.appendChild(buildDigest(card));
+}
+function buildSetupCard(status, withButton) {
+  const box = document.createElement("section");
+  box.className = "setupcard";
+  box.lang = "he";
+  box.dir = "rtl";
+  const lines = [window.NohwHebrew.text("setup-hello"), window.NohwHebrew.setupProgress(status.progress.done, status.progress.total)];
+  (status.items || []).forEach(function (item) {
+    lines.push(window.NohwHebrew.setupItem(item.done, item.title));
+  });
+  box.appendChild(buildTurn("bot", lines, {
+    face: helperLook(helperContext()).face,
+    fill: withButton ? function (bubble) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "helper";
+      button.textContent = window.NohwHebrew.text("setup-go");
+      bubble.appendChild(button);
+    } : null
+  }));
+  return box;
+}
+function goDigest(item) {
+  const go = item && item.go;
+  if (!go || !go.name) return;
+  view.chat = false;
+  view.reminders = false;
+  hush();
+  if (go.name === "day") push({ name: "day", kidId: go.kidId, date: go.date });
+  else if (go.name === "messages") push({ name: "messages" });
+  else if (go.name === "homework") push({ name: "homework", classId: go.classId });
+  else if (go.name === "kids") push({ name: "kids", classId: go.classId, schoolId: go.schoolId || "" });
+  else if (go.name === "classes") push({ name: "classes", schoolId: go.schoolId || "" });
+  else if (go.name === "compose") push({ name: "compose", classId: go.classId, text: go.text || "", photos: [], voices: [], audience: "class", alert: false, fillDraft: true });
+}
+function personForKid(id) {
+  return people.find(function (item) { return item.role === "student" && item.kidId === id; }) || null;
+}
+function personForClass(id) {
+  return people.find(function (item) { return item.role === "teacher" && item.classId === id; }) || null;
+}
+function personForSchool(id) {
+  return people.find(function (item) { return item.role === "principal" && item.schoolId === id; }) || null;
+}
+function err() { return view.error ? '<p class="err">' + esc(view.error) + "</p>" : ""; }
+function byRole(a, b) { return (ROLE_ORDER[a.role] - ROLE_ORDER[b.role]) || a.name.localeCompare(b.name, "he"); }
+function focusDate() {
+  const days = D.weekDates(today());
+  const want = view.date || D.schoolDay(today());
+  return days.indexOf(want) >= 0 ? want : days[days.length - 1];
+}
+function syncPeople() {
+  people.forEach(function (item) {
+    if (item.role === "principal") {
+      const school = D.findSchool(state, item.schoolId);
+      if (school) item.name = school.principalName;
+    } else if (item.role === "teacher") {
+      const found = D.findClass(state, item.classId);
+      if (found) item.name = found.room.teacherName;
+    } else if (item.role === "student") {
+      const found = D.findKid(state, item.kidId);
+      if (found) item.name = found.kid.firstName;
+    } else if (item.role === "parent") {
+      const before = (item.kidIds || []).length;
+      item.kidIds = (item.kidIds || []).filter(function (id) { return D.findKid(state, id); });
+      item.keepEmpty = before === 0;
+    }
+  });
+  people = people.filter(function (item) {
+    if (item.role === "admin") return true;
+    if (item.role === "principal") return !!D.findSchool(state, item.schoolId);
+    if (item.role === "teacher") return !!D.findClass(state, item.classId);
+    if (item.role === "student") return !!D.findKid(state, item.kidId);
+    return item.role === "parent" && (item.kidIds.length > 0 || item.keepEmpty);
+  });
+  if (person && !people.some(function (item) { return item.id === person.id; })) person = null;
+}
+function remember(role, code) {
+  const found = S.identify(state, code);
+  if (!found) return;
+  if (role === "principal") people.push({ id: "p-" + found.school.id, name: found.school.principalName, emoji: "🏫", role: "principal", schoolId: found.school.id });
+  else if (role === "teacher") {
+    if (!String(found.room.teacherName || "").trim()) return;
+    people.push({ id: "t-" + found.room.id, name: found.room.teacherName, emoji: "📚", role: "teacher", schoolId: found.school.id, classId: found.room.id });
+  }
+  else if (role === "student") people.push({ id: "s-" + found.kid.id, name: found.kid.firstName, emoji: "🎒", role: "student", schoolId: found.school.id, classId: found.room.id, kidId: found.kid.id });
+}
+function resetChat() {
+  chatLog = [];
+  wizard = null;
+  setupPending = null;
+  leadSession = null;
+  leadFocus = "";
+  hush();
+  view.hearing = false;
+  if (talkMachine()) talkMachine().disable();
+  stopListenTracks();
+}
+function adopt(pack, next) {
+  resetChat();
+  scenarioId = pack.id;
+  scenarioTitle = pack.title || "";
+  people = pack.people;
+  state = pack.state;
+  person = null;
+  suggestedId = pack.personId || "";
+  roleFilter = "all";
+  focusSuggested = next.name === "people" && !!suggestedId;
+  stack = next.stack || [];
+  view = { name: next.name };
+  activeReminder = null;
+  sysNote = null;
+  clearReminderTimer();
+  saveStore();
+  render();
+}
+function peopleHtml() {
+  const groups = [
+    ["admin", "מנהל מערכת", "🧔"],
+    ["principal", "מנהלי בית ספר", "🏫"],
+    ["teacher", "מורים", "👩‍🏫"],
+    ["student", "תלמידים", "🎒"],
+    ["parent", "הורים", "👪"]
+  ];
+  const filters = [["all", "הכל"], ["admin", "מערכת"], ["principal", "מנהל/ת בית ספר"], ["teacher", "מורה"], ["student", "תלמיד"], ["parent", "הורה"]];
+  const chips = '<div class="filters">' + filters.map(function (item) {
+    const icon = groups.filter(function (group) { return group[0] === item[0]; })[0];
+    return '<button class="filter' + (roleFilter === item[0] ? " on" : "") + '" type="button" data-act="filter" data-role="' + item[0] + '" aria-pressed="' + (roleFilter === item[0] ? "true" : "false") + '">' + (icon ? "<span>" + icon[2] + "</span>" : "") + esc(item[1]) + "</button>";
+  }).join("") + "</div>";
+  const body = groups.map(function (group) {
+    if (roleFilter !== "all" && roleFilter !== group[0]) return "";
+    const items = people.filter(function (item) { return item.role === group[0]; }).sort(function (a, b) { return a.name.localeCompare(b.name, "he"); });
+    if (!items.length) return "";
+    const cards = items.map(function (item) {
+      const on = item.id === suggestedId;
+      const caption = D.parentCaption(item, state);
+      return '<button class="person' + (group[0] === "parent" ? " parent" : "") + (on ? " on" : "") + '" type="button" data-act="enter" data-id="' + esc(item.id) + '"' + (on ? ' aria-current="true"' : "") + '><span class="avatar">' + faceHtml(item) + '</span><span class="meta"><strong>' + esc(item.name) + "</strong>" + (caption ? "<small>" + esc(caption) + "</small>" : "") + "</span></button>";
+    }).join("");
+    return '<section class="group" data-role="' + group[0] + '"><h2><span>' + group[2] + "</span>" + esc(group[1]) + '</h2><div class="cast' + (group[0] === "parent" ? " parents" : "") + '">' + cards + "</div></section>";
+  }).join("");
+  return shell(bar("דמויות", scenarioTitle), chips + '<div class="groups">' + body + "</div>");
+}
+function startHtml() {
+  const head = '<header class="top"><div class="titles"><h1>שיעורי בית</h1></div></header>';
+  const cards = [["data", "📂", "תרחישים"], ["live", "📡", "נתונים חיים"], ["people", "👥", "דמויות"]].map(function (item) {
+    return '<button class="choice" type="button" data-act="go" data-to="' + item[0] + '"><span class="avatar">' + item[1] + "</span><strong>" + esc(item[2]) + "</strong></button>";
+  }).join("");
+  return shell(head, '<div class="hub">' + cards + "</div>");
+}
+function dataHtml() {
+  const rows = D.scenarios(today()).map(function (item) {
+    const on = item.id === scenarioId;
+    return '<button class="scenario' + (on ? " on" : "") + '" type="button" data-act="scenario" data-id="' + esc(item.id) + '"' + (on ? ' aria-current="true"' : "") + '><span class="avatar">' + esc(item.emoji) + "</span><strong>" + esc(item.title) + "</strong>" + (on ? '<span class="mark">' + ico(I.check) + "<small>פעיל</small></span>" : "") + "</button>";
+  }).join("");
+  return shell(bar("תרחישים"), '<div class="list picks">' + rows + '</div><button class="ghost reset" type="button" data-act="reset">איפוס</button>');
+}
+function stat(icon, value, label) {
+  return '<span class="stat" aria-label="' + esc(label + " " + value) + '"><span class="emo">' + icon + "</span><b>" + value + "</b><small>" + esc(label) + "</small></span>";
+}
+function liveHtml() {
+  const tree = D.scopedLive(state, person, today());
+  const schools = tree.schools.map(function (school) {
+    const classes = school.classes.map(function (room) {
+      const kids = room.kids.map(function (kid) {
+        return '<div class="kid"><span>🎒</span><b>' + esc(kid.name) + '</b><span class="mini" aria-label="' + esc("הוכן " + kid.done) + '">✅ ' + kid.done + "</span></div>";
+      }).join("");
+      return '<div class="room"><div class="line"><span class="emo">📚</span><strong>' + esc(room.name) + '</strong><span class="mini" aria-label="' + esc("ילדים " + room.kidCount) + '">🎒 ' + room.kidCount + '</span></div><div class="stats">' + stat("📝", room.posted, "פורסם") + stat("⏳", room.notUpdated, "לא עודכן") + stat("🚫", room.none, "אין שיעורים") + stat("✅", room.done, "הוכן") + "</div>" + kids + "</div>";
+    }).join("");
+    return '<section class="school"><div class="line"><span class="emo">🏫</span><strong>' + esc(school.name) + '</strong><span class="mini" aria-label="' + esc("כיתות " + school.classCount) + '">📚 ' + school.classCount + '</span><span class="mini" aria-label="' + esc("ילדים " + school.kidCount) + '">🎒 ' + school.kidCount + "</span></div>" + classes + "</section>";
+  }).join("");
+  return shell(bar("נתונים חיים"), '<div class="tree">' + (schools || '<p class="empty">אין בתי ספר</p>') + "</div>");
+}
+function resetHtml() {
+  return shell(bar("איפוס"), '<div class="confirm"><p class="ask">לאפס?</p><div class="pair"><button class="primary" type="button" data-act="do-reset">איפוס</button><button class="ghost" type="button" data-act="back">ביטול</button></div></div>');
+}
+function pencil(kind, id) {
+  if (!S.canEdit(state, actor(), { kind: kind, id: id })) return "";
+  return '<button class="icon" type="button" data-act="edit" data-kind="' + kind + '" data-id="' + esc(id) + '" aria-label="עריכה">' + ico(I.pencil) + "</button>";
+}
+function entityList(kind, rows, title, sub, extra, empty) {
+  const body = rows.length ? '<div class="list">' + rows.map(function (row) {
+    return '<div class="card">' + (row.face || "") + '<button class="who" type="button" data-act="open" data-id="' + esc(row.id) + '"><strong>' + esc(row.title) + "</strong>" + (row.meta ? "<small>" + esc(row.meta) + "</small>" : "") + "</button>" + (row.aside || "") + pencil(kind, row.id) + "</div>";
+  }).join("") + "</div>" : '<p class="empty">' + empty + "</p>";
+  return shell(bar(title, sub, extra || ""), body + '<button class="primary add" type="button" data-act="add"><span aria-hidden="true">+</span>הוספה</button>');
+}
+function schoolsHtml() {
+  return entityList("school", (state.schools || []).map(function (item) {
+    return { id: item.id, title: item.name, meta: item.principalName, face: faceNode(personForSchool(item.id)) };
+  }), "בתי ספר", "", "", "אין בתי ספר");
+}
+function classesHtml(schoolId) {
+  const school = D.findSchool(state, schoolId);
+  const rows = school ? (school.classrooms || []).map(function (item) {
+    return { id: item.id, title: item.name, meta: item.teacherName, face: faceNode(personForClass(item.id)) };
+  }) : [];
+  return entityList("class", rows, school ? school.name : "כיתות", school ? "כיתות" : "", "", "אין כיתות");
+}
+function dayButton(classId) {
+  if (person && person.role === "teacher") return "";
+  return S.canEdit(state, actor(), { kind: "homework", classId: classId }) ? '<button class="text" type="button" data-act="day">היום</button>' : "";
+}
+function linkParent(kidId, name) {
+  const text = String(name || "").trim().slice(0, 40);
+  if (!text || !kidId) return;
+  const existing = parentOf(kidId);
+  if (existing) { existing.name = text; return; }
+  const found = D.findKid(state, kidId);
+  people.push({ id: "par-" + kidId, name: text, emoji: "👪", role: "parent", kin: "הורה", kidIds: [kidId], schoolId: found ? found.school.id : "", classId: found ? found.room.id : "" });
+}
+function parentOf(kidId) {
+  return people.find(function (item) { return item.role === "parent" && (item.kidIds || []).indexOf(kidId) >= 0; }) || null;
+}
+function parentIcon(kidId) {
+  const parent = parentOf(kidId);
+  if (!parent) return "";
+  return '<button class="icon" type="button" data-act="as-parent" data-id="' + esc(parent.id) + '" aria-label="ראה כהורה">' + faceHtml(parent) + "</button>";
+}
+function kidsHtml(classId) {
+  const found = D.findClass(state, classId);
+  const rows = found ? (found.room.kids || []).map(function (item) {
+    return { id: item.id, title: item.firstName, meta: "", aside: parentIcon(item.id), face: faceNode(personForKid(item.id)) };
+  }) : [];
+  return entityList("kid", rows, found ? found.room.name : "כיתה", found ? found.room.teacherName : "", found ? dayButton(found.room.id) : "", "אין ילדים");
+}
+function parentKidsHtml() {
+  const rows = (person.kidIds || []).map(function (id) {
+    const found = D.findKid(state, id);
+    return found ? { id: found.kid.id, title: found.kid.firstName, meta: found.room.name } : null;
+  }).filter(Boolean);
+  const body = rows.length ? '<div class="list">' + rows.map(function (row) {
+    return '<button class="card" type="button" data-act="open" data-id="' + esc(row.id) + '">' + faceNode(personForKid(row.id)) + '<span class="who"><strong>' + esc(row.title) + "</strong><small>" + esc(row.meta) + "</small></span></button>";
+  }).join("") + "</div>" : '<p class="empty">אין ילדים</p>';
+  return shell(bar(person.name, D.parentCaption(person, state) || "הילדים"), alertBanner() + inboxLink() + body);
+}
+function weekStrip(date) {
+  return '<div class="week">' + D.weekDates(today()).map(function (item, index) {
+    return '<button class="dow' + (item === date ? " on" : "") + '" type="button" data-act="date" data-date="' + item + '">' + DAY_LABEL[index] + "</button>";
+  }).join("") + "</div>";
+}
+function chip(row) {
+  const label = row.status === "posted" ? row.text : STATUS[row.status];
+  return '<em class="chip' + (row.status === "posted" ? " posted" : "") + '">' + esc(label) + "</em>";
+}
+function tick(row, live) {
+  if (row.status !== "posted") return "";
+  const mark = row.done ? ico(I.check) : "";
+  if (!live) return '<span class="tick' + (row.done ? " on" : "") + '" role="img" aria-label="' + (row.done ? "הוכן" : "לא הוכן") + '">' + mark + "</span>";
+  return '<button class="tick' + (row.done ? " on" : "") + '" type="button" data-act="tick" data-subject="' + esc(row.subject) + '" aria-pressed="' + (row.done ? "true" : "false") + '" aria-label="הוכן">' + mark + "</button>";
+}
+function asPhotos(entry) {
+  if (!entry) return [];
+  const list = entry.photos && entry.photos.length ? entry.photos : (entry.photo ? [entry.photo] : []);
+  return list.map(function (item) {
+    if (item && typeof item === "object") return { id: item.id || "", src: item.src || "" };
+    const text = String(item || "");
+    if (!text) return null;
+    if (text.indexOf("data:") === 0) return { id: "", src: text };
+    return { id: text, src: "" };
+  }).filter(Boolean);
+}
+function asVoices(entry) {
+  if (!entry) return [];
+  const list = entry.voices && entry.voices.length ? entry.voices : (entry.voice ? [entry.voice] : []);
+  return list.map(function (item) {
+    if (typeof item === "string") {
+      if (!item) return null;
+      if (item.indexOf("data:") === 0) return { id: "", src: item, text: "" };
+      return { id: item, src: "", text: "" };
+    }
+    if (!item || typeof item !== "object") return null;
+    return { id: item.id || "", src: item.src || "", text: item.text || "" };
+  }).filter(Boolean);
+}
+function srcOf(item) {
+  if (!item) return "";
+  if (typeof item === "string") {
+    if (item.indexOf("data:") === 0 || item.indexOf("blob:") === 0) return item;
+    return urls[item] || "";
+  }
+  const src = String(item.src || "");
+  if (src.indexOf("data:") === 0 || src.indexOf("blob:") === 0) return src;
+  if (item.id && urls[item.id]) return urls[item.id];
+  return "";
+}
+function photoThumbs(list, opts) {
+  opts = opts || {};
+  const html = (list || []).map(function (item, index) {
+    const src = srcOf(item);
+    if (!src && item.id) queueMedia(item.id);
+    const img = src ? '<img alt="" src="' + esc(src) + '">' : '<span class="ph"></span>';
+    const attrs = ' data-index="' + index + '"' + (opts.subject ? ' data-subject="' + esc(opts.subject) + '"' : "") + (opts.msgId ? ' data-id="' + esc(opts.msgId) + '"' : "");
+    const zoom = '<button class="thumb" type="button" data-act="zoom"' + attrs + ' aria-label="תמונה">' + img + "</button>";
+    const drop = opts.remove ? '<button class="x" type="button" data-act="drop-photo" data-index="' + index + '" aria-label="הסרת תמונה">✕</button>' : "";
+    return '<span class="shot">' + zoom + drop + "</span>";
+  }).join("");
+  return html ? '<div class="thumbs">' + html + "</div>" : "";
+}
+function voiceClips(list, opts) {
+  opts = opts || {};
+  return (list || []).map(function (item, index) {
+    const src = srcOf(item);
+    if (!src && item.id) queueMedia(item.id);
+    const play = '<button class="play" type="button" data-act="play" data-voice="' + esc(src || item.id || "") + '" aria-label="השמעה">🎤</button>';
+    let said = "";
+    if (opts.edit) said = '<input data-act="transcript" data-index="' + index + '" dir="rtl" maxlength="280" value="' + esc(item.text || "") + '" placeholder="תמלול" aria-label="תמלול">';
+    else if (item.text) said = '<p class="said">' + esc(item.text) + "</p>";
+    const drop = opts.edit ? '<button class="ghost slim" type="button" data-act="drop-voice" data-index="' + index + '">מחיקה</button>' : "";
+    return '<div class="clip">' + play + said + drop + "</div>";
+  }).join("");
+}
+function mediaBlock(row) {
+  if (!row || row.status !== "posted") return "";
+  const photos = photoThumbs(asPhotos(row), { subject: row.subject });
+  const voices = voiceClips(asVoices(row));
+  if (!photos && !voices) return "";
+  return '<div class="clips">' + photos + voices + "</div>";
+}
+function dayRows(rows, live) {
+  return rows.map(function (row) {
+    const media = mediaBlock(row);
+    return '<div class="row' + (media ? " rich" : "") + '"><span class="who"><strong>' + esc(row.subject) + "</strong>" + chip(row) + "</span>" + tick(row, live) + media + "</div>";
+  }).join("");
+}
+function parentShortcut(kidId) {
+  const parent = parentOf(kidId);
+  if (!parent) return "";
+  const caption = D.parentCaption(parent, state);
+  return '<button class="jump" type="button" data-act="as-parent" data-id="' + esc(parent.id) + '">' + faceNode(parent) + '<b>ראה כהורה</b>' + (caption ? "<small>" + esc(caption) + "</small>" : "") + "</button>";
+}
+function dayHtml(kidId, live) {
+  const found = D.findKid(state, kidId);
+  if (!found) return shell(bar("היום"), '<p class="empty">אין ילדים</p>');
+  const date = focusDate();
+  const rows = S.rowsFor(found.room, date, found.kid);
+  const jump = live ? parentShortcut(kidId) : "";
+  return shell(bar(found.kid.firstName, found.room.name), alertBanner() + inboxLink() + jump + weekStrip(date) + '<div class="list">' + dayRows(rows, live) + "</div>");
+}
+const ENTITY = {
+  school: { icon: "🏫", noun: "בית ספר", add: "הוספת בית ספר", edit: "עריכת בית ספר", remove: "מחיקת בית ספר", fields: [["a", "שם בית ספר", "אלון"], ["b", "שם מנהל/ת בית ספר", "דנה כהן"]] },
+  class: { icon: "🚪", noun: "כיתה", add: "הוספת כיתה", edit: "עריכת כיתה", remove: "מחיקת כיתה", fields: [["a", "שם כיתה", "ה'2"], ["b", "שם מורה", "מיכל אביב"]] },
+  kid: { icon: "🧒", noun: "תלמיד", add: "הוספת תלמיד", edit: "עריכת תלמיד", remove: "מחיקת תלמיד", fields: [["a", "שם תלמיד", "נועה"], ["b", "שם הורה", "יעל ברק", "👪"]] },
+  parent: { icon: "👪", noun: "הורה", add: "הוספת הורה", edit: "עריכת הורה", remove: "מחיקת הורה", fields: [["a", "שם הורה", "יעל ברק", "👪"]] }
+};
+function entityOf(kind) { return ENTITY[kind] || ENTITY.kid; }
+function entityHeading(item, name) {
+  return item.icon + " " + (name ? item.edit + " · " + name : item.add);
+}
+function fieldInput(field, value) {
+  const label = (field[3] ? field[3] + " " : "") + field[1];
+  return '<label class="field"><span>' + esc(label) + '</span><input name="' + field[0] + '" dir="rtl" maxlength="40" required value="' + esc(value || "") + '" placeholder="' + esc(field[2]) + '" aria-label="' + esc(field[1]) + '"></label>';
+}
+function formHtml() {
+  const item = entityOf(view.add);
+  const inputs = item.fields.map(function (field) { return fieldInput(field, ""); }).join("");
+  return shell(bar(entityHeading(item, "")), '<form class="stack">' + inputs + err() + '<button class="primary" type="submit">יצירה</button></form>');
+}
+function editValues(kind) {
+  if (kind === "school") {
+    const school = D.findSchool(state, view.id);
+    return school ? [school.name, [school.name, school.principalName]] : null;
+  }
+  if (kind === "class") {
+    const found = D.findClass(state, view.id);
+    return found ? [found.room.name, [found.room.name, found.room.teacherName]] : null;
+  }
+  if (kind === "parent") {
+    const parent = people.find(function (item) { return item.id === view.id && item.role === "parent"; });
+    return parent ? [parent.name, [parent.name]] : null;
+  }
+  const found = D.findKid(state, view.id);
+  if (!found) return null;
+  const parent = parentOf(view.id);
+  return [found.kid.firstName, [found.kid.firstName, parent ? parent.name : ""]];
+}
+function editHtml() {
+  const item = entityOf(view.kind);
+  const values = editValues(view.kind);
+  if (!values) {
+    if (view.kind === "school") return schoolsHtml();
+    if (view.kind === "class") return classesHtml(person && person.schoolId);
+    return shell(bar(entityHeading(item, "")), '<p class="empty">אין ילדים</p>');
+  }
+  const inputs = item.fields.map(function (field, index) { return fieldInput(field, values[1][index]); }).join("");
+  const remove = view.kind === "parent" ? "" : '<div class="tools"><button class="ghost" type="button" data-act="ask" data-kind="' + view.kind + '" data-id="' + esc(view.id) + '">' + esc(item.remove) + "</button></div>";
+  return shell(bar(entityHeading(item, values[0])), '<form class="stack fit">' + inputs + err() + '<button class="primary" type="submit">שמירה</button></form>' + remove);
+}
+function confirmHtml() {
+  if (view.kind === "message") {
+    const name = view.title || "הודעה";
+    return shell(bar("🗑️ מחיקת הודעה"), '<div class="confirm"><p class="ask">למחוק את ' + esc(name) + '?</p><div class="pair"><button class="primary" type="button" data-act="delete">מחיקה</button><button class="ghost" type="button" data-act="back">ביטול</button></div></div>');
+  }
+  const item = entityOf(view.kind);
+  const name = view.title || item.noun;
+  return shell(bar(item.icon + " " + item.remove + " · " + name), '<div class="confirm"><p class="ask">למחוק את ' + esc(name) + '?</p><div class="pair"><button class="primary" type="button" data-act="delete">' + esc(item.remove) + '</button><button class="ghost" type="button" data-act="back">ביטול</button></div></div>');
+}
+let recorder = null;
+let micStream = null;
+let stopping = false;
+let recordStarted = 0;
+let warned = false;
+let clockTimer = 0;
+let audioCtx = null;
+let analyser = null;
+let levelBuf = null;
+const RECORD_WARN = 165000;
+const RECORD_LIMIT = 180000;
+function weekdayIndex(date) {
+  const parts = String(date || "").split("-").map(Number);
+  const day = new Date(parts[0], parts[1] - 1, parts[2]).getDay();
+  return day === 6 ? 5 : day;
+}
+function classFor(who) {
+  const id = (view && view.classId) || (who && who.classId) || "";
+  return D.findClass(state, id);
+}
+function visibleMessages(who) {
+  if (!who) return [];
+  if (who.role === "student") {
+    const found = D.findKid(state, who.kidId);
+    return found ? S.messagesFor(found.room, "student").map(function (msg) { return Object.assign({ classId: found.room.id }, msg); }) : [];
+  }
+  if (who.role === "parent") {
+    const seen = {};
+    const all = [];
+    (who.kidIds || []).forEach(function (id) {
+      const found = D.findKid(state, id);
+      if (!found) return;
+      S.messagesFor(found.room, "parent").forEach(function (msg) {
+        const key = found.room.id + ":" + msg.id;
+        if (seen[key]) return;
+        seen[key] = true;
+        all.push(Object.assign({ classId: found.room.id }, msg));
+      });
+    });
+    all.sort(function (a, b) { return (b.bump || b.at || 0) - (a.bump || a.at || 0); });
+    return all;
+  }
+  const found = classFor(who);
+  return found ? S.messagesFor(found.room, "teacher").map(function (msg) { return Object.assign({ classId: found.room.id }, msg); }) : [];
+}
+function unseenAlert(who) {
+  const seen = (who && who.seen) || {};
+  return visibleMessages(who).find(function (msg) { return msg.alert && seen[msg.id] !== (msg.bump || msg.at); }) || null;
+}
+function alertBanner() {
+  if (!person || person.role === "teacher") return "";
+  const msg = unseenAlert(person);
+  if (!msg) return "";
+  return '<div class="banner"><button type="button" data-act="inbox"><b>התראה</b><span>' + esc(msg.text || "הודעה") + '</span></button><button type="button" data-act="dismiss" data-id="' + esc(msg.id) + '" aria-label="סגירה">✕</button></div>';
+}
+function inboxLink() {
+  if (!person || person.role === "teacher") return "";
+  const count = visibleMessages(person).length;
+  if (!count) return "";
+  return '<button class="jump" type="button" data-act="inbox"><span>💬</span><b>הודעות</b><small>' + count + "</small></button>";
+}
+function teacherHome() {
+  const found = D.findClass(state, person.classId);
+  const tiles = [["homework", "📘", "לשיעור הבא"], ["messages", "💬", "הודעות"], ["timetable", "🗓️", "לו״ז שיעורים"], ["students", "🧒", "תלמידים"]];
+  const count = visibleMessages(person).length;
+  const body = tiles.map(function (item) {
+    const badge = item[0] === "messages" && count ? '<b class="count">' + count + "</b>" : "";
+    return '<button class="choice" type="button" data-act="tile" data-to="' + item[0] + '"><span class="avatar">' + item[1] + "</span><strong>" + item[2] + "</strong>" + badge + "</button>";
+  }).join("");
+  return shell(bar(person.name, found ? found.room.name : ""), '<div class="hub tiles">' + body + "</div>");
+}
+function homeworkHtml() {
+  const found = classFor(person);
+  if (!found) return shell(bar("שיעורי בית"), '<p class="empty">אין כיתות</p>');
+  const rows = S.rowsFor(found.room, D.schoolDay(today()), null);
+  const body = rows.map(function (row) {
+    const shots = asPhotos(row);
+    const src = shots[0] ? srcOf(shots[0]) : "";
+    if (shots[0] && shots[0].id && !src) queueMedia(shots[0].id);
+    const label = row.status === "posted" ? (row.text || (shots.length ? "תמונה" : (asVoices(row).length ? "הקלטה" : ""))) : STATUS[row.status];
+    const thumb = src ? '<img class="mini-thumb" alt="" src="' + esc(src) + '">' : "";
+    return '<button class="choice subject" type="button" data-act="post" data-subject="' + esc(row.subject) + '"><span class="avatar">' + (shots.length ? "📷" : "📘") + '</span><span class="meta"><strong>' + esc(row.subject) + "</strong><small>" + esc(label) + "</small></span>" + thumb + "</button>";
+  }).join("");
+  const posted = rows.filter(function (row) { return row.status === "posted"; }).length;
+  return shell(bar("לשיעור הבא", found.room.name), '<p class="subhead">' + posted + "/" + rows.length + ' פורסמו</p><div class="hub">' + body + '</div><button class="ghost" type="button" data-act="none-day">אין שיעורים היום</button>');
+}
+function principalHome() {
+  const tree = D.scopedLive(state, person, today());
+  const school = tree.schools[0];
+  const cards = school && school.classes.length ? school.classes.map(function (room) {
+    const possible = room.posted * Math.max(room.kidCount, 1);
+    const pct = possible ? Math.round(100 * room.done / possible) : 0;
+    return '<button class="choice statcard" type="button" data-act="open" data-id="' + esc(room.id) + '"><span class="meta"><strong>' + esc(room.name) + '</strong><b class="pct">' + pct + '%</b></span><span class="stats">' + stat("📝", room.posted, "פורסם") + stat("⏳", room.notUpdated, "לא עודכן") + stat("🚫", room.none, "אין שיעורים") + stat("✅", room.done, "הוכן") + "</span></button>";
+  }).join("") : '<p class="empty">אין כיתות</p>';
+  return shell(bar(person.name, school ? school.name : "בית ספר"), '<p class="subhead">לשיעור הבא</p><div class="hub">' + cards + '</div><button class="primary" type="button" data-act="manage">ניהול כיתות</button>');
+}
+function noteSpeech() {
+  if (!speechCtor()) view.speechMissing = true;
+}
+function pickButtons() {
+  return '<div class="pair"><button class="ghost" type="button" data-act="camera">📷 מצלמה</button><button class="ghost" type="button" data-act="gallery">🖼️ גלריה</button></div>';
+}
+function voicePanel() {
+  const list = view.voices || [];
+  const missing = view.speechMissing ? '<p class="hint">תמלול לא זמין בדפדפן זה</p>' : "";
+  const speechNote = '<p class="hint">הדפדפן עשוי להשתמש בשירות דיבור משלו</p>';
+  const label = list.length ? "🎤 הקלטה נוספת" : "🎤 הקלטה";
+  const button = view.recording ? "" : '<button class="ghost" type="button" data-act="record">' + label + "</button>";
+  return voiceClips(list, { edit: true }) + missing + speechNote + button;
+}
+function postHtml() {
+  noteSpeech();
+  const form = '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="80" value="' + esc(view.text || "") + '" placeholder="שיעורי בית" aria-label="טקסט"></label><button class="ghost" type="button" data-act="dictate">🎤 הכתבה</button>' + photoThumbs(view.photos, { remove: true, subject: view.subject }) + pickButtons() + voicePanel() + err() + '<button class="ghost" type="button" data-act="none">אין שיעורים</button><div class="pair"><button class="ghost" type="button" data-act="save-next">שמור והבא</button><button class="primary" type="submit">שמירה</button></div></form>';
+  if (view.fromLead) return leadFrame(form);
+  return shell(bar(view.subject || "שיעור", "לשיעור הבא"), form);
+}
+function chipSubjects(room) {
+  const names = S.SUBJECTS.slice();
+  Object.keys(room.timetable || {}).forEach(function (key) {
+    (room.timetable[key] || []).forEach(function (item) {
+      const name = String(item || "").trim();
+      if (name && names.indexOf(name) < 0) names.push(name);
+    });
+  });
+  return names;
+}
+function timetableHtml() {
+  const found = classFor(person);
+  if (!found) return shell(bar("לו״ז שיעורים"), '<p class="empty">אין כיתות</p>');
+  const day = Number.isInteger(view.day) ? view.day : weekdayIndex(D.schoolDay(today()));
+  const lesson = Number.isInteger(view.lesson) ? view.lesson : 0;
+  view.day = day;
+  view.lesson = lesson;
+  const slots = (found.room.timetable && found.room.timetable[String(day)]) || [];
+  const days = DAY_LABEL.map(function (label, index) {
+    return '<button class="dow' + (index === day ? " on" : "") + '" type="button" data-act="dow" data-day="' + index + '">' + label + "</button>";
+  }).join("");
+  const lessons = [0, 1, 2, 3, 4, 5].map(function (index) {
+    const name = slots[index] || "";
+    return '<button class="row' + (index === lesson ? " on" : "") + '" type="button" data-act="lesson" data-lesson="' + index + '"><strong>שיעור ' + (index + 1) + '</strong><em class="chip' + (name ? " posted" : "") + '">' + esc(name || "ריק") + "</em></button>";
+  }).join("");
+  const chips = chipSubjects(found.room).map(function (name) {
+    return '<button class="pick" type="button" data-act="slot" data-subject="' + esc(name) + '">' + esc(name) + "</button>";
+  }).join("") + '<button class="pick" type="button" data-act="slot" data-subject="">ריק</button>';
+  return shell(bar("לו״ז שיעורים", found.room.name), '<div class="week">' + days + '</div><div class="list">' + lessons + '</div><div class="picks">' + chips + '</div><form class="stack"><label class="field"><span>מקצוע נוסף</span><input name="custom" dir="rtl" maxlength="40" placeholder="אמנות" aria-label="מקצוע נוסף"></label><button class="primary" type="submit">הוספה</button></form>');
+}
+function messageCard(msg, can) {
+  const who = msg.audience === "parents" ? "הורים בלבד" : "כל הכיתה";
+  const marks = (msg.edited ? '<em class="chip posted">עודכן</em>' : "") + (msg.alert ? '<em class="chip">התראה</em>' : "");
+  const photos = asPhotos(msg);
+  const voices = asVoices(msg);
+  const media = (photos.length || voices.length) ? '<div class="clips">' + photoThumbs(photos, { msgId: msg.id }) + voiceClips(voices) + "</div>" : "";
+  const tools = can ? '<div class="actions"><button type="button" data-act="edit-msg" data-id="' + esc(msg.id) + '">✏️<small>עריכה</small></button><button type="button" data-act="ask-msg" data-id="' + esc(msg.id) + '">🗑️<small>מחיקה</small></button><button type="button" data-act="bump" data-id="' + esc(msg.id) + '">⬆️<small>הקפצה</small></button></div>' : "";
+  return '<article class="card msg">' + faceNode(messageSender(msg)) + '<div class="who"><strong>' + esc(msg.text || (photos.length ? "תמונה" : "הקלטה")) + "</strong><small>" + esc(who) + "</small>" + marks + "</div>" + media + tools + "</article>";
+}
+function messageSender(msg) {
+  const classId = msg && msg.classId;
+  if (classId) return personForClass(classId);
+  if (person && person.role === "teacher") return person;
+  return personForClass(person && person.classId);
+}
+function messagesHtml() {
+  const list = visibleMessages(person);
+  const can = !!(person && person.role === "teacher" && S.canEdit(state, actor(), { kind: "homework", classId: person.classId }));
+  const cards = list.length ? list.map(function (msg) { return messageCard(msg, can); }).join("") : '<p class="empty">אין הודעות</p>';
+  const add = can ? '<button class="primary add" type="button" data-act="compose"><span aria-hidden="true">+</span>הודעה</button>' : "";
+  const found = person && person.role === "teacher" ? D.findClass(state, person.classId) : null;
+  return shell(bar("הודעות", found ? found.room.name : ""), '<div class="list">' + cards + "</div>" + add);
+}
+function composeHtml() {
+  noteSpeech();
+  const audience = view.audience === "parents" ? "parents" : "class";
+  const alertOn = !!view.alert;
+  const picks = '<div class="pair"><button class="ghost' + (audience === "class" ? " on" : "") + '" type="button" data-act="audience" data-audience="class">כל הכיתה</button><button class="ghost' + (audience === "parents" ? " on" : "") + '" type="button" data-act="audience" data-audience="parents">הורים בלבד</button></div>';
+  const alert = '<button class="ghost' + (alertOn ? " on" : "") + '" type="button" data-act="alert" aria-pressed="' + (alertOn ? "true" : "false") + '">התראה</button>';
+  const draftValue = view.fillDraft ? "" : esc(view.text || "");
+  const form = '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="280" value="' + draftValue + '" placeholder="הודעה" aria-label="טקסט"></label><button class="ghost" type="button" data-act="dictate">🎤 הכתבה</button>' + photoThumbs(view.photos, { remove: true, msgId: view.id || "" }) + pickButtons() + voicePanel() + picks + alert + err() + '<button class="primary" type="submit">' + (view.id ? "שמירה" : "שליחה") + "</button></form>";
+  if (view.fromLead) return leadFrame(form);
+  return shell(bar(view.id ? "עריכת הודעה" : "הודעה חדשה"), form);
+}
+function photoHtml() {
+  return shell(bar("תמונה"), '<button class="frame" type="button" data-act="back"><img alt="תמונה" src="' + esc(view.src || "") + '"></button>');
+}
+function menuItems() {
+  const role = person && person.role;
+  const items = [];
+  if (role === "teacher") items.push(["homework", "לשיעור הבא"], ["messages", "הודעות"], ["timetable", "לו״ז שיעורים"], ["kids", "תלמידים"]);
+  else if (role === "principal") items.push(["classes", "ניהול כיתות"]);
+  else if (role === "admin") items.push(["schools", "בתי ספר"]);
+  else if (role === "student") items.push(["day", "היום"], ["messages", "הודעות"]);
+  else if (role === "parent") items.push(["family", "הילדים"], ["messages", "הודעות"]);
+  items.push(["data", "תרחישים"], ["reset", "איפוס"]);
+  if (A && A.defaults(role)) items.push(["reminders", "תזכורות"]);
+  return items;
+}
+function menuHtml() {
+  const buttons = menuItems().map(function (item) {
+    return '<button type="button" data-act="menu-go" data-to="' + item[0] + '">' + esc(item[1]) + "</button>";
+  }).join("");
+  return '<div class="sheetscrim" data-act="menu"></div><div class="navmenu" role="dialog" aria-label="תפריט">' + buttons + "</div>";
+}
+function leadBar() {
+  const helper = helperLook(helperContext());
+  const open = setupOpen();
+  const status = open ? setupStatus() : null;
+  const p = status ? String(status.progress.done / status.progress.total) : "0";
+  const face = open ? '<span class="leadring setup" style="--p:' + p + '"><span class="ringhost">' + faceSvg(helper.face) + "</span></span>" : faceSvg(helper.face);
+  const menu = '<button class="icon" type="button" data-act="menu" aria-label="תפריט" aria-expanded="' + (view.menu ? "true" : "false") + '">☰</button>';
+  return '<header class="top leadhead">' + menu + '<div class="leadface">' + face + '<div class="titles"><h1>' + esc(helper.name) + "</h1><p>" + esc(person ? person.name : "") + "</p></div></div>" + selfAvatar() + liveButton() + castButton() + "</header>";
+}
+function leadFrame(overlay) {
+  const helper = helperLook(helperContext());
+  const menu = view.menu ? menuHtml() : "";
+  const sheet = overlay ? '<div class="sheetscrim" data-act="back"></div><div class="composersheet" role="dialog" aria-label="עריכה"><button class="ghost" type="button" data-act="back" aria-label="חזרה">חזרה לשיחה</button>' + overlay + "</div>" : "";
+  return shell(leadBar(), menu + '<div class="chatsheet leadhome" lang="he" dir="rtl" role="region" aria-label="' + esc(helper.name) + '"><div class="chatlog" tabindex="0"></div><div class="leaddock"></div></div>' + sheet);
+}
+function home() {
+  return leadFrame("");
+}
+function html() {
+  if (view.name === "start") return startHtml();
+  if (view.name === "data") return dataHtml();
+  if (view.name === "live") return liveHtml();
+  if (view.name === "reset") return resetHtml();
+  if (view.name === "people" || !person) return peopleHtml();
+  if (view.name === "form") return formHtml();
+  if (view.name === "edit") return editHtml();
+  if (view.name === "confirm") return confirmHtml();
+  if (view.name === "photo") return photoHtml();
+  if (view.name === "post") return postHtml();
+  if (view.name === "compose") return composeHtml();
+  if (view.name === "messages") return messagesHtml();
+  if (view.name === "timetable") return timetableHtml();
+  if (view.name === "homework") return homeworkHtml();
+  if (view.name === "day") return dayHtml(view.kidId, false);
+  if (view.name === "kids") return kidsHtml(view.classId);
+  if (view.name === "classes") return classesHtml(view.schoolId);
+  if (view.name === "schools") return schoolsHtml();
+  if (view.name === "family") return person.kidIds && person.kidIds.length === 1 ? dayHtml(person.kidIds[0], false) : parentKidsHtml();
+  return home();
+}
+function listLevel() {
+  if (view.name === "schools") return "schools";
+  if (view.name === "classes" || (view.name === "main" && person && person.role === "principal")) return "classes";
+  if (view.name === "kids" || (view.name === "main" && person && person.role === "teacher")) return "kids";
+  if (view.name === "family") return "parent";
+  if (view.name === "main" && person && person.role === "admin") return "schools";
+  if (view.name === "day" || (view.name === "main" && person && person.role === "parent")) return "parent";
+  return view.name;
+}
+function currentSchoolId() {
+  if (view.schoolId) return view.schoolId;
+  if (person && person.schoolId) return person.schoolId;
+  const found = view.classId ? D.findClass(state, view.classId) : null;
+  return found ? found.school.id : "";
+}
+function currentClassId() {
+  if (view.classId) return view.classId;
+  return person && person.classId || "";
+}
+function nodeTitle(kind, id) {
+  if (kind === "school") return (D.findSchool(state, id) || {}).name || "";
+  if (kind === "class") { const found = D.findClass(state, id); return found ? found.room.name : ""; }
+  const found = D.findKid(state, id);
+  return found ? found.kid.firstName : "";
+}
+function explain(error) {
+  const message = error && error.message;
+  if (message === "forbidden") return "אין הרשאה";
+  if (message === "missing" && (view.name === "post" || view.name === "compose")) return "חסר תוכן";
+  if (message === "missing") return "חסר שם";
+  if (message === "too-big") return "הקובץ גדול מדי";
+  if (message === "bad-type") return "סוג קובץ לא נתמך";
+  if (message === "full") return "האחסון מלא";
+  if (message === "read") return "לא הצלחנו לקרוא את התמונה";
+  return "לא הצלחנו לשמור";
+}
+function fail(error) {
+  view.error = explain(error);
+  render();
+}
+function photoRefs() {
+  return (view.photos || []).map(function (item) { return item.src || item.id; }).filter(Boolean);
+}
+function voiceRefs() {
+  return (view.voices || []).map(function (item) {
+    return { id: item.id || "", src: item.src || "", text: String(item.text || "").slice(0, 280) };
+  });
+}
+function homeworkInput(mode, text) {
+  S.setHomework(state, actor(), { date: D.schoolDay(today()), subject: view.subject, classId: view.classId, mode: mode, text: text, photos: mode === "post" ? photoRefs() : [], voices: mode === "post" ? voiceRefs() : [] });
+}
+function keepDraft() {
+  const input = document.querySelector('form input[name="text"]');
+  if (input && (view.name === "post" || view.name === "compose")) view.text = input.value;
+  document.querySelectorAll('[data-act="transcript"]').forEach(function (node) {
+    const index = Number(node.dataset.index);
+    if (view.voices && view.voices[index]) view.voices[index].text = String(node.value || "").slice(0, 280);
+  });
+}
+function haltMic() {
+  stopping = false;
+  warned = false;
+  stopMeters();
+  if (recognition) {
+    try { recognition.onresult = null; recognition.onerror = null; recognition.onend = null; recognition.stop(); } catch (e) {}
+    recognition = null;
+  }
+  if (micStream) micStream.getTracks().forEach(function (track) { track.stop(); });
+  micStream = null;
+  if (recorder && recorder.state !== "inactive") {
+    recorder.onstop = null;
+    try { recorder.stop(); } catch (e) {}
+  }
+  recorder = null;
+  view.recording = false;
+  view.hearing = false;
+  stopListenTracks();
+}
+function notify(body) {
+  const title = "התראה";
+  if (typeof Notification === "undefined") return;
+  try {
+    if (Notification.permission === "granted") {
+      new Notification(title, { body: body || title });
+      return;
+    }
+    if (Notification.permission !== "denied" && Notification.requestPermission) {
+      Notification.requestPermission().then(function (result) {
+        if (result === "granted") { try { new Notification(title, { body: body || title }); } catch (e) {} }
+      }).catch(function () {});
+    }
+  } catch (e) {}
+}
+function mediaId(prefix) {
+  return (prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48);
+}
+function readyStore() {
+  if (mediaBox) return Promise.resolve(mediaBox);
+  if (!mediaOpening) {
+    const open = window.NohwMedia ? window.NohwMedia.openStore() : Promise.reject(new Error("save"));
+    mediaOpening = open.then(function (store) {
+      mediaBox = store;
+      return store;
+    }).catch(function (error) {
+      mediaOpening = null;
+      throw error;
+    });
+  }
+  return mediaOpening;
+}
+function queueMedia(id) {
+  if (!id || urls[id] || pendingMedia[id] || missingMedia[id] || String(id).indexOf("data:") === 0) return;
+  pendingMedia[id] = true;
+  readyStore().then(function (store) { return store.get(id); }).then(function (blob) {
+    delete pendingMedia[id];
+    if (!blob) { missingMedia[id] = true; return; }
+    urls[id] = URL.createObjectURL(blob);
+    render();
+  }).catch(function () { delete pendingMedia[id]; missingMedia[id] = true; });
+}
+function paintLive(text) {
+  const node = document.querySelector("[data-live-transcript]");
+  if (node) node.textContent = text || "";
+}
+function clockText(ms) {
+  const total = Math.max(0, Math.min(180, Math.floor(ms / 1000)));
+  const m = String(Math.floor(total / 60)).padStart(2, "0");
+  const s = String(total % 60).padStart(2, "0");
+  return m + ":" + s;
+}
+function paintRecording() {
+  paintLive(heard);
+  const node = document.querySelector("[data-rec-time]");
+  if (node) node.textContent = clockText(Date.now() - recordStarted);
+  if (!warned) return;
+  const warn = document.querySelector("[data-rec-warn]");
+  if (!warn) return;
+  warn.hidden = false;
+  warn.textContent = "עוד 15 שניות";
+}
+function buzz() {
+  try { if (navigator.vibrate) navigator.vibrate(40); } catch (e) {}
+}
+function stopMeters() {
+  if (clockTimer) clearInterval(clockTimer);
+  clockTimer = 0;
+  if (audioCtx) { try { audioCtx.close(); } catch (e) {} }
+  audioCtx = null;
+  analyser = null;
+  levelBuf = null;
+}
+function armMeter(stream) {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  try {
+    audioCtx = new Ctx();
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    if (audioCtx.resume) audioCtx.resume();
+  } catch (e) {
+    analyser = null;
+  }
+}
+function tickRecord() {
+  if (!view.recording) return;
+  const elapsed = Date.now() - recordStarted;
+  const node = document.querySelector("[data-rec-time]");
+  if (node) node.textContent = clockText(elapsed);
+  if (analyser) {
+    if (!levelBuf || levelBuf.length !== analyser.fftSize) levelBuf = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(levelBuf);
+    let sum = 0;
+    for (let i = 0; i < levelBuf.length; i++) {
+      const sample = (levelBuf[i] - 128) / 128;
+      sum += sample * sample;
+    }
+    const level = Math.min(1, Math.sqrt(sum / levelBuf.length) * 3.2);
+    const bar = document.querySelector("[data-rec-level]");
+    if (bar) bar.style.width = Math.round(level * 100) + "%";
+  }
+  if (elapsed >= RECORD_WARN) {
+    warned = true;
+    const warn = document.querySelector("[data-rec-warn]");
+    if (warn) {
+      warn.hidden = false;
+      warn.textContent = "עוד 15 שניות";
+    }
+  }
+  if (elapsed >= RECORD_LIMIT) stopRecording();
+}
+function micMessage(error) {
+  const name = error && error.name || "";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError" || name === "SecurityError") return "אין הרשאה למיקרופון";
+  return "אין מיקרופון";
+}
+function failMic(error) {
+  haltMic();
+  view.error = micMessage(error);
+  toast(view.error);
+}
+function stopRecording() {
+  if (!recorder || stopping) return;
+  stopping = true;
+  buzz();
+  if (recognition) { try { recognition.stop(); } catch (e) {} }
+  setTimeout(function () {
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+    else stopping = false;
+  }, 200);
+}
+function speechCtor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+function drawBlob(source, width, height) {
+  const max = 1280;
+  const scale = Math.min(1, max / Math.max(width || 1, height || 1));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round((width || 1) * scale));
+  canvas.height = Math.max(1, Math.round((height || 1) * scale));
+  canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+  return new Promise(function (resolve, reject) {
+    canvas.toBlob(function (blob) {
+      if (blob) resolve(blob);
+      else reject(new Error("save"));
+    }, "image/jpeg", 0.7);
+  });
+}
+function imageFromUrl(file) {
+  return new Promise(function (resolve, reject) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = function () {
+      drawBlob(img, img.naturalWidth || img.width, img.naturalHeight || img.height).then(function (blob) {
+        URL.revokeObjectURL(url);
+        resolve(blob);
+      }).catch(function (error) {
+        URL.revokeObjectURL(url);
+        reject(error);
+      });
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      reject(new Error("read"));
+    };
+    img.src = url;
+  });
+}
+function cropSquare(source, width, height) {
+  const side = Math.max(1, Math.min(width, height));
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  canvas.getContext("2d").drawImage(source, (width - side) / 2, (height - side) / 2, side, side, 0, 0, 256, 256);
+  return new Promise(function (resolve, reject) {
+    canvas.toBlob(function (blob) {
+      if (blob) resolve(blob);
+      else reject(new Error("save"));
+    }, "image/jpeg", 0.7);
+  });
+}
+function squareFromBitmap(file) {
+  if (typeof createImageBitmap !== "function") return null;
+  return createImageBitmap(file, { imageOrientation: "from-image" }).catch(function () {
+    return createImageBitmap(file);
+  }).then(function (bitmap) {
+    return cropSquare(bitmap, bitmap.width, bitmap.height).then(function (blob) {
+      if (bitmap.close) bitmap.close();
+      return blob;
+    }, function (error) {
+      if (bitmap.close) bitmap.close();
+      throw error;
+    });
+  });
+}
+function squareFromUrl(file) {
+  return new Promise(function (resolve, reject) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = function () {
+      cropSquare(img, img.naturalWidth || img.width, img.naturalHeight || img.height).then(function (blob) {
+        URL.revokeObjectURL(url);
+        resolve(blob);
+      }).catch(function (error) {
+        URL.revokeObjectURL(url);
+        reject(error);
+      });
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      reject(new Error("read"));
+    };
+    img.src = url;
+  });
+}
+function squareImage(file) {
+  const bitmap = squareFromBitmap(file);
+  if (!bitmap) return squareFromUrl(file);
+  return bitmap.catch(function () { return squareFromUrl(file); });
+}
+function forgetProfile(who) {
+  const id = profileId(who);
+  if (!id) return;
+  if (urls[id]) { URL.revokeObjectURL(urls[id]); delete urls[id]; }
+  delete missingMedia[id];
+  readyStore().then(function (store) { return store.remove(id); }).catch(function () {});
+  delete who.profile;
+}
+function setProfile(file, fromCamera) {
+  const who = people.find(function (item) { return item.id === view.sheet; });
+  if (!who || !canPhoto(who)) return;
+  const problem = imageProblem(file, fromCamera);
+  if (problem) { toast(problem); return; }
+  squareImage(file).then(function (blob) {
+    if (!blob.type || blob.type.indexOf("image/") !== 0) throw new Error("bad-type");
+    const id = mediaId("a");
+    return readyStore().then(function (store) { return store.put(id, blob); }).then(function () {
+      forgetProfile(who);
+      who.profile = id;
+      urls[id] = URL.createObjectURL(blob);
+      view.sheet = "";
+      view.avatarPick = false;
+      saveStore();
+      toast("נשמר ✓");
+    });
+  }).catch(function (error) {
+    const full = error && (error.name === "QuotaExceededError" || error.code === 22 || error.message === "full");
+    toast(full ? "האחסון מלא" : (error && error.message === "bad-type" ? "סוג קובץ לא נתמך" : (error && error.message === "read" ? "לא הצלחנו לקרוא את התמונה" : "השמירה נכשלה")));
+  });
+}
+function compressImage(file) {
+  if (typeof createImageBitmap !== "function") return imageFromUrl(file);
+  return createImageBitmap(file, { imageOrientation: "from-image" }).catch(function () {
+    return createImageBitmap(file);
+  }).then(function (bitmap) {
+    return drawBlob(bitmap, bitmap.width, bitmap.height).then(function (blob) {
+      if (bitmap.close) bitmap.close();
+      return blob;
+    }, function (error) {
+      if (bitmap.close) bitmap.close();
+      throw error;
+    });
+  }).catch(function () { return imageFromUrl(file); });
+}
+function addPhotos(files) {
+  view.photos = view.photos || [];
+  const batch = files.slice(0, Math.max(0, 8 - view.photos.length));
+  if (!batch.length) return;
+  let chain = Promise.resolve();
+  batch.forEach(function (file) {
+    chain = chain.then(function () {
+      return compressImage(file).then(function (blob) {
+        const id = mediaId("p");
+        return readyStore().then(function (store) { return store.put(id, blob); }).then(function () {
+          urls[id] = URL.createObjectURL(blob);
+          keepDraft();
+          view.photos = view.photos || [];
+          view.photos.push({ id: id, src: "" });
+          view.error = "";
+          render();
+        });
+      });
+    });
+  });
+  chain.catch(function (error) {
+    const full = error && (error.name === "QuotaExceededError" || error.code === 22 || error.message === "full");
+    toast(full ? "האחסון מלא" : (error && error.message === "read" ? "לא הצלחנו לקרוא את התמונה" : (error && error.message === "bad-type" ? "סוג קובץ לא נתמך" : "השמירה נכשלה")));
+  });
+}
+function imageProblem(file, fromCamera) {
+  const type = String(file.type || "");
+  const name = String(file.name || "").toLowerCase();
+  const typed = type.indexOf("image/") === 0 || /\.(jpe?g|png|gif|webp|heic|heif)$/.test(name) || (fromCamera && !type);
+  if (!typed) return "סוג קובץ לא נתמך";
+  if (file.size > 15 * 1024 * 1024) return "הקובץ גדול מדי";
+  return "";
+}
+function onFile(event) {
+  const input = event.target;
+  if (!input || input.type !== "file") return;
+  const files = Array.from(input.files || []);
+  input.value = "";
+  if (!files.length) return;
+  if (input.id === "face" || view.avatarPick) {
+    view.avatarPick = false;
+    setProfile(files[0], input.id === "face" || input.id === "cam");
+    return;
+  }
+  if (view.name !== "post" && view.name !== "compose") return;
+  const fromCamera = input.id === "cam";
+  const problem = files.map(function (file) { return imageProblem(file, fromCamera); }).find(Boolean);
+  if (problem) { toast(problem); return; }
+  keepDraft();
+  addPhotos(files);
+}
+function startSpeech() {
+  const Ctor = speechCtor();
+  if (!Ctor) {
+    view.speechMissing = true;
+    return;
+  }
+  heard = "";
+  try {
+    recognition = new Ctor();
+    recognition.lang = "he-IL";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = function (event) {
+      let text = "";
+      for (let i = 0; i < event.results.length; i++) text += event.results[i][0].transcript;
+      heard = text.trim().slice(0, 280);
+      paintLive(heard);
+    };
+    recognition.onerror = function () {};
+    recognition.start();
+  } catch (e) {
+    recognition = null;
+    view.speechMissing = true;
+  }
+}
+function toggleRecord() {
+  keepDraft();
+  if (view.recording && recorder) {
+    stopRecording();
+    return;
+  }
+  if ((view.voices || []).length >= 8) return;
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    failMic();
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+    micStream = stream;
+    const chunks = [];
+    heard = "";
+    const mime = window.MediaRecorder.isTypeSupported && window.MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+    recorder = mime ? new window.MediaRecorder(stream, { mimeType: mime }) : new window.MediaRecorder(stream);
+    recorder.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = function () {
+      const text = heard.trim().slice(0, 280);
+      stream.getTracks().forEach(function (track) { track.stop(); });
+      if (micStream === stream) micStream = null;
+      if (recognition) {
+        try { recognition.onresult = null; recognition.stop(); } catch (e) {}
+        recognition = null;
+      }
+      recorder = null;
+      stopping = false;
+      warned = false;
+      stopMeters();
+      view.recording = false;
+      const blob = new Blob(chunks, { type: (chunks[0] && chunks[0].type) || "audio/webm" });
+      const kind = String(blob.type || "");
+      if (kind && kind.indexOf("audio/") !== 0 && kind !== "video/webm") { toast("סוג קובץ לא נתמך"); return; }
+      if (blob.size > 4 * 1024 * 1024) { toast("הקובץ גדול מדי"); return; }
+      const id = mediaId("v");
+      readyStore().then(function (store) { return store.put(id, blob); }).then(function () {
+        urls[id] = URL.createObjectURL(blob);
+        keepDraft();
+        view.voices = view.voices || [];
+        view.voices.push({ id: id, src: "", text: text });
+        view.error = "";
+        toast("נשמר ✓");
+      }).catch(function (error) {
+        const full = error && (error.name === "QuotaExceededError" || error.code === 22);
+        toast(full ? "האחסון מלא" : "השמירה נכשלה");
+      });
+    };
+    armMeter(stream);
+    startSpeech();
+    recorder.start();
+    recordStarted = Date.now();
+    warned = false;
+    if (clockTimer) clearInterval(clockTimer);
+    clockTimer = setInterval(tickRecord, 200);
+    view.recording = true;
+    view.error = "";
+    buzz();
+    render();
+  }).catch(function (error) {
+    failMic(error);
+  });
+}
+function messageById(id) {
+  return visibleMessages(person).find(function (item) { return item.id === id; }) || null;
+}
+function zoomSrc(el) {
+  const index = el.dataset.index !== undefined && el.dataset.index !== "" ? Number(el.dataset.index) : -1;
+  if ((view.name === "post" || view.name === "compose") && index >= 0 && view.photos && view.photos[index]) return srcOf(view.photos[index]);
+  if (el.dataset.id) {
+    const msg = messageById(el.dataset.id);
+    const photos = asPhotos(msg);
+    if (index >= 0 && photos[index]) return srcOf(photos[index]);
+    if (photos[0]) return srcOf(photos[0]);
+  }
+  const room = (function () {
+    if (view.kidId) {
+      const found = D.findKid(state, view.kidId);
+      return found && found.room;
+    }
+    if (person && person.role === "student") {
+      const found = D.findKid(state, person.kidId);
+      return found && found.room;
+    }
+    if (person && person.role === "parent" && person.kidIds && person.kidIds.length === 1) {
+      const found = D.findKid(state, person.kidIds[0]);
+      return found && found.room;
+    }
+    const found = classFor(person);
+    return found && found.room;
+  })();
+  if (!room) return "";
+  const date = person && (person.role === "student" || person.role === "parent") ? focusDate() : D.schoolDay(today());
+  const row = S.rowsFor(room, date, null).find(function (item) { return item.subject === (el.dataset.subject || view.subject); });
+  const photos = asPhotos(row);
+  if (index >= 0 && photos[index]) return srcOf(photos[index]);
+  return photos[0] ? srcOf(photos[0]) : "";
+}
+function copyMedia(entry) {
+  return {
+    photos: asPhotos(entry).map(function (item) { return { id: item.id, src: item.src }; }),
+    voices: asVoices(entry).map(function (item) { return { id: item.id, src: item.src, text: item.text }; })
+  };
+}
+function dropAt(listName, index) {
+  keepDraft();
+  const list = view[listName] || [];
+  const item = list[index];
+  if (!item) return;
+  list.splice(index, 1);
+  view[listName] = list;
+  if (item.id && urls[item.id]) {
+    URL.revokeObjectURL(urls[item.id]);
+    delete urls[item.id];
+  }
+  render();
+}
+function onClick(event) {
+  const el = event.target.closest("[data-act]");
+  if (!el || (el.closest("form") && el.type === "submit")) return;
+  const act = el.dataset.act;
+  if (view.recording && act !== "record") return;
+  if (act === "avatar") {
+    const who = people.find(function (item) { return item.id === el.dataset.id; });
+    if (!who || !canPhoto(who)) return;
+    view.sheet = who.id;
+    render();
+    return;
+  }
+  if (act === "close-sheet") { view.sheet = ""; view.avatarPick = false; render(); return; }
+  if (act === "helper") {
+    const card = currentDigest();
+    if (card && person && A.markSeen) {
+      assist.seen[person.id] = A.markSeen(card.items, assist.seen[person.id]);
+      saveAssist();
+    }
+    view.sheet = "";
+    view.reminders = false;
+    view.chat = true;
+    render();
+    const field = document.querySelector(".chatsheet input[name='q']");
+    if (field) field.focus();
+    return;
+  }
+  if (act === "close-chat") { view.chat = false; view.reminders = false; hush(); render(); return; }
+  if (act === "digest-go") {
+    const item = lastDigest && lastDigest.items[Number(el.dataset.index)];
+    if (item && person) {
+      const seen = assist.seen[person.id] || {};
+      const next = {};
+      Object.keys(seen).forEach(function (key) { next[key] = seen[key]; });
+      next[item.id] = item.text;
+      assist.seen[person.id] = next;
+      saveAssist();
+    }
+    goDigest(item);
+    return;
+  }
+  if (act === "dismiss-remind") { activeReminder = null; render(); return; }
+  if (act === "helper-prefs") { view.reminders = !view.reminders; render(); return; }
+  if (act === "helper-pref-on") {
+    const pref = currentPref();
+    if (!pref || !person) return;
+    pref.on = !pref.on;
+    assist.prefs[person.id] = pref;
+    saveAssist();
+    armReminders(true);
+    render();
+    return;
+  }
+  if (act === "helper-now") { triggerNow(); return; }
+  if (act === "helper-notify") {
+    if (typeof Notification !== "undefined" && Notification.requestPermission) {
+      try { Notification.requestPermission().catch(function () {}); } catch (e) {}
+    }
+    return;
+  }
+  if (act === "menu") { view.menu = !view.menu; render(); return; }
+  if (act === "menu-go") {
+    const to = el.dataset.to || "";
+    view.menu = false;
+    if (to === "reminders") { view.reminders = true; render(); return; }
+    if (to === "homework") push({ name: "homework", classId: person.classId });
+    else if (to === "messages") push({ name: "messages" });
+    else if (to === "timetable") push({ name: "timetable", classId: person.classId });
+    else if (to === "kids") push({ name: "kids", classId: person.classId });
+    else if (to === "classes") push({ name: "classes", schoolId: person.schoolId || "" });
+    else if (to === "schools") push({ name: "schools" });
+    else if (to === "day") push({ name: "day", kidId: person.kidId, date: D.schoolDay(today()) });
+    else if (to === "family") push({ name: "family" });
+    else if (to === "data" || to === "reset") push({ name: to });
+    return;
+  }
+  if (act === "lead-more") {
+    const session = ensureLead();
+    if (!session || !session.pack || !L) return;
+    const extra = L.reveal(session.pack);
+    chatLog.push({ role: "me", text: "מה עוד?" });
+    pushBot(extra.intro);
+    session.extra = (session.extra || []).concat(extra.cards || []);
+    (extra.cards || []).forEach(function (item) { rememberLead(session.day, item); });
+    session.pack.more = [];
+    saveAssist();
+    render();
+    return;
+  }
+  if (act === "lead-expand") {
+    const item = leadCardById(el.dataset.id);
+    const result = item && L ? L.perform(state, actor(), "expand", item, { today: D.schoolDay(today()) }) : null;
+    if (result && result.navigate) {
+      if (result.navigate.classId) leadFocus = result.navigate.classId;
+      push(result.navigate);
+    }
+    return;
+  }
+  if (act === "lead-chip") {
+    const item = leadCardById(el.dataset.card);
+    if (!item || !L) return;
+    const chip = el.dataset.chip || "";
+    const result = L.perform(state, actor(), chip, item, { today: D.schoolDay(today()) });
+    if (!result.ok) {
+      if (result.text) { chatLog.push({ role: "me", text: el.textContent || "" }); pushBot(result.text); render(); }
+      return;
+    }
+    if (chip === "none-day") {
+      saveStore();
+      leadSession = null;
+      chatLog.push({ role: "me", text: el.textContent || "" });
+      pushBot(result.text);
+      render();
+      return;
+    }
+    if (result.navigate) {
+      chatLog.push({ role: "me", text: el.textContent || "" });
+      if (result.navigate.name === "post" || result.navigate.name === "compose") {
+        result.navigate.fromLead = true;
+        result.navigate.text = "";
+        result.navigate.photos = [];
+        result.navigate.voices = [];
+        result.navigate.recording = false;
+      }
+      if (result.navigate.classId) leadFocus = result.navigate.classId;
+      push(result.navigate);
+    }
+    return;
+  }
+  if (act === "helper-ask") { askHelper({ intent: el.dataset.intent || "" }); return; }
+  if (act === "setup-chip") {
+    const choice = el.dataset.choice || "";
+    if (choice === "yes" && setupPending) { applySetup(setupPending); return; }
+    if (choice === "no") { declineSetup(); return; }
+    if (choice === "back") { backSetup(); return; }
+    askHelper({ text: choice, choiceLabel: el.textContent || "" });
+    return;
+  }
+  if (act === "helper-read") {
+    const pref = speechPref();
+    saveSpeech({ on: !pref.on, voice: pref.voice });
+    if (!view.readAloud) hush();
+    render();
+    return;
+  }
+  if (act === "helper-voice") {
+    const pref = speechPref();
+    saveSpeech({ on: pref.on, voice: el.value || "" });
+    return;
+  }
+  if (act === "helper-voice-test") {
+    speakSample();
+    return;
+  }
+  if (act === "helper-mic") { startListen(listenTargetForView()); return; }
+  if (act === "dictate") { startListen(view.name === "compose" ? "message" : "homework"); return; }
+  if (act === "listen-stop") { userStopListen(); return; }
+  if (act === "hands-free") { toggleHandsFree(); return; }
+  if (act === "student-mic") { toggleStudentMic(); return; }
+  if (act === "helper-face") {
+    const ctx = helperContext();
+    if (!ctx) return;
+    try { S.setHelper(state, actor(), { classId: ctx.room.id, face: el.dataset.face }); saveStore(); }
+    catch (e) { return; }
+    render();
+    return;
+  }
+  if (act === "helper-draft") {
+    let draft = "";
+    let classId = person && person.classId || "";
+    let audience = "class";
+    for (let i = chatLog.length - 1; i >= 0; i--) if (chatLog[i].draft) {
+      draft = chatLog[i].draft;
+      classId = chatLog[i].classId || classId;
+      audience = chatLog[i].audience || audience;
+      break;
+    }
+    if (!draft || !person || (person.role !== "teacher" && person.role !== "principal")) return;
+    view.chat = false;
+    hush();
+    push({ name: "compose", fromLead: true, classId: classId || person.classId, text: draft, photos: [], voices: [], audience: audience, alert: false, fillDraft: true });
+    return;
+  }
+  if (act === "avatar-cam") {
+    const input = document.getElementById("face");
+    if (input) input.click();
+    return;
+  }
+  if (act === "avatar-lib") {
+    view.avatarPick = true;
+    const input = document.getElementById("lib");
+    if (input) input.click();
+    return;
+  }
+  if (act === "avatar-clear") {
+    const who = people.find(function (item) { return item.id === view.sheet; });
+    if (who && canPhoto(who)) { forgetProfile(who); saveStore(); }
+    view.sheet = "";
+    toast("נשמר ✓");
+    return;
+  }
+  if (act === "go") {
+    const name = el.dataset.to;
+    if (name === "data" || name === "live" || name === "people") {
+    if (name === "people") roleFilter = "all";
+    push({ name: name });
+  }
+  } else if (act === "live") {
+    if (view.name !== "live") push({ name: "live" });
+  } else if (act === "scenario") {
+    const pack = D.scenarioById(el.dataset.id, today());
+    if (pack && pack.id === el.dataset.id) adopt(pack, { name: "people", stack: [{ name: "start" }, { name: "data" }] });
+  } else if (act === "reset") push({ name: "reset" });
+  else if (act === "do-reset") adopt(D.scenarioById(scenarioId, today()), { name: "data", stack: [{ name: "start" }] });
+  else if (act === "filter") { roleFilter = el.dataset.role || "all"; render(); }
+  else if (act === "as-parent") {
+    const who = people.find(function (item) { return item.id === el.dataset.id; });
+    if (!who || who.role !== "parent") return;
+    resetChat();
+    const prev = { name: view.name, personId: person && person.id || "" };
+    ["schoolId", "classId", "kidId", "date", "subject", "kind", "id", "add", "title"].forEach(function (key) { if (view[key]) prev[key] = view[key]; });
+    stack.push(prev);
+    person = who;
+    view = { name: "main" };
+    saveStore();
+    armReminders(true);
+    render();
+  } else if (act === "enter") {
+    const who = people.find(function (item) { return item.id === el.dataset.id; });
+    if (!who) return;
+    resetChat();
+    person = who;
+    stack = [];
+    view = { name: "main" };
+    saveStore();
+    armReminders(true);
+    render();
+  } else if (act === "cast") {
+    resetChat();
+    person = null;
+    roleFilter = "all";
+    stack = [{ name: "start" }];
+    view = { name: "people" };
+    saveStore();
+    armReminders(true);
+    render();
+  } else if (act === "back") {
+    haltMic();
+    if (stack.length) {
+      const prev = stack.pop();
+      if (prev.personId) {
+        const who = people.find(function (item) { return item.id === prev.personId; });
+        if (who) person = who;
+      }
+      view = prev;
+      render();
+    } else { person = null; stack = [{ name: "start" }]; view = { name: "people" }; saveStore(); render(); }
+  } else if (act === "add") {
+    const level = listLevel();
+    if (level === "schools") push({ name: "form", add: "school" });
+    else if (level === "classes") push({ name: "form", add: "class", schoolId: currentSchoolId() });
+    else push({ name: "form", add: "kid", classId: currentClassId() });
+  } else if (act === "open") {
+    const level = listLevel();
+    if (level === "classes" && el.dataset.id) leadFocus = el.dataset.id;
+    if (level === "schools") push({ name: "classes", schoolId: el.dataset.id });
+    else if (level === "classes") push({ name: "kids", schoolId: currentSchoolId(), classId: el.dataset.id });
+    else if (level === "parent") push({ name: "day", kidId: el.dataset.id });
+    else push({ name: "day", kidId: el.dataset.id });
+  } else if (act === "edit") {
+    if (!S.canEdit(state, actor(), { kind: el.dataset.kind, id: el.dataset.id })) return;
+    push({ name: "edit", kind: el.dataset.kind, id: el.dataset.id });
+  } else if (act === "ask") push({ name: "confirm", kind: el.dataset.kind, id: el.dataset.id, title: nodeTitle(el.dataset.kind, el.dataset.id) });
+  else if (act === "delete") {
+    try {
+      if (view.kind === "message") {
+        S.deleteMessage(state, actor(), { id: view.id, classId: person && person.classId });
+        saveStore();
+        view = stack.pop() || { name: "messages" };
+        if (view.name === "confirm") view = stack.pop() || { name: "messages" };
+        render();
+        return;
+      }
+      S.removeNode(state, actor(), { kind: view.kind, id: view.id });
+      syncPeople();
+      saveStore();
+      view = stack.pop() || { name: "main" };
+      while (view.name === "edit" || view.name === "confirm" || view.name === "form") view = stack.pop() || { name: "main" };
+      if (!person) view = { name: "people" };
+      render();
+    } catch (e) { fail(e); }
+  } else if (act === "day") push({ name: "homework", classId: currentClassId() });
+  else if (act === "tile") {
+    const classId = person.classId;
+    if (el.dataset.to === "students") push({ name: "kids", classId: classId });
+    else if (el.dataset.to === "homework") push({ name: "homework", classId: classId });
+    else if (el.dataset.to === "timetable") push({ name: "timetable", classId: classId, day: weekdayIndex(D.schoolDay(today())), lesson: 0 });
+    else if (el.dataset.to === "messages") push({ name: "messages", classId: classId });
+  } else if (act === "post") {
+    const found = classFor(person);
+    const row = found ? S.rowsFor(found.room, D.schoolDay(today()), null).find(function (item) { return item.subject === el.dataset.subject; }) : null;
+    const posted = row && row.status === "posted";
+    const media = copyMedia(posted ? row : {});
+    push({ name: "post", classId: found ? found.room.id : "", subject: el.dataset.subject, text: posted ? row.text : "", photos: media.photos, voices: media.voices, recording: false });
+  } else if (act === "camera") {
+    const input = document.getElementById("cam");
+    if (input) input.click();
+  } else if (act === "gallery") {
+    const input = document.getElementById("lib");
+    if (input) input.click();
+  } else if (act === "drop-photo") dropAt("photos", Number(el.dataset.index));
+  else if (act === "drop-voice") dropAt("voices", Number(el.dataset.index));
+  else if (act === "record") toggleRecord();
+  else if (act === "play") {
+    const src = el.dataset.voice || "";
+    const url = src.indexOf("data:") === 0 || src.indexOf("blob:") === 0 ? src : (urls[src] || "");
+    if (url) { try { new Audio(url).play(); } catch (e) {} }
+  }
+  else if (act === "zoom") { const src = zoomSrc(el); if (src) push({ name: "photo", src: src }); }
+  else if (act === "dow") { view.day = Number(el.dataset.day); render(); }
+  else if (act === "lesson") { view.lesson = Number(el.dataset.lesson); render(); }
+  else if (act === "slot") {
+    try {
+      S.setSlot(state, actor(), { classId: view.classId || person.classId, day: view.day, lesson: Number.isInteger(view.lesson) ? view.lesson : 0, subject: el.dataset.subject || "" });
+      saveStore();
+    } catch (e) { fail(e); return; }
+    render();
+  } else if (act === "inbox") push({ name: "messages" });
+  else if (act === "dismiss") {
+    const msg = messageById(el.dataset.id);
+    if (!msg || !person) return;
+    person.seen = person.seen || {};
+    person.seen[msg.id] = msg.bump || msg.at;
+    saveStore();
+    render();
+  } else if (act === "compose") push({ name: "compose", classId: person.classId, text: "", photos: [], voices: [], audience: "class", alert: false });
+  else if (act === "audience") { keepDraft(); view.audience = el.dataset.audience === "parents" ? "parents" : "class"; render(); }
+  else if (act === "alert") { keepDraft(); view.alert = !view.alert; render(); }
+  else if (act === "edit-msg") {
+    const msg = messageById(el.dataset.id);
+    if (!msg) return;
+    const media = copyMedia(msg);
+    push({ name: "compose", id: msg.id, classId: person.classId, text: msg.text || "", photos: media.photos, voices: media.voices, audience: msg.audience, alert: !!msg.alert });
+  } else if (act === "ask-msg") {
+    const msg = messageById(el.dataset.id);
+    push({ name: "confirm", kind: "message", id: el.dataset.id, classId: person.classId, title: ((msg && msg.text) || "הודעה").slice(0, 40) });
+  } else if (act === "bump") {
+    try {
+      S.bumpMessage(state, actor(), { id: el.dataset.id, classId: person.classId });
+      const msg = messageById(el.dataset.id);
+      notify(msg && msg.text);
+      saveStore();
+      render();
+    } catch (e) { fail(e); }
+  } else if (act === "manage") push({ name: "classes", schoolId: person.schoolId });
+  else if (act === "none-day") {
+    try {
+      const found = classFor(person);
+      const date = D.schoolDay(today());
+      S.rowsFor(found.room, date, null).forEach(function (row) {
+        S.setHomework(state, actor(), { date: date, subject: row.subject, classId: found.room.id, mode: "none" });
+      });
+      saveStore();
+    } catch (e) { fail(e); return; }
+    render();
+  } else if (act === "save-next") {
+    const input = document.querySelector('form input[name="text"]');
+    try {
+      keepDraft();
+      const fromLead = !!view.fromLead;
+      homeworkInput("post", input ? input.value : view.text);
+      saveStore();
+      haltMic();
+      const found = classFor(person);
+      const rows = found ? S.rowsFor(found.room, D.schoolDay(today()), null) : [];
+      const index = rows.findIndex(function (row) { return row.subject === view.subject; });
+      let next = null;
+      for (let step = 1; step <= rows.length; step++) {
+        const row = rows[(index + step) % rows.length];
+        if (row && row.status === "not-updated") { next = row; break; }
+      }
+      if (!next) {
+        view = stack.pop() || { name: "homework" };
+        if (fromLead && view.name === "main") { leadSession = null; pushBot(window.NohwHebrew.text("saved-homework")); }
+      } else view = { name: "post", fromLead: fromLead, classId: found.room.id, subject: next.subject, text: "", photos: [], voices: [], recording: false };
+    } catch (e) { view.error = explain(e); }
+    render();
+  } else if (act === "none") {
+    try {
+      const fromLead = !!view.fromLead;
+      homeworkInput("none");
+      saveStore();
+      haltMic();
+      view = stack.pop() || { name: "homework" };
+      if (fromLead && view.name === "main") { leadSession = null; pushBot(window.NohwHebrew.text("marked-none")); }
+    }
+    catch (e) { view.error = explain(e); }
+    render();
+  } else if (act === "date") { view.date = el.dataset.date; render(); }
+  else if (act === "tick") {
+    if (!person || person.role !== "student") return;
+    const date = el.dataset.date || focusDate();
+    const found = D.findKid(state, person.kidId);
+    if (!found) return;
+    const row = S.rowsFor(found.room, date, found.kid).find(function (item) { return item.subject === el.dataset.subject; });
+    if (!row || row.status !== "posted") return;
+    S.markDone(state, actor(), { date: date, subject: el.dataset.subject, done: !row.done });
+    saveStore();
+    leadSession = null;
+    render();
+  }
+}
+function talkMachine() {
+  if (!talk && window.NohwSpeech) talk = window.NohwSpeech.conversation();
+  return talk;
+}
+function studentMicAllowed() {
+  if (!person || person.role !== "student") return true;
+  const ctx = helperContext();
+  const room = ctx && ctx.room;
+  if (window.NohwSpeech) return window.NohwSpeech.studentsMaySpeak(room);
+  return S.studentMicOn ? S.studentMicOn(room) : true;
+}
+function speechHint() {
+  if (!studentMicAllowed()) return "המיקרופון כבוי לתלמידים בכיתה";
+  if (!speechCtor()) return "הדיבור לא זמין בדפדפן זה";
+  return "הדפדפן עשוי להשתמש בשירות דיבור משלו. זיהוי הדיבור בדפדפן עשוי לשלוח שמע לספק הדפדפן.";
+}
+function makeMicButton() {
+  if (!studentMicAllowed()) return null;
+  const mic = document.createElement("button");
+  mic.type = "button";
+  mic.className = "micbig";
+  mic.dataset.act = "helper-mic";
+  mic.setAttribute("aria-label", "דיבור");
+  mic.setAttribute("aria-pressed", view.hearing ? "true" : "false");
+  mic.textContent = "🎤";
+  return mic;
+}
+function makeHandsFree() {
+  if (!studentMicAllowed()) return null;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.act = "hands-free";
+  const on = talkMachine() && talkMachine().handsFree();
+  button.setAttribute("aria-pressed", on ? "true" : "false");
+  button.setAttribute("aria-label", "דיבור רצוף");
+  button.textContent = on ? "דיבור רצוף פעיל" : "דיבור רצוף";
+  return button;
+}
+function makeStudentMicToggle(room) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.act = "student-mic";
+  const on = window.NohwSpeech ? window.NohwSpeech.studentsMaySpeak(room) : true;
+  button.setAttribute("aria-pressed", on ? "true" : "false");
+  button.textContent = on ? "מיקרופון לתלמידים" : "מיקרופון כבוי";
+  return button;
+}
+function listenTargetForView() {
+  if (view.name === "post") return "homework";
+  if (view.name === "compose") return "message";
+  const holder = wizard && wizard.placeholder || "";
+  if (wizardOn() && holder.indexOf(",") >= 0) return "kids";
+  return "chat";
+}
+function stopListenTracks() {
+  listenToken += 1;
+  if (listenTimer) clearInterval(listenTimer);
+  listenTimer = 0;
+  if (listenRec) {
+    try { listenRec.onresult = null; listenRec.onerror = null; listenRec.onend = null; listenRec.stop(); } catch (e) {}
+    listenRec = null;
+  }
+  if (listenStream) {
+    listenStream.getTracks().forEach(function (track) { try { track.stop(); } catch (e) {} });
+    listenStream = null;
+  }
+  if (chatRec) {
+    try { chatRec.onresult = null; chatRec.stop(); } catch (e) {}
+    chatRec = null;
+  }
+}
+function deliverTranscript(routed) {
+  if (!routed || !routed.ok) { render(); return; }
+  if (routed.kind === "field") {
+    const cap = listenTarget === "homework" ? 80 : 280;
+    const input = document.querySelector('form input[name="text"]');
+    const prev = String((input && input.value) || view.text || "").trim();
+    view.text = (prev ? prev + " " : "") + routed.text;
+    view.text = view.text.replace(/\s+/g, " ").trim().slice(0, cap);
+    view.fillDraft = true;
+    render();
+    return;
+  }
+  askHelper({ text: routed.text });
+}
+function finishListen(submit) {
+  if (!view.hearing) return;
+  const text = heardTalk;
+  const target = listenTarget;
+  view.hearing = false;
+  heardTalk = "";
+  stopListenTracks();
+  const machine = talkMachine();
+  if (!submit || !text || !window.NohwSpeech) {
+    if (machine && machine.mode() === "listening") machine.stop();
+    render();
+    return;
+  }
+  const routed = window.NohwSpeech.routeTranscript(text, target);
+  if (machine) machine.final(routed.text || text);
+  deliverTranscript(routed);
+}
+function userStopListen() {
+  finishListen(!!heardTalk);
+}
+function tickListen() {
+  if (!view.hearing) return;
+  const node = document.querySelector("[data-rec-time]");
+  if (node) node.textContent = clockText(Date.now() - listenStarted);
+  paintLive(heardTalk);
+  if (!window.NohwSpeech || Date.now() - listenStarted < window.NohwSpeech.LISTEN_MS) return;
+  const machine = talkMachine();
+  view.hearing = false;
+  heardTalk = "";
+  stopListenTracks();
+  if (machine && machine.timeout() && machine.handsFree()) pushBot(window.NohwHebrew.text("hear-timeout"));
+  render();
+}
+function bindWebRecognizer(token) {
+  const Ctor = speechCtor();
+  if (!Ctor) {
+    view.speechMissing = true;
+    view.hearing = false;
+    stopListenTracks();
+    render();
+    return;
+  }
+  try {
+    const rec = new Ctor();
+    listenRec = rec;
+    chatRec = rec;
+    rec.lang = window.NohwSpeech && window.NohwSpeech.LANG || "he-IL";
+    rec.interimResults = true;
+    rec.continuous = true;
+    rec.onresult = function (event) {
+      if (token !== listenToken) return;
+      let finalText = "";
+      let interim = "";
+      for (let i = 0; i < event.results.length; i++) {
+        const piece = event.results[i][0] ? event.results[i][0].transcript : "";
+        if (event.results[i].isFinal) finalText += piece;
+        else interim += piece;
+      }
+      heardTalk = String(finalText || interim || "").replace(/\s+/g, " ").trim().slice(0, 200);
+      paintLive(heardTalk);
+      if (finalText.trim()) finishListen(true);
+    };
+    rec.onerror = function (event) {
+      if (token !== listenToken) return;
+      const name = event && event.error || "";
+      if (name === "not-allowed" || name === "service-not-allowed") {
+        view.hearing = false;
+        stopListenTracks();
+        toast("אין הרשאה למיקרופון");
+      }
+    };
+    rec.onend = function () {
+      if (token !== listenToken || !view.hearing) return;
+      if (heardTalk) finishListen(true);
+    };
+    rec.start();
+  } catch (e) {
+    view.speechMissing = true;
+    view.hearing = false;
+    stopListenTracks();
+    render();
+  }
+}
+function startListen(target) {
+  if (view.recording) return;
+  if (!studentMicAllowed()) {
+    view.hearing = false;
+    if (talkMachine()) talkMachine().disable();
+    render();
+    return;
+  }
+  const plan = window.NohwSpeech ? window.NohwSpeech.listenWith(!!speechCtor()) : (speechCtor() ? "web" : "none");
+  if (plan === "none") {
+    view.speechMissing = true;
+    view.hearing = false;
+    render();
+    return;
+  }
+  if (view.hearing && listenTarget === (target || "chat")) {
+    userStopListen();
+    return;
+  }
+  stopListenTracks();
+  const token = listenToken;
+  listenTarget = target || "chat";
+  const machine = talkMachine();
+  if (machine && machine.mode() !== "listening") machine.tap();
+  heardTalk = "";
+  view.hearing = true;
+  view.speechMissing = false;
+  listenStarted = Date.now();
+  if (listenTimer) clearInterval(listenTimer);
+  listenTimer = setInterval(tickListen, 200);
+  render();
+  const open = navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? navigator.mediaDevices.getUserMedia({ audio: true }) : Promise.resolve(null);
+  open.then(function (stream) {
+    if (token !== listenToken || !view.hearing) {
+      if (stream) stream.getTracks().forEach(function (track) { try { track.stop(); } catch (e) {} });
+      return;
+    }
+    listenStream = stream;
+    bindWebRecognizer(token);
+    render();
+  }).catch(function (error) {
+    if (token !== listenToken) return;
+    view.hearing = false;
+    if (talkMachine() && talkMachine().mode() === "listening") talkMachine().stop();
+    stopListenTracks();
+    view.error = micMessage(error);
+    toast(view.error || "אין הרשאה למיקרופון");
+  });
+}
+function toggleHandsFree() {
+  const machine = talkMachine();
+  if (!machine || !studentMicAllowed()) return;
+  if (machine.handsFree()) {
+    machine.disable();
+    view.hearing = false;
+    stopListenTracks();
+    hush();
+    render();
+    return;
+  }
+  const plan = window.NohwSpeech ? window.NohwSpeech.listenWith(!!speechCtor()) : "none";
+  if (plan === "none") {
+    view.speechMissing = true;
+    render();
+    return;
+  }
+  machine.enable();
+  startListen("chat");
+}
+function toggleStudentMic() {
+  const ctx = helperContext();
+  if (!ctx || !ctx.room) return;
+  const on = window.NohwSpeech ? window.NohwSpeech.studentsMaySpeak(ctx.room) : true;
+  try { S.setStudentMic(state, actor(), { classId: ctx.room.id, on: !on }); saveStore(); }
+  catch (e) { fail(e); return; }
+  if (on) {
+    view.hearing = false;
+    if (talkMachine()) talkMachine().disable();
+    stopListenTracks();
+  }
+  render();
+}
+function onSubmit(event) {
+  event.preventDefault();
+  if (view.recording) return;
+  if (event.target && event.target.classList.contains("helpername")) {
+    const ctx = helperContext();
+    const field = event.target.querySelector("input");
+    if (ctx && ctx.room && field) {
+      try { S.setHelper(state, actor(), { classId: ctx.room.id, name: field.value }); saveStore(); }
+      catch (e) { fail(e); return; }
+    }
+    render();
+    return;
+  }
+  if (event.target && event.target.classList.contains("askbox")) {
+    const field = event.target.querySelector("input");
+    const text = field ? field.value : "";
+    if (field) field.value = "";
+    askHelper({ text: text });
+    return;
+  }
+  const data = new FormData(event.target);
+  if (view.name === "post") {
+    try {
+      keepDraft();
+      const fromLead = !!view.fromLead;
+      homeworkInput("post", data.get("text"));
+      saveStore();
+      haltMic();
+      view = stack.pop() || { name: "homework" };
+      if (fromLead && view.name === "main") { leadSession = null; pushBot(window.NohwHebrew.text("saved-homework")); }
+    }
+    catch (e) { view.error = explain(e); }
+    render();
+    return;
+  }
+  if (view.name === "timetable") {
+    try {
+      const subject = String(data.get("custom") || "").trim();
+      if (!subject) throw new Error("missing");
+      S.setSlot(state, actor(), { classId: view.classId || person.classId, day: view.day, lesson: Number.isInteger(view.lesson) ? view.lesson : 0, subject: subject });
+      saveStore();
+      view.error = "";
+    } catch (e) { fail(e); return; }
+    render();
+    return;
+  }
+  if (view.name === "compose") {
+    try {
+      keepDraft();
+      const text = data.get("text");
+      const payload = { classId: view.classId || person.classId, text: text, photos: photoRefs(), voices: voiceRefs(), audience: view.audience || "class", alert: !!view.alert };
+      const fromLead = !!view.fromLead;
+      if (view.id) S.editMessage(state, actor(), Object.assign({ id: view.id }, payload));
+      else S.postMessage(state, actor(), payload);
+      if (payload.alert) notify(String(text || ""));
+      saveStore();
+      haltMic();
+      view = stack.pop() || { name: "messages" };
+      if (fromLead && view.name === "main") { leadSession = null; pushBot(window.NohwHebrew.text("saved-message")); }
+    } catch (e) { fail(e); return; }
+    render();
+    return;
+  }
+  if (view.name === "edit") {
+    try {
+      if (view.kind === "parent") {
+        const parent = people.find(function (item) { return item.id === view.id && item.role === "parent"; });
+        if (!parent) throw new Error("missing");
+        parent.name = String(data.get("a") || "").trim().slice(0, 40);
+        if (!parent.name) throw new Error("missing");
+      } else {
+        S.rename(state, actor(), { kind: view.kind, id: view.id, name: data.get("a"), extra: data.get("b") });
+        if (view.kind === "kid") linkParent(view.id, data.get("b"));
+      }
+      syncPeople();
+      saveStore();
+      view = stack.pop() || { name: "main" };
+    } catch (e) { fail(e); return; }
+    render();
+    return;
+  }
+  try {
+    if (view.add === "school") {
+      const code = S.addPrincipal(state, actor(), { schoolName: data.get("a"), principalName: data.get("b") }, Math.random);
+      remember("principal", code);
+    } else if (view.add === "class") {
+      const code = S.addClassroom(state, actor(), { schoolId: view.schoolId || currentSchoolId(), className: data.get("a"), teacherName: data.get("b") }, Math.random);
+      remember("teacher", code);
+    } else {
+      const created = S.addKid(state, actor(), { classId: view.classId || currentClassId(), firstName: data.get("a") }, Math.random);
+      remember("student", created.kidCode);
+      const added = S.identify(state, created.kidCode);
+      if (added && added.kid) linkParent(added.kid.id, data.get("b"));
+    }
+    saveStore();
+    view = stack.pop() || { name: "main" };
+  } catch (e) { fail(e); return; }
+  render();
+}
+function boot() {
+  document.documentElement.lang = "he";
+  document.documentElement.dir = "rtl";
+  const saved = readJSON(STORE);
+  if (saved && saved.state && saved.state.v === 1 && Array.isArray(saved.people)) {
+    scenarioId = saved.scenarioId || "cast";
+    scenarioTitle = saved.scenarioTitle || "";
+    people = saved.people;
+    state = saved.state;
+    person = people.find(function (item) { return item.id === saved.personId; }) || null;
+    suggestedId = saved.suggestedId || "";
+    view = person ? { name: "main" } : { name: "start" };
+  } else {
+    const pack = D.cast(today());
+    scenarioId = pack.id;
+    scenarioTitle = "";
+    people = pack.people;
+    state = pack.state;
+    person = null;
+    suggestedId = "";
+    stack = [];
+    view = { name: "start" };
+  }
+  const hash = String(location.hash || "");
+  const packed = hash.match(/^#pack=([A-Za-z0-9_-]{1,100000})$/);
+  if (packed) {
+    try { S.importPack(state, S.decodePack(packed[1])); saveStore(); }
+    catch (e) { toast("הקובץ לא תקין"); }
+  }
+  const app = document.getElementById("app");
+  app.addEventListener("click", onClick);
+  app.addEventListener("submit", onSubmit);
+  app.addEventListener("change", function (event) {
+    const node = event.target;
+    if (!node || node.dataset.act !== "helper-pref-time" || !person) return;
+    const pref = currentPref();
+    if (!pref || !/^\d{2}:\d{2}$/.test(node.value)) return;
+    pref.time = node.value;
+    assist.prefs[person.id] = pref;
+    saveAssist();
+    armReminders(true);
+    render();
+  });
+  app.addEventListener("input", function (event) {
+    const node = event.target;
+    if (!node || node.dataset.act !== "transcript") return;
+    const index = Number(node.dataset.index);
+    if (view.voices && view.voices[index]) view.voices[index].text = String(node.value || "").slice(0, 280);
+  });
+  if (!document.getElementById("cam")) {
+    document.body.insertAdjacentHTML("beforeend", '<input id="cam" class="picker" type="file" accept="image/*" capture="environment" aria-label="מצלמה"><input id="face" class="picker" type="file" accept="image/*" capture="user" aria-label="צלם"><input id="lib" class="picker" type="file" accept="image/*" multiple aria-label="גלריה">');
+    document.getElementById("cam").addEventListener("change", onFile);
+    document.getElementById("face").addEventListener("change", onFile);
+    document.getElementById("lib").addEventListener("change", onFile);
+  }
+  window.addEventListener("pagehide", function () {
+    view.hearing = false;
+    stopListenTracks();
+    haltMic();
+  });
+  loadAssist();
+  render();
+  armReminders(true);
+  render();
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {});
+}
+boot();

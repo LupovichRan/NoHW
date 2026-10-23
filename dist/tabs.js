@@ -1,9 +1,9 @@
 /* Navigation: the chat assistant is the home screen. Three tabs only; everything else lives in "more" as collapsible items.
    Existing sections are moved (same DOM nodes), so all of their logic keeps working.
    In the demo a header chip switches role. */
-const TAB_DEFS={home:['🏠','מחר'],assistant:['💬','עוזר'],today:['📅','השבוע'],manage:['⚙️','ניהול'],more:['☰','עוד']};
-const TABS_BY_ROLE={parent:['home','today','more'],child:['home','today','more'],teacher:['today','more'],manager:['manage','more'],admin:['manage','more']};
-const TAB_HOME={parent:'home',child:'home',teacher:'today',manager:'manage',admin:'manage'};
+const TAB_DEFS={tree:['⌂','עץ'],home:['☀','מחר'],assistant:['✦','עוזר'],today:['☰','עדכון'],manage:['⚙','ניהול'],more:['⋯','עוד']};
+const TABS_BY_ROLE={parent:['home','tree','more'],child:['home','tree','more'],teacher:['tree','today','more'],manager:['tree','more'],admin:['tree','more']};
+const TAB_HOME={parent:'home',child:'home',teacher:'tree',manager:'tree',admin:'tree'};
 const ROLE_CHOICES=[['parent','👪','הורה'],['child','🎒','ילד'],['teacher','📚','מורה'],['manager','🏫','מנהל בית ספר','מנהל'],['admin','🛡️','אדמין']];
 const MORE_ITEMS=[['classPickerPanel','בחירת כיתה ותלמיד',['parent','child','teacher','manager','admin'],'pick'],['questionsPanel','שאלות ותשובות',['parent','child','teacher']],['materialsPanel','חומרי כיתה (צילומי לוח ומחברת)',['parent','child','teacher']],['childrenManager','הילדים שלי',['parent']],['classAdministration','ניהול הכיתה',['teacher','manager','admin']],['joinManager','קוד הצטרפות לכיתה',['teacher','manager','admin']],['aside','התמונה היומית והתראות לפני השיעור',['parent','child','teacher']],['notificationPanel','התראות',['parent','child','teacher','manager','admin']]];
 const tabState={role:null,active:null,built:false,items:[]};
