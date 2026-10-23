@@ -39,6 +39,11 @@ async function clickSheet(text) {
   if (!found) throw new Error("missing sheet " + text);
   await page.waitForTimeout(80);
 }
+async function clickMenu(text) {
+  if (!(await page.locator(".navmenu").count())) await page.locator("[aria-label='תפריט']").click();
+  await page.locator(".navmenu button", { hasText: text }).click();
+  await page.waitForTimeout(80);
+}
 async function clickText(text) {
   await page.waitForFunction((wanted) => [...document.querySelectorAll("button")].some((el) => (el.innerText || "").replace(/\s+/g, " ").includes(wanted)), text);
   const found = await page.$$eval("button", (els, wanted) => {
@@ -152,6 +157,7 @@ try {
 
   await openScenario("מנהל מערכת מוסיף בית ספר");
   const payload = '<img src=x onerror="window.__xss=1">';
+  await clickMenu("בתי ספר");
   await clickText("הוספה");
   await page.locator('input[name="a"]').fill(payload);
   await page.locator('input[name="b"]').fill("שירי");
@@ -178,7 +184,7 @@ try {
   record("not updated stays not updated", true);
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("מיכל");
-  await clickText("לשיעור הבא");
+  await clickMenu("לשיעור הבא");
   if (!(await page.locator("body").innerText()).includes("0/5")) throw new Error("progress");
   await clickText("אין שיעורים היום");
   if ((await page.locator("body").innerText()).includes("לא עודכן")) throw new Error("none-day left a gap");
@@ -189,7 +195,7 @@ try {
   record("no homework is distinct from not updated", true);
 
   await openScenario("מורה מצלמת לוח");
-  await clickText("לו״ז שיעורים");
+  await clickMenu("לו״ז שיעורים");
   await layout("timetable");
   await axe("timetable");
   await clickText("שיעור 4");
@@ -199,7 +205,7 @@ try {
   if (await page.evaluate(() => window.__xss) || !(await page.locator("body").innerText()).includes(payload)) throw new Error("xss subject");
   record("timetable and xss custom subject", true);
   await page.locator('[aria-label="חזרה"]').click();
-  await clickText("לשיעור הבא");
+  await clickMenu("לשיעור הבא");
   await clickText("עברית");
   const before = await page.locator("form .play").count();
   await page.locator("#lib").setInputFiles(jpeg);
@@ -234,7 +240,7 @@ try {
   await axe("student day");
 
   await openScenario("הודעה להורים בלבד");
-  await clickText("הודעות");
+  await clickMenu("הודעות");
   await clickText("הודעה");
   await page.locator('input[name="text"]').fill(payload);
   await clickText("הורים בלבד");
@@ -242,7 +248,7 @@ try {
   await clickText("שליחה");
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("נועה");
-  await clickText("הודעות");
+  await clickMenu("הודעות");
   const studentMsgs = await page.locator("body").innerText();
   if (studentMsgs.includes("שיחת הורים מחר") || studentMsgs.includes(payload) || !studentMsgs.includes("מבחן ביום")) throw new Error(studentMsgs.slice(0, 300));
   record("student does not see parents-only", true);
@@ -250,13 +256,13 @@ try {
   await clickText("יעל");
   const parentHome = await page.locator("body").innerText();
   if (!parentHome.includes("התראה")) throw new Error("no banner");
-  await clickText("הודעות");
+  await clickMenu("הודעות");
   if (!(await page.locator("body").innerText()).includes("שיחת הורים מחר") || !(await page.locator("body").innerText()).includes(payload)) throw new Error("parent messages");
   record("parent sees the alert and parents-only message", true);
   await axe("messages");
 
   await openScenario("עדכון והקפצת הודעה");
-  await clickText("הודעות");
+  await clickMenu("הודעות");
   const first = await page.locator("article strong").first().innerText();
   if (!first.includes("הטיול")) throw new Error(first);
   await clickText("עריכה");
@@ -303,7 +309,7 @@ try {
   record("remove profile photo falls back to emoji", true);
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("מיכל");
-  await clickText("תלמידים");
+  await clickMenu("תלמידים");
   if (!(await page.locator('.card [aria-label="תמונת פרופיל"]').count())) throw new Error("teacher cannot open a student's photo");
   await page.locator('.card [aria-label="תמונת פרופיל"]').first().click();
   await page.locator("#face").setInputFiles(jpeg);
@@ -326,21 +332,21 @@ try {
   record("profile photos show on the character picker", true);
 
   await openScenario("שיחה עם עוזר הכיתה");
-  const fab = page.locator(".helperfab");
-  if ((await fab.count()) !== 1) throw new Error("student fab");
+  await page.waitForSelector(".leadhome");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const still = await page.locator(".helperfab .eye").first().evaluate((el) => getComputedStyle(el).animationName);
+  const still = await page.locator(".leadface .eye").first().evaluate((el) => getComputedStyle(el).animationName);
   if (still !== "none") throw new Error("reduced motion " + still);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   const digest = await page.locator(".digest").innerText();
   if (!digest.includes("עמ׳ 18") || !digest.includes("קריאה") || !digest.includes("כתיב") || !digest.includes("מבחן ביום א׳")) throw new Error(digest);
   if (digest.includes("שיחת הורים") || digest.includes("עומר") || digest.includes("סיימתי")) throw new Error(digest);
-  const badge = Number(await page.locator(".ping").innerText());
-  if (!(badge > 0)) throw new Error("badge " + badge);
+  await page.screenshot({ path: "/opt/cursor/artifacts/lead_student.png" });
+  await page.locator(".widget").first().screenshot({ path: "/opt/cursor/artifacts/lead_card.png" });
   await page.locator(".digest").screenshot({ path: "/opt/cursor/artifacts/digest_student.png" });
-  await fab.click();
-  await page.waitForSelector(".chatsheet");
   if (await page.locator("[data-act='helper-face']").count()) throw new Error("student can restyle the helper");
+  await clickText("פתח מסך מלא");
+  await page.locator("[aria-label='חזרה']").click();
+  await page.waitForSelector(".leadhome");
   const hint = await page.locator(".chatsheet .hint").innerText();
   if (!hint.includes("דיבור") && !hint.includes("שירות דיבור")) throw new Error(hint);
   await clickText("מה יש למחר?");
@@ -374,14 +380,10 @@ try {
   if (!sent.includes("מבחן ביום א׳") || sent.includes("שיחת הורים")) throw new Error(sent);
   record("student helper answers stay inside the class", true);
 
-  await page.locator('[aria-label="סגירה"]').click();
-  if (await page.locator(".ping").count()) throw new Error("badge stayed after the digest was seen");
   await page.context().grantPermissions(["notifications"]);
-  await fab.click();
   await clickText("תזכורות");
   if (!(await page.locator(".remindset .hint").innerText()).includes("דורשת שרת")) throw new Error("missing reminder note");
   await clickText("הצג עכשיו");
-  await page.locator('[aria-label="סגירה"]').click();
   await page.waitForSelector(".remindbar");
   await page.waitForSelector(".sysnote");
   const banner = await page.locator(".remindbar").innerText();
@@ -395,7 +397,6 @@ try {
   });
   if (!notes.some((item) => item.includes("כתיב"))) throw new Error("notification " + notes.join("|"));
   record("evening reminder banner and notification", true);
-  await fab.click();
   await page.locator('.askbox input[name="q"]').fill("תזכיר לי ב-18:00 על חשבון");
   await clickText("שאל");
   const reminded = await page.locator(".chatsheet .turn.bot").last().innerText();
@@ -414,14 +415,12 @@ try {
   if (remindedXss.flag || remindedXss.images || !remindedXss.text.includes("<img")) throw new Error(JSON.stringify(remindedXss));
   record("custom reminder stays text", true);
 
-  await page.locator('[aria-label="סגירה"]').click();
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("יעל");
-  if ((await fab.count()) !== 1) throw new Error("parent fab");
   const parentDigest = await page.locator(".digest").innerText();
   if (!parentDigest.includes("נועה") || !parentDigest.includes("שיחת הורים") || parentDigest.includes("עומר")) throw new Error(parentDigest);
+  await page.screenshot({ path: "/opt/cursor/artifacts/lead_parent.png" });
   await page.locator(".digest").screenshot({ path: "/opt/cursor/artifacts/digest_parent.png" });
-  await fab.click();
   await clickText("מה המצב?");
   const parentStatus = await page.locator(".chatsheet .turn.bot").last().innerText();
   if (!parentStatus.includes("נועה") || parentStatus.includes("עומר")) throw new Error(parentStatus);
@@ -433,13 +432,12 @@ try {
   await axe("helper parent");
   record("parent helper includes their kid and parents-only notes", true);
 
-  await page.locator('[aria-label="סגירה"]').click();
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("מיכל");
   const teacherDigest = await page.locator(".digest").innerText();
-  if (!teacherDigest.includes("מקצוע אחד לא עודכן") || !teacherDigest.includes("אנגלית") || !teacherDigest.includes("נועה") || !teacherDigest.includes("עומר") || !teacherDigest.includes("סיימתי")) throw new Error(teacherDigest);
+  if (!teacherDigest.includes("מקצוע אחד עוד לא עודכן") || !teacherDigest.includes("אנגלית") || !teacherDigest.includes("נועה") || !teacherDigest.includes("עומר") || !teacherDigest.includes("סיימתי")) throw new Error(teacherDigest);
+  await page.screenshot({ path: "/opt/cursor/artifacts/lead_teacher.png" });
   await page.locator(".digest").screenshot({ path: "/opt/cursor/artifacts/digest_teacher.png" });
-  await fab.click();
   if ((await page.locator("[data-act='helper-face']").count()) < 4) throw new Error("teacher cannot set the face");
   await clickText("מה עוד לא פורסם?");
   const unposted = await page.locator(".chatsheet .turn.bot").last().innerText();
@@ -454,28 +452,38 @@ try {
   if (!draft.includes("תזכורת") || !draft.includes("עומר") || !draft.includes("נועה")) throw new Error(draft);
   if ((await page.locator("body").innerText()).includes("נשלח")) throw new Error("draft was sent");
   record("teacher helper drafts a reminder without sending", true);
+  await page.locator("[aria-label='חזרה']").click();
+  await clickText("לעדכן עכשיו");
+  await page.locator('input[name="text"]').fill("עמוד 3");
+  await clickText("שמירה");
+  await page.waitForSelector(".leadhome");
+  const posted = await page.locator(".chatsheet .bubble.bot").last().innerText();
+  if (!posted.includes("שמרתי")) throw new Error(posted);
+  await page.screenshot({ path: "/opt/cursor/artifacts/lead_action.png" });
+  record("teacher posts homework from the avatar", true);
 
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("דנה");
-  if ((await fab.count()) !== 1) throw new Error("principal home helper");
   const schoolDigest = await page.locator(".digest").innerText();
   if (!schoolDigest.includes("לא עודכן") || !schoolDigest.includes("הוכן") || schoolDigest.includes("נועה") || schoolDigest.includes("עומר")) throw new Error(schoolDigest);
+  await page.screenshot({ path: "/opt/cursor/artifacts/lead_principal.png" });
   await clickText("ה'2");
-  if ((await fab.count()) !== 1) throw new Error("principal drill-down fab");
-  await fab.click();
+  await page.locator("[aria-label='חזרה']").click();
+  await page.waitForSelector(".leadhome");
   await clickText("מה מצב הכיתה?");
   const klass = await page.locator(".chatsheet .turn.bot").last().innerText();
   if (!klass.includes("פורסם") || !klass.includes("הוכן") || klass.includes("נועה") || klass.includes("עומר")) throw new Error(klass);
   await layout("helper principal");
   await axe("helper principal");
   record("principal helper reports the class without child names", true);
+  await page.locator('[aria-label="החלפת דמות"]').click();
+  await clickText("נועם");
+  await page.screenshot({ path: "/opt/cursor/artifacts/lead_admin.png" });
+  record("admin avatar home", true);
 
   await openScenario("הקמת בית ספר עם העוזר");
-  const setupFab = page.locator(".helperfab");
-  if ((await setupFab.count()) !== 1) throw new Error("setup fab");
-  if (!(await page.locator(".helperfab.setup, .setupcard").count())) throw new Error("setup ring");
-  await setupFab.click();
-  await page.waitForSelector(".chatsheet");
+  await page.waitForSelector(".leadhome");
+  if (!(await page.locator(".leadring.setup, .setupcard").count())) throw new Error("setup ring");
   await clickSheet("בית ספר חדש");
   await page.locator('.askbox input[name="q"]').fill("דקל");
   await clickSheet("שאל");
@@ -487,11 +495,9 @@ try {
   await clickSheet("כן");
   const added = await page.locator(".chatsheet .bubble.bot").last().innerText();
   if (!added.includes("דקל")) throw new Error(added);
-  await page.locator('[aria-label="סגירה"]').click();
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("רן");
   if (!(await page.locator(".setupcard").innerText()).includes("0/3")) throw new Error("principal checklist");
-  await setupFab.click();
   await clickSheet("כיתות חדשות");
   await page.locator('.askbox input[name="q"]').fill("ד׳1-ד׳3");
   await clickSheet("שאל");
@@ -504,12 +510,11 @@ try {
   await page.locator('.askbox input[name="q"]').fill("מיכל אביב");
   await clickSheet("שאל");
   await clickSheet("כן");
-  await page.locator('[aria-label="סגירה"]').click();
   await page.locator('[aria-label="החלפת דמות"]').click();
   await clickText("מיכל");
   const teacherSetup = await page.locator(".setupcard").innerText();
   if (!teacherSetup.includes("0/4") || !teacherSetup.includes("מערכת") || !teacherSetup.includes("ילדים")) throw new Error(teacherSetup);
-  if (!(await page.locator(".helperfab.setup").count())) throw new Error("teacher ring");
+  if (!(await page.locator(".leadring.setup").count())) throw new Error("teacher ring");
   await page.screenshot({ path: "/opt/cursor/artifacts/setup_teacher.png" });
   await layout("setup teacher");
   await axe("setup teacher");

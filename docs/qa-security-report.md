@@ -2,14 +2,18 @@
 
 Date: 23 October 2026. Build under test is the `simple` branch, the Hebrew PWA in `simple/`. Nothing was merged.
 
-The report covers the final build: the approved product changes (principal home, scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, profile photos) and the class assistant, עוזר הכיתה. The assistant organizes a short digest for each role, can remind them from the class data already on the device, and walks an admin, a principal, and a teacher through setup. Every reply is an RTL Hebrew chat: the avatar's bubbles sit by the face with a tail, the person's replies sit on the other side, a short typing indicator plays before the avatar speaks, and a long answer is several short bubbles. The lines live in `simple/avatar-he.js` and are listed in `docs/avatar-hebrew-lines.md`. Read-aloud is off until turned on, speaks he-IL bubble by bubble, and prefers the best installed Hebrew voice. A pronunciation dictionary is used only for the spoken text. The voice is only as good as the device's Hebrew voice. It does not call a language model, use an API key, or open a network request. A change waits for כן. A reliable background push still needs a backend later; reminders fire while the app is open and are checked again on open.
+The report covers the final build. After a character is chosen, the home is the avatar conversation: the face on top and a Hebrew RTL bubble feed below. A local relevance engine in `simple/lead.js` opens the two to four cards that fit the role, the time of day, and the data. Old dashboards (the teacher tiles, the principal stats home, the admin lists, the student and parent screens) appear only when the avatar shares them, as compact widgets with `פתח מסך מלא`. A chip starts an existing composer as a sheet and returns to the chat with a confirmation bubble. A small `☰` menu is the fallback to any full screen. There is no tab bar and no tile grid. Setup-incomplete users see the setup wizard first.
+
+The same assistant, עוזר הכיתה, still answers only from data already on the device, walks setup, and speaks the lines in `simple/avatar-he.js` (listed in `docs/avatar-hebrew-lines.md`). Read-aloud stays off until turned on. It does not call a language model, use an API key, or open a network request. A change waits for כן. A reminder arrives as a new bubble in the feed plus a notification while the app is open. A reliable background push still needs a backend later.
+
+Earlier product work is still in this build: scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, and profile photos.
 
 ## How it was run
 
-- Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`, `node tests/assist.cjs`, `node tests/setup.cjs`, `node tests/speak-he.cjs`.
-- Browser walk at 390×844 in headless Chromium: `node tests/e2e/walk.mjs` against a local static server. 60 checks passed, 0 failed. WebKit is not installed in this environment, so that browser was not run.
-- axe-core on the start hub, the principal home, the timetable, a student day, the message list, the profile sheet, the assistant chat as a student, a parent, and a principal, and the teacher setup screen. No serious or critical violations.
-- Lighthouse mobile, local server, two runs: performance 90, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA).
+- Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`, `node tests/assist.cjs`, `node tests/setup.cjs`, `node tests/speak-he.cjs`, `node tests/lead.cjs`.
+- Browser walk at 390×844 in headless Chromium: `node tests/e2e/walk.mjs` against a local static server. 62 product checks passed, 0 failed. WebKit is not installed in this environment, so that browser was not run.
+- axe-core on the start hub, the principal avatar home, the timetable, a student day, the message list, the profile sheet, the avatar conversation as a student, a parent, and a principal, and the teacher setup screen (the lead home). No serious or critical violations.
+- Lighthouse mobile, local server, two runs, both the same: performance 86, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA). The performance score is first-contentful-paint on this static server (render-blocking CSS, no gzip). The scripts were not minified.
 - gitleaks 8.28.0 on the current tree, no leaks. `npm audit` in `tests/e2e` reported 0 vulnerabilities.
 
 ## Pass / fail
@@ -48,7 +52,7 @@ The report covers the final build: the approved product changes (principal home,
 | RTL (`dir=rtl`) and no horizontal overflow on every scenario | Pass |
 | Manifest, service worker, and a reload while offline | Pass |
 | axe-core, no serious or critical issues | Pass |
-| Lighthouse performance / accessibility / best practices / PWA | 90 / 100 / 100 / 100 |
+| Lighthouse performance / accessibility / best practices / PWA | 86 / 100 / 100 / 100 |
 | WebKit | Not run. The browser is not installed here. |
 | XSS payloads in a school name, a student name, homework text, a transcript, and a custom subject stay as text | Pass |
 | Content-Security-Policy and referrer policy | Pass |
@@ -70,7 +74,15 @@ The report covers the final build: the approved product changes (principal home,
 | Assistant questions are kept in memory for the session and are not written to localStorage | Pass |
 | Proactive digest: student, parent, teacher, principal, and admin cards match the seeded class, in priority order, and omit other children | Pass |
 | Reminder rules fire only for unfinished homework or unposted subjects, and a typed time creates a custom reminder | Pass |
-| The avatar badge counts unread digest items and clears once the card is opened | Pass |
+| Relevance engine: the top cards for the seeded student, parent, teacher, principal, and admin match the role and the injected time of day | Pass |
+| A card already seen today stays hidden until its data changes | Pass |
+| Embedded cards render only the actor's allowed data. A student or parent never sees another class or the all-schools tree | Pass |
+| `פתח מסך מלא` opens the existing screen, and `חזרה` returns to the chat | Pass |
+| A teacher chip posts homework from the avatar. Saving returns `שמרתי את השיעור.` and the subject is posted | Pass |
+| `אין שיעורים` from the avatar marks the day's subjects as no homework | Pass |
+| Setup-incomplete users get the setup wizard as the home, before daily cards | Pass |
+| The `☰` menu is closed until opened, and it reaches the full screens | Pass |
+| A due reminder is a new avatar bubble in the feed, plus the in-app banner and a notification | Pass |
 | An in-app reminder banner and a service-worker notification show for the demo trigger; the screen says background push needs a backend | Pass |
 | Setup wizards add a school, classes, a teacher, kids, a parent, and the class avatar only after כן | Pass |
 | A principal cannot add a school from the assistant, and a teacher cannot add a class | Pass |
@@ -91,7 +103,8 @@ The report covers the final build: the approved product changes (principal home,
 8. The principal opened straight into class management, the teacher day had no whole-day clear and no save-and-next, and several labels still said מערכת, נתונים, or מנהל. Those are the approved product changes, and the checks above were run after them.
 9. People had only emoji avatars. Each person can now keep a square 256px profile photo in IndexedDB. You can change your own photo, and someone above you can change a person below them. A normal share pack does not include those photos.
 10. A parent's done mark was a `span` with `aria-label`, which axe rejects on a generic element. It is now `role="img"`, so the name is allowed and the chat sheet can sit on top of that screen without a serious violation.
-11. The avatar badge showed a count while the button name was only «עוזר הכיתה», which axe reports as a name mismatch. The accessible name now includes the count.
+11. The avatar badge showed a count while the button name was only «עוזר הכיתה», which axe reports as a name mismatch. That badge is gone: the conversation is the home, so there is no floating button to name.
+12. The lead chat log was a scrollable region with no keyboard access. axe flagged it on the teacher setup screen. The log now has `tabindex="0"`, and that check passes.
 
 ## Remaining risks
 
@@ -100,7 +113,7 @@ The report covers the final build: the approved product changes (principal home,
 | Web Speech may send audio to the browser's own speech service | Medium | The app does not upload homework or chat text. Recording, read-aloud, and the assistant microphone use the browser's speech APIs. The recording screen and the chat say the browser may use its own speech service. Hebrew pronunciation is only as good as the installed he-IL voice. Fixed phrases can later be replaced by pre-generated neural clips without changing the phrase ids. |
 | Read-aloud quality varies by device | Low | There is no bundled Hebrew voice. The picker ranks Google or Microsoft he-IL voices when they exist and otherwise uses speechSynthesis. Dynamic lines still need a backend voice in a later version. |
 | A `#pack=` link can still change the local demo | Low | The pack cannot run code or pollute prototypes. It can merge names and homework into the on-device demo, which has no accounts. |
-| Most of the page is drawn with `innerHTML` | Low | User-entered strings go through `esc()`. The assistant chat, digest, reminder banner, notification card, and setup confirmations set questions, answers, and names with `textContent`. A later edit that interpolates a field without `esc()` would be an XSS bug. The CSP blocks injected scripts. |
+| Most of the page is drawn with `innerHTML` | Low | User-entered strings go through `esc()`. The lead cards, widgets, chips, confirmation bubbles, assistant chat, reminder banner, notification card, and setup confirmations set questions, answers, and names with `textContent`. A later edit that interpolates a field without `esc()` would be an XSS bug. The CSP blocks injected scripts. |
 | Reminders do not arrive if the app is closed | Low | Times are stored on the device and checked with `setTimeout` while the app is open, plus a catch-up when it opens. The reminder settings and the demo script say a reliable background push needs a backend later. |
 | WebKit was not executed here | Low | Chromium at 390×844 passed, including the camera file input and the recording bar. A real iPhone pass is still the check for Safari's camera picker. |
 | The service worker caches later same-origin GETs inside its directory | Low | It does not cache other origins, and it does not cache the rest of `/NoHW/`. |

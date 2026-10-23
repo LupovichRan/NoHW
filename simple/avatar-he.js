@@ -93,7 +93,11 @@
     ["remind-title", "תזכורת"],
     ["remind-evening", "תזכורת ערב"],
     ["setup-go", "המשך הקמה"],
-    ["all-prepared", "הכל הוכן"]
+    ["all-prepared", "הכל הוכן"],
+    ["saved-homework", "שמרתי את השיעור."],
+    ["saved-message", "ההודעה נשלחה."],
+    ["more-intro", "עוד משהו שכדאי לראות."],
+    ["lead-clear", "כרגע אין משהו דחוף."]
   ];
   const byId = {};
   FIXED.forEach(function (row) { byId[row[0]] = row[1]; });

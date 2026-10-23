@@ -2,6 +2,7 @@ const S = window.Nohw;
 const A = window.NohwAssist;
 const G = window.NohwSetup;
 const D = window.NohwDemo;
+const L = window.NohwLead;
 const STORE = "nohw-simple-demo";
 const ASSIST = "nohw-simple-assist";
 const STATUS = { "not-updated": "לא עודכן", "no-homework": "אין שיעורים" };
@@ -39,7 +40,9 @@ let chatRec = null;
 let chatLog = [];
 let wizard = null;
 let setupPending = null;
-let assist = { prefs: {}, custom: [], seen: {}, fired: {} };
+let assist = { prefs: {}, custom: [], seen: {}, fired: {}, leadSeen: {} };
+let leadSession = null;
+let leadFocus = "";
 let lastDigest = null;
 let activeReminder = null;
 let sysNote = null;
@@ -113,7 +116,8 @@ function render() {
   applySpeechPref();
   document.getElementById("app").innerHTML = html();
   if (view.recording) paintRecording();
-  if (view.chat) paintChat();
+  if (document.querySelector(".leadhome")) paintLead();
+  else if (view.chat) paintChat();
   mountAssist();
   if (view.fillDraft) {
     const input = document.querySelector('form input[name="text"]');
@@ -134,7 +138,8 @@ function recordOverlay() {
 function shell(head, body) {
   const note = toastText ? '<p class="toast" role="status">' + esc(toastText) + "</p>" : "";
   const busy = view.recording ? " busy" : "";
-  return '<section class="app' + busy + '" lang="he" dir="rtl">' + head + body + recordOverlay() + sheetHtml() + helperFab() + note + "</section>";
+  const lead = head.indexOf("leadhead") >= 0 ? " leadapp" : "";
+  return '<section class="app' + busy + lead + '" lang="he" dir="rtl">' + head + body + recordOverlay() + sheetHtml() + helperFab() + note + "</section>";
 }
 function toast(text) {
   toastText = text;
@@ -247,10 +252,7 @@ function helperLook(ctx) {
   return S.helperOf(room || null);
 }
 function helperVisible() {
-  if (!person || view.chat) return false;
-  if (view.name === "start" || view.name === "people" || view.name === "data" || view.name === "live" || view.name === "reset") return false;
-  if (view.name === "form" || view.name === "edit" || view.name === "confirm") return false;
-  return !!helperContext();
+  return false;
 }
 function badgeCount() {
   if (!person || !A || !A.digest) return 0;
@@ -301,10 +303,10 @@ function helperWho() {
     who.schoolId = ctx.schoolId || "";
   } else if (person.role === "principal") {
     who.schoolId = ctx.schoolId || person.schoolId || "";
-    who.classId = view.name === "kids" && ctx.room ? ctx.room.id : "";
+    who.classId = view.name === "kids" && ctx.room ? ctx.room.id : (leadFocus || "");
   } else if (person.role === "admin") {
     who.schoolId = ctx.schoolId || "";
-    who.classId = view.name === "kids" && ctx.room ? ctx.room.id : "";
+    who.classId = view.name === "kids" && ctx.room ? ctx.room.id : (leadFocus || "");
   }
   return who;
 }
@@ -815,6 +817,299 @@ function paintChat() {
   host.appendChild(sheet);
   log.scrollTop = log.scrollHeight;
 }
+function rememberLead(day, item) {
+  if (!person || !item) return;
+  if (!assist.leadSeen) assist.leadSeen = {};
+  if (!assist.leadSeen[person.id] || typeof assist.leadSeen[person.id] !== "object") assist.leadSeen[person.id] = {};
+  const bucket = assist.leadSeen[person.id][day] && typeof assist.leadSeen[person.id][day] === "object" ? assist.leadSeen[person.id][day] : {};
+  bucket[item.id] = item.fingerprint;
+  assist.leadSeen[person.id][day] = bucket;
+}
+function ensureLead() {
+  if (!person || !L || !L.opening) return null;
+  const who = helperWho();
+  if (!who) return null;
+  const day = D.schoolDay(today());
+  const seen = assist.leadSeen && assist.leadSeen[person.id] && assist.leadSeen[person.id][day] || {};
+  const stamp = L.signature(state, who, { today: day, people: people });
+  if (leadSession && leadSession.personId === person.id && leadSession.day === day && leadSession.stamp === stamp) return leadSession;
+  const pack = L.opening(state, who, { today: day, hour: new Date().getHours(), people: people, seen: seen });
+  (pack.cards || []).forEach(function (item) { rememberLead(day, item); });
+  saveAssist();
+  leadSession = { personId: person.id, day: day, stamp: stamp, pack: pack, extra: [] };
+  return leadSession;
+}
+function leadCardById(id) {
+  const session = ensureLead();
+  if (!session || !session.pack) return null;
+  const all = (session.pack.cards || []).concat(session.extra || [], session.pack.more || []);
+  return all.filter(function (item) { return item.id === id; })[0] || null;
+}
+function appendWidget(bubble, item) {
+  const widget = item && item.widget;
+  if (!widget || !widget.rows || !widget.rows.length) return;
+  const box = document.createElement("div");
+  box.className = "widget " + (widget.kind || "");
+  widget.rows.forEach(function (row) {
+    const line = document.createElement("div");
+    line.className = "wrow";
+    const openable = row.id && (widget.kind === "stats" || widget.kind === "schools");
+    const kidJump = row.kidId && person && person.role === "parent" && widget.kind === "kids";
+    if (openable || kidJump) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "row";
+      button.dataset.act = "open";
+      button.dataset.id = openable ? row.id : row.kidId;
+      button.textContent = row.label || row.name || "";
+      line.appendChild(button);
+    } else {
+      const label = document.createElement("span");
+      label.textContent = row.label || "";
+      line.appendChild(label);
+    }
+    if (row.tick && person && person.role === "student") {
+      const tick = document.createElement("button");
+      tick.type = "button";
+      tick.className = "tick" + (row.done ? " on" : "");
+      tick.dataset.act = "tick";
+      tick.dataset.subject = row.subject || "";
+      tick.dataset.date = row.date || "";
+      tick.setAttribute("aria-pressed", row.done ? "true" : "false");
+      tick.setAttribute("aria-label", "הוכן");
+      tick.textContent = row.done ? "✓" : "○";
+      line.appendChild(tick);
+    } else if (row.done === true || row.done === false) {
+      const mark = document.createElement("span");
+      mark.className = "mark";
+      mark.textContent = row.done ? "✓" : "○";
+      line.appendChild(mark);
+    }
+    box.appendChild(line);
+  });
+  bubble.appendChild(box);
+}
+function buildLeadCard(item, face) {
+  const lines = talkLines((item.title ? item.title + "\n" : "") + (item.text || ""));
+  return buildTurn("bot", lines.length ? lines : [item.title || ""], {
+    face: face,
+    fill: function (bubble) {
+      bubble.classList.add("leadcard");
+      appendWidget(bubble, item);
+      if (item.expand && item.expand.name) {
+        const open = document.createElement("button");
+        open.type = "button";
+        open.dataset.act = "lead-expand";
+        open.dataset.id = item.id;
+        open.textContent = "פתח מסך מלא";
+        bubble.appendChild(open);
+      }
+      (item.chips || []).forEach(function (chip) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.dataset.act = "lead-chip";
+        button.dataset.card = item.id;
+        button.dataset.chip = chip.id;
+        button.textContent = chip.label;
+        bubble.appendChild(button);
+      });
+    }
+  });
+}
+function paintLeadLog(log, face) {
+  const session = ensureLead();
+  const pack = session && session.pack;
+  if (pack && pack.mode === "setup") {
+    const status = setupStatus();
+    if (status) log.appendChild(buildSetupCard(status, false));
+  } else if (pack) {
+    const box = document.createElement("section");
+    box.className = "digest";
+    box.lang = "he";
+    box.dir = "rtl";
+    if (pack.greeting) box.appendChild(buildTurn("bot", [pack.greeting], { face: face }));
+    (pack.cards || []).concat(session.extra || []).forEach(function (item) {
+      box.appendChild(buildLeadCard(item, face));
+    });
+    log.appendChild(box);
+  }
+  chatLog.forEach(function (turn) {
+    const kind = turn.role === "me" ? "me" : "bot";
+    log.appendChild(buildTurn(kind, talkLines(turn.text), {
+      face: face,
+      confirm: !!turn.confirm,
+      fill: function (bubble) {
+        (turn.photos || []).forEach(function (item) {
+          const src = srcOf(item);
+          if (!src && item.id) queueMedia(item.id);
+          if (!src) return;
+          const img = document.createElement("img");
+          img.alt = "תמונה";
+          img.src = src;
+          bubble.appendChild(img);
+        });
+        (turn.voices || []).forEach(function (item) {
+          const src = srcOf(item) || item.src || item.id || "";
+          if (!src && item.id) queueMedia(item.id);
+          const play = document.createElement("button");
+          play.type = "button";
+          play.className = "play";
+          play.dataset.act = "play";
+          play.dataset.voice = src;
+          play.setAttribute("aria-label", "השמעה");
+          play.textContent = "🎤 השמעה";
+          bubble.appendChild(play);
+        });
+        if (turn.draft) {
+          const open = document.createElement("button");
+          open.type = "button";
+          open.dataset.act = "helper-draft";
+          open.textContent = "פתח בטיוטה";
+          bubble.appendChild(open);
+        }
+      }
+    }));
+  });
+}
+function paintLeadDock(dock, role) {
+  const session = ensureLead();
+  const pack = session && session.pack;
+  const inFlow = wizardOn();
+  const chips = document.createElement("div");
+  chips.className = inFlow ? "chips big" : "chips";
+  if (inFlow) {
+    (wizard.chips || []).forEach(function (item) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "setup-chip";
+      button.dataset.choice = item.id;
+      button.textContent = item.label;
+      chips.appendChild(button);
+    });
+  } else if (pack && pack.mode === "setup" && G) {
+    G.setupChips(role).forEach(function (item) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "helper-ask";
+      button.dataset.intent = item.id;
+      button.textContent = item.label;
+      chips.appendChild(button);
+    });
+  } else if (A) {
+    A.chips(role).forEach(function (item) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "helper-ask";
+      button.dataset.intent = item.id;
+      button.textContent = item.label;
+      chips.appendChild(button);
+    });
+    if (pack && pack.more && pack.more.length) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.dataset.act = "lead-more";
+      more.textContent = "מה עוד?";
+      chips.appendChild(more);
+    }
+  }
+  const form = document.createElement("form");
+  form.className = "askbox";
+  const input = document.createElement("input");
+  input.name = "q";
+  input.dir = "rtl";
+  input.maxLength = 200;
+  input.autocomplete = "off";
+  input.setAttribute("aria-label", "שאלה");
+  input.placeholder = inFlow && wizard.placeholder ? wizard.placeholder : "שאלה על הכיתה";
+  const send = document.createElement("button");
+  send.type = "submit";
+  send.textContent = "שאל";
+  form.appendChild(input);
+  form.appendChild(send);
+  const mic = document.createElement("button");
+  mic.type = "button";
+  mic.dataset.act = "helper-mic";
+  mic.setAttribute("aria-label", "דיבור");
+  mic.textContent = "🎤";
+  const row = document.createElement("div");
+  row.className = "askline";
+  row.appendChild(form);
+  row.appendChild(mic);
+  dock.appendChild(chips);
+  dock.appendChild(row);
+  const tools = document.createElement("div");
+  tools.className = "pair";
+  const read = document.createElement("button");
+  read.type = "button";
+  read.dataset.act = "helper-read";
+  read.setAttribute("aria-pressed", view.readAloud ? "true" : "false");
+  read.setAttribute("aria-label", "הקראה");
+  read.textContent = view.readAloud ? "הקראה פעילה" : "הקראה";
+  tools.appendChild(read);
+  if (A && A.defaults(role)) {
+    const prefs = document.createElement("button");
+    prefs.type = "button";
+    prefs.dataset.act = "helper-prefs";
+    prefs.textContent = "תזכורות";
+    tools.appendChild(prefs);
+  }
+  dock.appendChild(tools);
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = speechCtor() ? "הדפדפן עשוי להשתמש בשירות דיבור משלו" : "הדיבור לא זמין בדפדפן זה";
+  dock.appendChild(hint);
+  const voiceBox = document.createElement("div");
+  voiceBox.className = "voiceset";
+  const voicePick = document.createElement("select");
+  voicePick.setAttribute("aria-label", "קול");
+  const voiceTest = document.createElement("button");
+  voiceTest.type = "button";
+  voiceTest.dataset.act = "helper-voice-test";
+  voiceTest.textContent = "בדיקת קול";
+  const voiceNote = document.createElement("p");
+  voiceNote.className = "voicehint";
+  voiceNote.textContent = window.NohwHebrew.text(person && person.role === "student" ? "voice-hint" : "voice-device");
+  voiceBox.appendChild(voicePick);
+  voiceBox.appendChild(voiceTest);
+  voiceBox.appendChild(voiceNote);
+  dock.appendChild(voiceBox);
+  fillVoices(voicePick);
+  voicePick.addEventListener("change", function () {
+    const pref = speechPref();
+    saveSpeech({ on: pref.on, voice: voicePick.value || "" });
+  });
+  if (view.reminders && A && A.defaults(role)) dock.appendChild(buildReminderSettings());
+  const ctx = helperContext();
+  if (!inFlow && ctx && ctx.room && S.canEdit(state, actor(), { kind: "homework", classId: ctx.room.id })) {
+    const settings = document.createElement("div");
+    settings.className = "helperset";
+    const label = document.createElement("span");
+    label.textContent = "הפנים של העוזר";
+    settings.appendChild(label);
+    ["sun", "fox", "moon", "star"].forEach(function (kind) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "helper-face";
+      button.dataset.face = kind;
+      button.setAttribute("aria-label", kind);
+      button.setAttribute("aria-pressed", helperLook(ctx).face === kind ? "true" : "false");
+      button.insertAdjacentHTML("beforeend", faceSvg(kind));
+      settings.appendChild(button);
+    });
+    dock.appendChild(settings);
+  }
+}
+function paintLead() {
+  const host = document.querySelector(".leadhome");
+  if (!host || !person) return;
+  const log = host.querySelector(".chatlog");
+  const dock = host.querySelector(".leaddock");
+  if (!log || !dock) return;
+  const face = helperLook(helperContext()).face;
+  paintLeadLog(log, face);
+  paintLeadDock(dock, person.role);
+  log.scrollTop = log.scrollHeight;
+}
 function currentDigest() {
   const who = helperWho();
   if (!who || !A || !A.digest) return null;
@@ -909,11 +1204,12 @@ function loadAssist() {
     custom: Array.isArray(raw.custom) ? raw.custom.filter(function (item) { return item && /^\d{2}:\d{2}$/.test(item.time); }).slice(0, 40) : [],
     seen: raw.seen && typeof raw.seen === "object" ? raw.seen : {},
     fired: raw.fired && typeof raw.fired === "object" ? raw.fired : {},
-    speech: raw.speech && typeof raw.speech === "object" ? raw.speech : {}
+    speech: raw.speech && typeof raw.speech === "object" ? raw.speech : {},
+    leadSeen: raw.leadSeen && typeof raw.leadSeen === "object" ? raw.leadSeen : {}
   };
 }
 function saveAssist() {
-  try { localStorage.setItem(ASSIST, JSON.stringify({ prefs: assist.prefs, custom: assist.custom, seen: assist.seen, fired: assist.fired, speech: assist.speech })); }
+  try { localStorage.setItem(ASSIST, JSON.stringify({ prefs: assist.prefs, custom: assist.custom, seen: assist.seen, fired: assist.fired, speech: assist.speech, leadSeen: assist.leadSeen })); }
   catch (e) {}
 }
 function currentPref() {
@@ -954,6 +1250,7 @@ function showReminder(item, day, force) {
   saveAssist();
   activeReminder = { title: String(item.title || "תזכורת").slice(0, 80), body: String(item.body || "").slice(0, 180) };
   sysNote = { title: "עוזר הכיתה", body: activeReminder.body };
+  pushBot(activeReminder.body);
   notifyReminder(sysNote.title, sysNote.body);
 }
 function notifyReminder(title, body) {
@@ -1172,6 +1469,8 @@ function resetChat() {
   chatLog = [];
   wizard = null;
   setupPending = null;
+  leadSession = null;
+  leadFocus = "";
   hush();
   if (chatRec) {
     try { chatRec.onresult = null; chatRec.stop(); } catch (e) {}
@@ -1587,7 +1886,9 @@ function voicePanel() {
 }
 function postHtml() {
   noteSpeech();
-  return shell(bar(view.subject || "שיעור", "לשיעור הבא"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="80" value="' + esc(view.text || "") + '" placeholder="שיעורי בית" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, subject: view.subject }) + pickButtons() + voicePanel() + err() + '<button class="ghost" type="button" data-act="none">אין שיעורים</button><div class="pair"><button class="ghost" type="button" data-act="save-next">שמור והבא</button><button class="primary" type="submit">שמירה</button></div></form>');
+  const form = '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="80" value="' + esc(view.text || "") + '" placeholder="שיעורי בית" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, subject: view.subject }) + pickButtons() + voicePanel() + err() + '<button class="ghost" type="button" data-act="none">אין שיעורים</button><div class="pair"><button class="ghost" type="button" data-act="save-next">שמור והבא</button><button class="primary" type="submit">שמירה</button></div></form>';
+  if (view.fromLead) return leadFrame(form);
+  return shell(bar(view.subject || "שיעור", "לשיעור הבא"), form);
 }
 function chipSubjects(room) {
   const names = S.SUBJECTS.slice();
@@ -1649,17 +1950,48 @@ function composeHtml() {
   const picks = '<div class="pair"><button class="ghost' + (audience === "class" ? " on" : "") + '" type="button" data-act="audience" data-audience="class">כל הכיתה</button><button class="ghost' + (audience === "parents" ? " on" : "") + '" type="button" data-act="audience" data-audience="parents">הורים בלבד</button></div>';
   const alert = '<button class="ghost' + (alertOn ? " on" : "") + '" type="button" data-act="alert" aria-pressed="' + (alertOn ? "true" : "false") + '">התראה</button>';
   const draftValue = view.fillDraft ? "" : esc(view.text || "");
-  return shell(bar(view.id ? "עריכת הודעה" : "הודעה חדשה"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="280" value="' + draftValue + '" placeholder="הודעה" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, msgId: view.id || "" }) + pickButtons() + voicePanel() + picks + alert + err() + '<button class="primary" type="submit">' + (view.id ? "שמירה" : "שליחה") + "</button></form>");
+  const form = '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="280" value="' + draftValue + '" placeholder="הודעה" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, msgId: view.id || "" }) + pickButtons() + voicePanel() + picks + alert + err() + '<button class="primary" type="submit">' + (view.id ? "שמירה" : "שליחה") + "</button></form>";
+  if (view.fromLead) return leadFrame(form);
+  return shell(bar(view.id ? "עריכת הודעה" : "הודעה חדשה"), form);
 }
 function photoHtml() {
   return shell(bar("תמונה"), '<button class="frame" type="button" data-act="back"><img alt="תמונה" src="' + esc(view.src || "") + '"></button>');
 }
+function menuItems() {
+  const role = person && person.role;
+  const items = [];
+  if (role === "teacher") items.push(["homework", "לשיעור הבא"], ["messages", "הודעות"], ["timetable", "לו״ז שיעורים"], ["kids", "תלמידים"]);
+  else if (role === "principal") items.push(["classes", "ניהול כיתות"]);
+  else if (role === "admin") items.push(["schools", "בתי ספר"]);
+  else if (role === "student") items.push(["day", "היום"], ["messages", "הודעות"]);
+  else if (role === "parent") items.push(["family", "הילדים"], ["messages", "הודעות"]);
+  items.push(["data", "תרחישים"], ["reset", "איפוס"]);
+  if (A && A.defaults(role)) items.push(["reminders", "תזכורות"]);
+  return items;
+}
+function menuHtml() {
+  const buttons = menuItems().map(function (item) {
+    return '<button type="button" data-act="menu-go" data-to="' + item[0] + '">' + esc(item[1]) + "</button>";
+  }).join("");
+  return '<div class="sheetscrim" data-act="menu"></div><div class="navmenu" role="dialog" aria-label="תפריט">' + buttons + "</div>";
+}
+function leadBar() {
+  const helper = helperLook(helperContext());
+  const open = setupOpen();
+  const status = open ? setupStatus() : null;
+  const p = status ? String(status.progress.done / status.progress.total) : "0";
+  const face = open ? '<span class="leadring setup" style="--p:' + p + '"><span class="ringhost">' + faceSvg(helper.face) + "</span></span>" : faceSvg(helper.face);
+  const menu = '<button class="icon" type="button" data-act="menu" aria-label="תפריט" aria-expanded="' + (view.menu ? "true" : "false") + '">☰</button>';
+  return '<header class="top leadhead">' + menu + '<div class="leadface">' + face + '<div class="titles"><h1>' + esc(helper.name) + "</h1><p>" + esc(person ? person.name : "") + "</p></div></div>" + selfAvatar() + liveButton() + castButton() + "</header>";
+}
+function leadFrame(overlay) {
+  const helper = helperLook(helperContext());
+  const menu = view.menu ? menuHtml() : "";
+  const sheet = overlay ? '<div class="sheetscrim" data-act="back"></div><div class="composersheet" role="dialog" aria-label="עריכה"><button class="ghost" type="button" data-act="back" aria-label="חזרה">חזרה לשיחה</button>' + overlay + "</div>" : "";
+  return shell(leadBar(), menu + '<div class="chatsheet leadhome" lang="he" dir="rtl" role="region" aria-label="' + esc(helper.name) + '"><div class="chatlog" tabindex="0"></div><div class="leaddock"></div></div>' + sheet);
+}
 function home() {
-  if (person.role === "student") return dayHtml(person.kidId, true);
-  if (person.role === "parent") return person.kidIds.length === 1 ? dayHtml(person.kidIds[0], false) : parentKidsHtml();
-  if (person.role === "teacher") return teacherHome();
-  if (person.role === "principal") return principalHome();
-  return schoolsHtml();
+  return leadFrame("");
 }
 function html() {
   if (view.name === "start") return startHtml();
@@ -1679,11 +2011,15 @@ function html() {
   if (view.name === "day") return dayHtml(view.kidId, false);
   if (view.name === "kids") return kidsHtml(view.classId);
   if (view.name === "classes") return classesHtml(view.schoolId);
+  if (view.name === "schools") return schoolsHtml();
+  if (view.name === "family") return person.kidIds && person.kidIds.length === 1 ? dayHtml(person.kidIds[0], false) : parentKidsHtml();
   return home();
 }
 function listLevel() {
+  if (view.name === "schools") return "schools";
   if (view.name === "classes" || (view.name === "main" && person && person.role === "principal")) return "classes";
   if (view.name === "kids" || (view.name === "main" && person && person.role === "teacher")) return "kids";
+  if (view.name === "family") return "parent";
   if (view.name === "main" && person && person.role === "admin") return "schools";
   if (view.name === "day" || (view.name === "main" && person && person.role === "parent")) return "parent";
   return view.name;
@@ -2275,6 +2611,75 @@ function onClick(event) {
     }
     return;
   }
+  if (act === "menu") { view.menu = !view.menu; render(); return; }
+  if (act === "menu-go") {
+    const to = el.dataset.to || "";
+    view.menu = false;
+    if (to === "reminders") { view.reminders = true; render(); return; }
+    if (to === "homework") push({ name: "homework", classId: person.classId });
+    else if (to === "messages") push({ name: "messages" });
+    else if (to === "timetable") push({ name: "timetable", classId: person.classId });
+    else if (to === "kids") push({ name: "kids", classId: person.classId });
+    else if (to === "classes") push({ name: "classes", schoolId: person.schoolId || "" });
+    else if (to === "schools") push({ name: "schools" });
+    else if (to === "day") push({ name: "day", kidId: person.kidId, date: D.schoolDay(today()) });
+    else if (to === "family") push({ name: "family" });
+    else if (to === "data" || to === "reset") push({ name: to });
+    return;
+  }
+  if (act === "lead-more") {
+    const session = ensureLead();
+    if (!session || !session.pack || !L) return;
+    const extra = L.reveal(session.pack);
+    chatLog.push({ role: "me", text: "מה עוד?" });
+    pushBot(extra.intro);
+    session.extra = (session.extra || []).concat(extra.cards || []);
+    (extra.cards || []).forEach(function (item) { rememberLead(session.day, item); });
+    session.pack.more = [];
+    saveAssist();
+    render();
+    return;
+  }
+  if (act === "lead-expand") {
+    const item = leadCardById(el.dataset.id);
+    const result = item && L ? L.perform(state, actor(), "expand", item, { today: D.schoolDay(today()) }) : null;
+    if (result && result.navigate) {
+      if (result.navigate.classId) leadFocus = result.navigate.classId;
+      push(result.navigate);
+    }
+    return;
+  }
+  if (act === "lead-chip") {
+    const item = leadCardById(el.dataset.card);
+    if (!item || !L) return;
+    const chip = el.dataset.chip || "";
+    const result = L.perform(state, actor(), chip, item, { today: D.schoolDay(today()) });
+    if (!result.ok) {
+      if (result.text) { chatLog.push({ role: "me", text: el.textContent || "" }); pushBot(result.text); render(); }
+      return;
+    }
+    if (chip === "none-day") {
+      saveStore();
+      leadSession = null;
+      chatLog.push({ role: "me", text: el.textContent || "" });
+      pushBot(result.text);
+      render();
+      return;
+    }
+    if (result.navigate) {
+      chatLog.push({ role: "me", text: el.textContent || "" });
+      if (result.navigate.name === "post" || result.navigate.name === "compose") {
+        result.navigate.fromLead = true;
+        result.navigate.text = "";
+        result.navigate.photos = [];
+        result.navigate.voices = [];
+        result.navigate.recording = false;
+      }
+      if (result.navigate.classId) leadFocus = result.navigate.classId;
+      push(result.navigate);
+    }
+    return;
+  }
   if (act === "helper-ask") { askHelper({ intent: el.dataset.intent || "" }); return; }
   if (act === "setup-chip") {
     const choice = el.dataset.choice || "";
@@ -2322,7 +2727,7 @@ function onClick(event) {
     if (!draft || !person || (person.role !== "teacher" && person.role !== "principal")) return;
     view.chat = false;
     hush();
-    push({ name: "compose", classId: classId || person.classId, text: draft, photos: [], voices: [], audience: audience, alert: false, fillDraft: true });
+    push({ name: "compose", fromLead: true, classId: classId || person.classId, text: draft, photos: [], voices: [], audience: audience, alert: false, fillDraft: true });
     return;
   }
   if (act === "avatar-cam") {
@@ -2406,6 +2811,7 @@ function onClick(event) {
     else push({ name: "form", add: "kid", classId: currentClassId() });
   } else if (act === "open") {
     const level = listLevel();
+    if (level === "classes" && el.dataset.id) leadFocus = el.dataset.id;
     if (level === "schools") push({ name: "classes", schoolId: el.dataset.id });
     else if (level === "classes") push({ name: "kids", schoolId: currentSchoolId(), classId: el.dataset.id });
     else if (level === "parent") push({ name: "day", kidId: el.dataset.id });
@@ -2510,6 +2916,7 @@ function onClick(event) {
     const input = document.querySelector('form input[name="text"]');
     try {
       keepDraft();
+      const fromLead = !!view.fromLead;
       homeworkInput("post", input ? input.value : view.text);
       saveStore();
       haltMic();
@@ -2521,20 +2928,34 @@ function onClick(event) {
         const row = rows[(index + step) % rows.length];
         if (row && row.status === "not-updated") { next = row; break; }
       }
-      if (!next) view = stack.pop() || { name: "homework" };
-      else view = { name: "post", classId: found.room.id, subject: next.subject, text: "", photos: [], voices: [], recording: false };
+      if (!next) {
+        view = stack.pop() || { name: "homework" };
+        if (fromLead && view.name === "main") { leadSession = null; pushBot(window.NohwHebrew.text("saved-homework")); }
+      } else view = { name: "post", fromLead: fromLead, classId: found.room.id, subject: next.subject, text: "", photos: [], voices: [], recording: false };
     } catch (e) { view.error = explain(e); }
     render();
   } else if (act === "none") {
-    try { homeworkInput("none"); saveStore(); haltMic(); view = stack.pop() || { name: "homework" }; }
+    try {
+      const fromLead = !!view.fromLead;
+      homeworkInput("none");
+      saveStore();
+      haltMic();
+      view = stack.pop() || { name: "homework" };
+      if (fromLead && view.name === "main") { leadSession = null; pushBot(window.NohwHebrew.text("marked-none")); }
+    }
     catch (e) { view.error = explain(e); }
     render();
   } else if (act === "date") { view.date = el.dataset.date; render(); }
   else if (act === "tick") {
-    const date = focusDate();
-    const row = S.rowsFor(D.findKid(state, person.kidId).room, date, D.findKid(state, person.kidId).kid).find(function (item) { return item.subject === el.dataset.subject; });
+    if (!person || person.role !== "student") return;
+    const date = el.dataset.date || focusDate();
+    const found = D.findKid(state, person.kidId);
+    if (!found) return;
+    const row = S.rowsFor(found.room, date, found.kid).find(function (item) { return item.subject === el.dataset.subject; });
+    if (!row || row.status !== "posted") return;
     S.markDone(state, actor(), { date: date, subject: el.dataset.subject, done: !row.done });
     saveStore();
+    leadSession = null;
     render();
   }
 }
@@ -2590,7 +3011,15 @@ function onSubmit(event) {
   }
   const data = new FormData(event.target);
   if (view.name === "post") {
-    try { keepDraft(); homeworkInput("post", data.get("text")); saveStore(); haltMic(); view = stack.pop() || { name: "homework" }; }
+    try {
+      keepDraft();
+      const fromLead = !!view.fromLead;
+      homeworkInput("post", data.get("text"));
+      saveStore();
+      haltMic();
+      view = stack.pop() || { name: "homework" };
+      if (fromLead && view.name === "main") { leadSession = null; pushBot(window.NohwHebrew.text("saved-homework")); }
+    }
     catch (e) { view.error = explain(e); }
     render();
     return;
@@ -2611,12 +3040,14 @@ function onSubmit(event) {
       keepDraft();
       const text = data.get("text");
       const payload = { classId: view.classId || person.classId, text: text, photos: photoRefs(), voices: voiceRefs(), audience: view.audience || "class", alert: !!view.alert };
+      const fromLead = !!view.fromLead;
       if (view.id) S.editMessage(state, actor(), Object.assign({ id: view.id }, payload));
       else S.postMessage(state, actor(), payload);
       if (payload.alert) notify(String(text || ""));
       saveStore();
       haltMic();
       view = stack.pop() || { name: "messages" };
+      if (fromLead && view.name === "main") { leadSession = null; pushBot(window.NohwHebrew.text("saved-message")); }
     } catch (e) { fail(e); return; }
     render();
     return;

@@ -99,6 +99,10 @@
 | `remind-evening` | תזכורת ערב |
 | `setup-go` | המשך הקמה |
 | `all-prepared` | הכל הוכן |
+| `saved-homework` | שמרתי את השיעור. |
+| `saved-message` | ההודעה נשלחה. |
+| `more-intro` | עוד משהו שכדאי לראות. |
+| `lead-clear` | כרגע אין משהו דחוף. |
 
 ## תבניות עם פרטים מהכיתה
 
