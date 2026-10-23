@@ -60,10 +60,13 @@
     ["marked-none", "סומן אין שיעורים להיום."],
     ["kids-added", "הילדים נוספו."],
     ["kid-added", "הילד נוסף."],
+    ["confirm-kid-one", "להוסיף ילד אחד?"],
     ["class-added", "נוספה כיתה."],
+    ["confirm-class-one", "להוסיף כיתה אחת?"],
     ["template-done", "המערכת הוחלה. אפשר לדייק בלו״ז."],
     ["draft-keep", "הכנתי טיוטה.\nהשליחה נשארת אצלך, ידנית."],
     ["draft-parents", "הכנתי טיוטה להורים. השליחה נשארת אצלך."],
+    ["parent-all-done", "שלום, כל מה שפורסם הוכן. כל הכבוד!"],
     ["draft-staff", "הכנתי טיוטה. השליחה נשארת אצלך."],
     ["attention-clear", "אין בתי ספר שמחכים לתשומת לב"],
     ["from-teacher", "מהמורה:"],
@@ -92,6 +95,7 @@
     ["clear-title", "הכל מעודכן"],
     ["remind-title", "תזכורת"],
     ["remind-evening", "תזכורת ערב"],
+    ["remind-all-done", "תזכורת: כל מה שפורסם הוכן. כל הכבוד!"],
     ["setup-go", "המשך הקמה"],
     ["all-prepared", "הכל הוכן"],
     ["saved-homework", "שמרתי את השיעור."],
@@ -114,6 +118,13 @@
     const raw = String(value || "");
     for (let i = 0; i < FIXED.length; i++) {
       if (FIXED[i][1] === raw) return FIXED[i][0];
+    }
+    for (let i = 0; i < FIXED.length; i++) {
+      const parts = String(FIXED[i][1] || "").split(/\n+/);
+      if (parts.length < 2) continue;
+      for (let p = 0; p < parts.length; p++) {
+        if (parts[p] === raw) return FIXED[i][0] + "-" + (p + 1);
+      }
     }
     return "";
   }
@@ -190,7 +201,7 @@
     return text("you-sent") + "\n" + rows.join("\n");
   }
   function remindDraft(lines) {
-    if (!lines.length) return "תזכורת: כל מה שפורסם הוכן. כל הכבוד!";
+    if (!lines.length) return text("remind-all-done");
     return "תזכורת: עוד לא הוכן — " + lines.join("; ") + ".";
   }
   function draftIntro(draft) {
@@ -245,7 +256,7 @@
     return "נוסף בית הספר " + name + ".";
   }
   function confirmClasses(count) {
-    return count === 1 ? "להוסיף כיתה אחת?" : "להוסיף " + count + " כיתות?";
+    return count === 1 ? text("confirm-class-one") : "להוסיף " + count + " כיתות?";
   }
   function addedClasses(count) {
     return count === 1 ? text("class-added") : "נוספו " + count + " כיתות.";
@@ -279,7 +290,7 @@
     return { title: title, text: title + "\n" + slots.join(", ") };
   }
   function confirmKids(count) {
-    return count === 1 ? "להוסיף ילד אחד?" : "להוסיף " + count + " ילדים?";
+    return count === 1 ? text("confirm-kid-one") : "להוסיף " + count + " ילדים?";
   }
   function whoParent(name) {
     return "מי ההורה של " + name + "?";
@@ -312,7 +323,7 @@
     return text("draft-staff") + "\n" + draft;
   }
   function parentDraftBody(lines) {
-    if (!lines.length) return "שלום, כל מה שפורסם הוכן. כל הכבוד!";
+    if (!lines.length) return text("parent-all-done");
     return "שלום, עוד לא הוכן: " + lines.join("; ") + ".";
   }
   function parentDraftSay(draft) {

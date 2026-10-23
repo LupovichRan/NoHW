@@ -45,6 +45,11 @@ assert.equal(Speech.listenWith(true), "web");
 assert.equal(Speech.listenWith(false), "none");
 assert.equal(Speech.speakWith("clip.mp3"), "clip");
 assert.equal(Speech.speakWith(""), "synth");
+assert.equal(Speech.clipSrc("greet-student"), "voice/greet-student.mp3");
+assert.equal(Speech.clipSrc("draft-keep-1"), "voice/draft-keep-1.mp3");
+assert.equal(Speech.clipSrc(""), "");
+assert.equal(Speech.clipSrc("../secret"), "");
+assert.equal(Speech.clipSrc("voice/greet-student.mp3"), "");
 
 const talk = Speech.conversation();
 assert.equal(talk.mode(), "off");
@@ -101,7 +106,43 @@ const page = fs.readFileSync(path.join(__dirname, "..", "simple", "index.html"),
 assert.match(page, /speech\.js/);
 assert.match(page, /connect-src 'self'/);
 const sw = fs.readFileSync(path.join(__dirname, "..", "simple", "sw.js"), "utf8");
-assert.match(sw, /nohw-simple-v22/);
+assert.match(sw, /nohw-simple-v23/);
 assert.match(sw, /speech\.js/);
+assert.match(sw, /voice\/lines\.json/);
+assert.match(sw, /voice\/hashes\.json/);
+const H = require("../simple/avatar-he.js");
+const P = require("../simple/speak-he.js");
+const lines = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "simple", "voice", "lines.json"), "utf8"));
+const byId = {};
+lines.forEach(function (line) { byId[line.id] = line.text; });
+H.lines().forEach(function (line) {
+  assert.equal(byId[line.id], P.pronounce(line.text), line.id);
+  const parts = String(line.text).split(/\n+/);
+  if (parts.length < 2) return;
+  parts.forEach(function (part, index) {
+    assert.equal(byId[line.id + "-" + (index + 1)], P.pronounce(part), line.id);
+  });
+});
+assert.equal(H.idFor("הכנתי טיוטה."), "draft-keep-1");
+assert.equal(H.idFor(H.text("remind-all-done")), "remind-all-done");
+const voiceDir = path.join(__dirname, "..", "simple", "voice");
+const hashes = JSON.parse(fs.readFileSync(path.join(voiceDir, "hashes.json"), "utf8"));
+assert.equal(Array.isArray(hashes), false);
+Object.keys(hashes).forEach(function (id) {
+  assert.equal(typeof byId[id], "string", id);
+  assert.equal(fs.existsSync(path.join(voiceDir, id + ".mp3")), true, id);
+});
+fs.readdirSync(voiceDir).forEach(function (name) {
+  if (!name.endsWith(".mp3")) return;
+  assert.equal(typeof hashes[name.slice(0, -4)], "string", name);
+});
+const tool = fs.readFileSync(path.join(__dirname, "..", "tools", "gen-voice.mjs"), "utf8");
+assert.match(tool, /AZURE_SPEECH_KEY/);
+assert.match(tool, /AZURE_SPEECH_REGION/);
+assert.match(tool, /he-IL-HilaNeural/);
+assert.match(tool, /audio-24khz-48kbitrate-mono-mp3/);
+assert.match(tool, /cognitiveservices\/v1/);
+assert.doesNotMatch(tool, /AZURE_SPEECH_KEY\s*=\s*["'][^"']+["']/);
+assert.equal(fs.readdirSync(path.join(__dirname, "..", "simple", "voice")).some(function (name) { return name.endsWith(".mp3"); }), false);
 
 console.log("speech ok");

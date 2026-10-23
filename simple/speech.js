@@ -10,7 +10,12 @@
   function listenWith(hasWebSpeech) {
     return hasWebSpeech ? "web" : "none";
   }
-  // A saved clip, otherwise the device voice. TODO: a remote voice can sit between them later.
+  // A file in voice/{id}.mp3, otherwise the device voice. TODO: a remote voice can sit between them later.
+  function clipSrc(id) {
+    const clean = String(id || "");
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(clean)) return "";
+    return "voice/" + clean + ".mp3";
+  }
   function speakWith(clip) {
     return clip ? "clip" : "synth";
   }
@@ -82,6 +87,7 @@
     LISTEN_MS: LISTEN_MS,
     LANG: LANG,
     listenWith: listenWith,
+    clipSrc: clipSrc,
     speakWith: speakWith,
     normalize: normalize,
     names: names,

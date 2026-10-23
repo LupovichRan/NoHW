@@ -165,6 +165,6 @@ assert.match(app, /choice === "yes" && setupPending/);
 assert.match(app, /text\.textContent = line/);
 const sw = fs.readFileSync(path.join(__dirname, "..", "simple", "sw.js"), "utf8");
 assert.match(sw, /setup\.js/);
-assert.match(sw, /nohw-simple-v22/);
+assert.match(sw, /nohw-simple-v23/);
 
 console.log("setup ok");

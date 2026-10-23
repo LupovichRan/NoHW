@@ -188,9 +188,12 @@
     return id && clips[id] ? clips[id] : "";
   }
   function resolveSpeech(id, text) {
-    const src = clipFor(id);
-    if (src) return { mode: "clip", src: src };
-    return { mode: "synth", text: pronounce(text) };
+    const spoken = pronounce(text);
+    const registered = clipFor(id);
+    if (registered) return { mode: "clip", src: registered, text: spoken };
+    const local = root.NohwSpeech && id && root.NohwSpeech.clipSrc(id);
+    if (local) return { mode: "clip", src: local, text: spoken };
+    return { mode: "synth", text: spoken };
   }
   function cancel() {
     seq += 1;
@@ -242,21 +245,32 @@
       if (hooks.phrase) hooks.phrase(current);
       const plan = resolveSpeech(item.id, item.text);
       if (plan.mode === "clip") {
-        playClip(plan.src, token, step);
+        playClip(plan.src, token, step, plan.text);
         return;
       }
       utter(plan.text, token, step);
     }
     setTimeout(step, 350);
   }
-  function playClip(src, token, done) {
+  function playClip(src, token, done, fallbackText) {
     const AudioCtor = root.Audio;
-    if (!AudioCtor) { utter("", token, done); return; }
+    if (!AudioCtor) { utter(fallbackText, token, done); return; }
+    let settled = false;
+    function finishOk() {
+      if (settled || token !== seq) return;
+      settled = true;
+      setTimeout(done, 200);
+    }
+    function finishFail() {
+      if (settled || token !== seq) return;
+      settled = true;
+      utter(fallbackText, token, done);
+    }
     audio = new AudioCtor(src);
-    audio.onended = function () { if (token === seq) setTimeout(done, 200); };
-    audio.onerror = function () { if (token === seq) done(); };
+    audio.onended = finishOk;
+    audio.onerror = finishFail;
     const played = audio.play();
-    if (played && played.catch) played.catch(function () { if (token === seq) done(); });
+    if (played && played.catch) played.catch(finishFail);
   }
   function utter(text, token, done) {
     const synth = root.speechSynthesis;

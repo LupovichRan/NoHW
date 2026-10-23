@@ -39,12 +39,18 @@ assert.equal(P.chooseVoice(ranked).name, "Carmit");
 P.setPreferredVoice("");
 assert.equal(P.chooseVoice(ranked).name, "Microsoft Hila Online");
 
+const Speech = require("../simple/speech.js");
 assert.equal(P.clipFor("fallback"), "");
-assert.equal(P.resolveSpeech("fallback", H.text("fallback")).mode, "synth");
-assert.equal(P.resolveSpeech("fallback", H.text("fallback")).text.includes("😊"), false);
+const plain = P.resolveSpeech("fallback", H.text("fallback"));
+assert.equal(plain.mode, "clip");
+assert.equal(plain.src, Speech.clipSrc("fallback"));
+assert.equal(plain.text.includes("😊"), false);
+assert.equal(P.resolveSpeech("", "שלום").mode, "synth");
 P.setClip("voice-test", "audio/voice-test.mp3");
 assert.equal(P.clipFor("voice-test"), "audio/voice-test.mp3");
-assert.deepEqual(P.resolveSpeech("voice-test", H.text("voice-test")), { mode: "clip", src: "audio/voice-test.mp3" });
+const saved = P.resolveSpeech("voice-test", H.text("voice-test"));
+assert.equal(saved.mode, "clip");
+assert.equal(saved.src, "audio/voice-test.mp3");
 
 const speak = fs.readFileSync(path.join(__dirname, "..", "simple", "speak-he.js"), "utf8");
 assert.match(speak, /voiceschanged/);

@@ -67,10 +67,13 @@
 | `marked-none` | סומן אין שיעורים להיום. |
 | `kids-added` | הילדים נוספו. |
 | `kid-added` | הילד נוסף. |
+| `confirm-kid-one` | להוסיף ילד אחד? |
 | `class-added` | נוספה כיתה. |
+| `confirm-class-one` | להוסיף כיתה אחת? |
 | `template-done` | המערכת הוחלה. אפשר לדייק בלו״ז. |
 | `draft-keep` | הכנתי טיוטה.<br>השליחה נשארת אצלך, ידנית. |
 | `draft-parents` | הכנתי טיוטה להורים. השליחה נשארת אצלך. |
+| `parent-all-done` | שלום, כל מה שפורסם הוכן. כל הכבוד! |
 | `draft-staff` | הכנתי טיוטה. השליחה נשארת אצלך. |
 | `attention-clear` | אין בתי ספר שמחכים לתשומת לב |
 | `from-teacher` | מהמורה: |
@@ -99,6 +102,7 @@
 | `clear-title` | הכל מעודכן |
 | `remind-title` | תזכורת |
 | `remind-evening` | תזכורת ערב |
+| `remind-all-done` | תזכורת: כל מה שפורסם הוכן. כל הכבוד! |
 | `setup-go` | המשך הקמה |
 | `all-prepared` | הכל הוכן |
 | `saved-homework` | שמרתי את השיעור. |
@@ -137,10 +141,10 @@
 
 הקול נבחר מ-`speechSynthesis.getVoices()` אחרי `voiceschanged`. קודם קול he-IL של Google או Microsoft שמכיל Online, Natural, Neural, Hila, Avri או Asaf. הקצב 0.95 והגובה 1.
 
-סדר ההשמעה הוא קובץ מוכן למזהה המשפט, ואז `speechSynthesis` עם הטקסט אחרי מילון ההגייה. המילון מכסה מקצועות, תנ״ך, שיעורי בית, שמות ילדים מהדמו, תוויות כיתה כמו ד׳1, שעות, מספרים ותאריכים שמופיעים כשעה. זיהוי דיבור הוא Web Speech בשפה he-IL. אם אין תמיכה, נשארת הקלדה.
+סדר ההשמעה הוא קובץ `simple/voice/{מזהה}.mp3` כשיש מזהה למשפט, ואז `speechSynthesis` עם הטקסט אחרי מילון ההגייה. המשפטים הקבועים, כולל חלקי התבנית, רשימת השגיאות וההנחיות, נמצאים ב-`simple/voice/lines.json` אחרי ניקוד. שורה שמכילה שם ילד או טקסט שיעור נשארת על קול המכשיר. המילון מכסה מקצועות, תנ״ך, שיעורי בית, שמות ילדים מהדמו, תוויות כיתה כמו ד׳1, שעות, מספרים ותאריכים שמופיעים כשעה. זיהוי דיבור הוא Web Speech בשפה he-IL. אם אין תמיכה, נשארת הקלדה.
 
 ## Voice quality
 
-The spoken voice is only as good as the Hebrew voice installed on the device. Chrome on a desktop often has no he-IL voice at all, and a local voice can still mispronounce names, geresh grades, and hours. This build does not download a voice and does not put a speech key in the client. Browser speech recognition may send audio to the browser vendor. A teacher can turn the microphone off for students in a class. A remote recognizer or voice is a later step, marked TODO in `simple/speech.js`.
+Fixed lines play `simple/voice/{id}.mp3` when that file is present. The text in `simple/voice/lines.json` is the pronunciation-normalized Hebrew. Generate the files on your own machine with `node tools/gen-voice.mjs`. It reads `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` from the environment and calls Azure Speech (`he-IL`, `he-IL-HilaNeural`, `audio-24khz-48kbitrate-mono-mp3`). The key is not in the repo and not in the client. A missing file, or a line with no id, falls back to `speechSynthesis` he-IL. Dynamic sentences, the ones with a child name or a homework line, stay on that device voice. Google Cloud he-IL Wavenet is not used.
 
-A later upgrade can keep the same phrase ids. Fixed lines in the table above can be rendered at build time to audio clips with Azure `he-IL-HilaNeural` or `he-IL-AvriNeural`, or with Google Cloud he-IL Wavenet, and stored next to the app. `speak-he.js` already plays `clips[phraseId]` when that file is registered, and falls back to `speechSynthesis` when it is not. Dynamic sentences, the ones with a child name or a homework line, need a backend text-to-speech call in the full version. They should stay on the device-only voice until that backend exists.
+Chrome on a desktop often has no he-IL voice at all, so those dynamic lines can still mispronounce names, geresh grades, and hours. Browser speech recognition may send audio to the browser vendor. A teacher can turn the microphone off for students in a class. A remote recognizer is a later step, marked TODO in `simple/speech.js`.

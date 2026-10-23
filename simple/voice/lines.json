@@ -1,0 +1,406 @@
+[
+  {
+    "id": "fallback",
+    "text": "אני יודע רק מה שקשור לכיתה"
+  },
+  {
+    "id": "greet-student",
+    "text": "היי, הנה מה שחשוב עכשיו."
+  },
+  {
+    "id": "greet-parent",
+    "text": "היי, ככה נראה היום."
+  },
+  {
+    "id": "greet-teacher",
+    "text": "היי, זה מה שמחכה בכיתה."
+  },
+  {
+    "id": "greet-principal",
+    "text": "היי, ככה נראה בית הספר."
+  },
+  {
+    "id": "greet-admin",
+    "text": "היי, ככה נראה בית הספר."
+  },
+  {
+    "id": "greet-admin-wide",
+    "text": "היי, אלה בתי הספר שכדאי לבדוק."
+  },
+  {
+    "id": "chat-hello",
+    "text": "היי, אפשר לשאול על הכיתה."
+  },
+  {
+    "id": "setup-hello",
+    "text": "היי, נמשיך בהקמה."
+  },
+  {
+    "id": "nothing-left",
+    "text": "להיום לא נשאר כלום"
+  },
+  {
+    "id": "no-tomorrow",
+    "text": "מחר אין שיעורים."
+  },
+  {
+    "id": "no-messages",
+    "text": "אין הודעות חדשות."
+  },
+  {
+    "id": "no-messages-short",
+    "text": "אין הודעות"
+  },
+  {
+    "id": "all-posted",
+    "text": "להיום הכל כבר פורסם."
+  },
+  {
+    "id": "all-finished",
+    "text": "כולם סיימו את מה שפורסם."
+  },
+  {
+    "id": "none-sent",
+    "text": "עוד אין הודעות."
+  },
+  {
+    "id": "cheer",
+    "text": "כל הכבוד, הכול הוכן היום"
+  },
+  {
+    "id": "no-update",
+    "text": "אין עדכון."
+  },
+  {
+    "id": "schools-clear",
+    "text": "אין בתי ספר שמחכים לעדכון"
+  },
+  {
+    "id": "deny",
+    "text": "אין הרשאה"
+  },
+  {
+    "id": "ok",
+    "text": "בסדר."
+  },
+  {
+    "id": "declined",
+    "text": "בסדר, לא שיניתי."
+  },
+  {
+    "id": "done",
+    "text": "בוצע."
+  },
+  {
+    "id": "not-done",
+    "text": "לא בוצע."
+  },
+  {
+    "id": "yes-or-no",
+    "text": "כן או לא?"
+  },
+  {
+    "id": "voice-test",
+    "text": "היי, ככה אני נשמע. אפשר לשאול אותי על הכיתה."
+  },
+  {
+    "id": "voice-hint",
+    "text": "בכיתה ההקראה כבויה, עד שלוחצים הקראה. האיכות תלויה בקול העברית שבמכשיר."
+  },
+  {
+    "id": "voice-device",
+    "text": "האיכות תלויה בקול העברית שבמכשיר."
+  },
+  {
+    "id": "voice-best",
+    "text": "הקול הכי טוב"
+  },
+  {
+    "id": "voice-empty",
+    "text": "אין במכשיר קול עִבְרִית."
+  },
+  {
+    "id": "ask-school",
+    "text": "איך קוראים לבית הספר?"
+  },
+  {
+    "id": "ask-principal",
+    "text": "מי המנהל/ת?"
+  },
+  {
+    "id": "which-classes",
+    "text": "אילו כיתות? אפשר לכתוב דָּלֶת אַחַת-דָּלֶת שָׁלוֹשׁ, או רשימה."
+  },
+  {
+    "id": "all-have-teacher",
+    "text": "לכל הכיתות יש מורה."
+  },
+  {
+    "id": "which-class",
+    "text": "לאיזו כיתה?"
+  },
+  {
+    "id": "delete-which",
+    "text": "איזה בית ספר למחוק?"
+  },
+  {
+    "id": "which-school",
+    "text": "איזה בית ספר?"
+  },
+  {
+    "id": "no-schools",
+    "text": "אין בתי ספר."
+  },
+  {
+    "id": "no-class",
+    "text": "אין כיתה."
+  },
+  {
+    "id": "which-kids",
+    "text": "איך קוראים לילדים? אפשר שורה, או פסיק."
+  },
+  {
+    "id": "all-have-parent",
+    "text": "לכל הילדים יש הורה."
+  },
+  {
+    "id": "which-kid",
+    "text": "לאיזה ילד?"
+  },
+  {
+    "id": "which-face",
+    "text": "איזה פנים לבחור?"
+  },
+  {
+    "id": "ask-helper-name",
+    "text": "איך קוראים לעוזר?"
+  },
+  {
+    "id": "none-day",
+    "text": "לסמן אין שיעורים להיום?"
+  },
+  {
+    "id": "choose",
+    "text": "מה עושים עכשיו?"
+  },
+  {
+    "id": "go-scenarios",
+    "text": "עוברים לתרחישים."
+  },
+  {
+    "id": "go-reset",
+    "text": "עוברים לאיפוס."
+  },
+  {
+    "id": "classes-updated",
+    "text": "כל הכיתות עודכנו היום."
+  },
+  {
+    "id": "updated-today",
+    "text": "היום הכל עודכן."
+  },
+  {
+    "id": "name-updated",
+    "text": "השם עודכן."
+  },
+  {
+    "id": "helper-saved",
+    "text": "העוזר נשמר."
+  },
+  {
+    "id": "marked-none",
+    "text": "סומן אין שיעורים להיום."
+  },
+  {
+    "id": "kids-added",
+    "text": "הילדים נוספו."
+  },
+  {
+    "id": "kid-added",
+    "text": "הילד נוסף."
+  },
+  {
+    "id": "confirm-kid-one",
+    "text": "להוסיף ילד אחד?"
+  },
+  {
+    "id": "class-added",
+    "text": "נוספה כיתה."
+  },
+  {
+    "id": "confirm-class-one",
+    "text": "להוסיף כיתה אחת?"
+  },
+  {
+    "id": "template-done",
+    "text": "המערכת הוחלה. אפשר לדייק בלו״ז."
+  },
+  {
+    "id": "draft-keep",
+    "text": "הכנתי טיוטה. השליחה נשארת אצלך, ידנית."
+  },
+  {
+    "id": "draft-keep-1",
+    "text": "הכנתי טיוטה."
+  },
+  {
+    "id": "draft-keep-2",
+    "text": "השליחה נשארת אצלך, ידנית."
+  },
+  {
+    "id": "draft-parents",
+    "text": "הכנתי טיוטה להורים. השליחה נשארת אצלך."
+  },
+  {
+    "id": "parent-all-done",
+    "text": "שלום, כל מה שפורסם הוכן. כל הכבוד!"
+  },
+  {
+    "id": "draft-staff",
+    "text": "הכנתי טיוטה. השליחה נשארת אצלך."
+  },
+  {
+    "id": "attention-clear",
+    "text": "אין בתי ספר שמחכים לתשומת לב"
+  },
+  {
+    "id": "from-teacher",
+    "text": "מהמורה:"
+  },
+  {
+    "id": "you-sent",
+    "text": "שלחת:"
+  },
+  {
+    "id": "still-left",
+    "text": "נשאר לך:"
+  },
+  {
+    "id": "not-posted",
+    "text": "עוד לא פורסם היום:"
+  },
+  {
+    "id": "not-finished",
+    "text": "עוד לא סיימו:"
+  },
+  {
+    "id": "missing-today",
+    "text": "חסר היום:"
+  },
+  {
+    "id": "one-subject",
+    "text": "מקצוע אחד לא עודכן"
+  },
+  {
+    "id": "message-word",
+    "text": "הודעה"
+  },
+  {
+    "id": "posted-word",
+    "text": "פורסם"
+  },
+  {
+    "id": "prepared-word",
+    "text": "הוכן"
+  },
+  {
+    "id": "not-yet",
+    "text": "עוד לא"
+  },
+  {
+    "id": "no-homework",
+    "text": "אין שיעורים"
+  },
+  {
+    "id": "not-updated",
+    "text": "לא עודכן"
+  },
+  {
+    "id": "alert-word",
+    "text": "התראה"
+  },
+  {
+    "id": "tomorrow-title",
+    "text": "למחר"
+  },
+  {
+    "id": "left-title",
+    "text": "נשאר"
+  },
+  {
+    "id": "status-title",
+    "text": "מצב"
+  },
+  {
+    "id": "week-title",
+    "text": "השבוע"
+  },
+  {
+    "id": "sent-title",
+    "text": "נשלח"
+  },
+  {
+    "id": "unfinished-title",
+    "text": "עוד לא סיימו"
+  },
+  {
+    "id": "replies-title",
+    "text": "תגובות"
+  },
+  {
+    "id": "draft-title",
+    "text": "טיוטה"
+  },
+  {
+    "id": "school-title",
+    "text": "בית הספר"
+  },
+  {
+    "id": "clear-title",
+    "text": "הכל מעודכן"
+  },
+  {
+    "id": "remind-title",
+    "text": "תזכורת"
+  },
+  {
+    "id": "remind-evening",
+    "text": "תזכורת ערב"
+  },
+  {
+    "id": "remind-all-done",
+    "text": "תזכורת: כל מה שפורסם הוכן. כל הכבוד!"
+  },
+  {
+    "id": "setup-go",
+    "text": "המשך הקמה"
+  },
+  {
+    "id": "all-prepared",
+    "text": "הכל הוכן"
+  },
+  {
+    "id": "saved-homework",
+    "text": "שמרתי את השיעור."
+  },
+  {
+    "id": "saved-message",
+    "text": "ההודעה נשלחה."
+  },
+  {
+    "id": "more-intro",
+    "text": "עוד משהו שכדאי לראות."
+  },
+  {
+    "id": "lead-clear",
+    "text": "כרגע אין משהו דחוף."
+  },
+  {
+    "id": "hear-timeout",
+    "text": "לא שמעתי. אפשר לדבר שוב."
+  },
+  {
+    "id": "mic-students-off",
+    "text": "המיקרופון כבוי לתלמידים בכיתה."
+  }
+]

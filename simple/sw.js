@@ -1,8 +1,23 @@
-const CACHE = "nohw-simple-v22";
-const SHELL = ["./","index.html","app.css","app.js","logic.js","avatar-he.js","speak-he.js","speech.js","assistant.js","setup.js","lead.js","demo.js","media.js","manifest.webmanifest","icon-192.png","icon-512.png","fonts/rubik-hebrew-400-normal.woff2","fonts/rubik-hebrew-500-normal.woff2","fonts/rubik-hebrew-600-normal.woff2","fonts/rubik-hebrew-700-normal.woff2","fonts/rubik-latin-400-normal.woff2","fonts/rubik-latin-500-normal.woff2","fonts/rubik-latin-600-normal.woff2","fonts/rubik-latin-700-normal.woff2"];
+const CACHE = "nohw-simple-v23";
+const SHELL = ["./","index.html","app.css","app.js","logic.js","avatar-he.js","speak-he.js","speech.js","assistant.js","setup.js","lead.js","demo.js","media.js","manifest.webmanifest","icon-192.png","icon-512.png","fonts/rubik-hebrew-400-normal.woff2","fonts/rubik-hebrew-500-normal.woff2","fonts/rubik-hebrew-600-normal.woff2","fonts/rubik-hebrew-700-normal.woff2","fonts/rubik-latin-400-normal.woff2","fonts/rubik-latin-500-normal.woff2","fonts/rubik-latin-600-normal.woff2","fonts/rubik-latin-700-normal.woff2","voice/lines.json","voice/hashes.json"];
+
+function cacheVoice(cache) {
+  return fetch("./voice/hashes.json").then(function (res) {
+    if (!res.ok) return;
+    return res.json();
+  }).then(function (hashes) {
+    if (!hashes || typeof hashes !== "object") return;
+    return Promise.all(Object.keys(hashes).map(function (id) {
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) return;
+      return cache.add("./voice/" + id + ".mp3").catch(function () {});
+    }));
+  }).catch(function () {});
+}
 
 self.addEventListener("install", function (event) {
-  event.waitUntil(caches.open(CACHE).then(function (cache) { return cache.addAll(SHELL); }));
+  event.waitUntil(caches.open(CACHE).then(function (cache) {
+    return cache.addAll(SHELL).then(function () { return cacheVoice(cache); });
+  }));
   self.skipWaiting();
 });
 
