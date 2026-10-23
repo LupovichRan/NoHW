@@ -3,7 +3,7 @@ name: Deploy GitHub Pages
 on:
   push:
     branches:
-      - cursor/nohw-pilot-775c
+      - simple
   workflow_dispatch:
 
 permissions:
@@ -24,12 +24,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Assemble site
+        run: |
+          rm -rf _site
+          mkdir -p _site/simple
+          cp -a dist/. _site/
+          cp -a simple/. _site/simple/
       - name: Configure Pages
         uses: actions/configure-pages@v5
-      - name: Upload dist
+      - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: _site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
