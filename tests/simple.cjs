@@ -133,6 +133,13 @@ S.importPack(studentState, studentPack);
 assert.equal(S.identify(studentState, kid.kidCode).role, "student");
 assert.equal(S.identify(studentState, kid.parentCode), null);
 
+assert.equal(S.copyPayload("K7P2QX"), "K7P2QX");
+assert.equal(S.copyPayload("  k7p2qx "), "K7P2QX");
+assert.equal(S.copyPayload(principalCode), principalCode);
+assert.equal(S.copyPayload(kid.kidCode), kid.kidCode);
+assert.equal(S.copyPayload(kid.parentCode), kid.parentCode);
+assert.equal(/\s|קוד|http|#pack|שלום/.test(S.copyPayload(principalCode)), false);
+
 const teacherPack = S.packFor(state, "teacher", teacherCode);
 assert.equal(teacherPack.schools[0].principalCode, "");
 assert.equal(teacherPack.schools[0].classrooms[0].teacherCode, teacherCode);

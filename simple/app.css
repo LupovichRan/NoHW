@@ -144,3 +144,21 @@ svg.mirror { transform: scaleX(-1); }
 .empty, .err { font-weight: 600; }
 .empty { margin: auto; color: var(--muted); font-size: 18px; text-align: center; }
 .err { color: var(--accent); margin: 0; text-align: start; }
+.toast {
+  position: fixed;
+  z-index: 2;
+  inset-inline: 16px;
+  inset-block-end: calc(16px + env(safe-area-inset-bottom));
+  width: min(398px, calc(100% - 32px));
+  margin-inline: auto;
+  min-height: 48px;
+  padding-inline: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border-radius: 14px;
+  background: var(--ink);
+  color: #fff;
+  font-weight: 600;
+  text-align: start;
+}

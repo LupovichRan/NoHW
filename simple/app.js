@@ -20,6 +20,7 @@ const I = {
 let state = S.emptyState();
 let session = null;
 let view = { name: "roles" };
+let toastTimer = 0;
 
 function ico(d, mirror) {
   const paths = Array.isArray(d) ? d : [d];
@@ -45,7 +46,10 @@ function readJSON(key) {
 function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
 function saveSession() { localStorage.setItem(SES, JSON.stringify(session)); }
 function render() { document.getElementById("app").innerHTML = html(); }
-function shell(head, body) { return '<section class="app" lang="he" dir="rtl">' + head + body + "</section>"; }
+function shell(head, body) {
+  const toast = view.toast ? '<p class="toast" role="status">' + esc(view.toast) + "</p>" : "";
+  return '<section class="app" lang="he" dir="rtl">' + head + body + toast + "</section>";
+}
 function bar(title, sub, extra, backLabel) {
   return '<header class="top"><button class="icon" type="button" data-act="back" aria-label="' + (backLabel || "חזרה") + '">' + ico(I.back) + '</button><div class="titles"><h1>' + esc(title) + "</h1>" + (sub ? "<p>" + esc(sub) + "</p>" : "") + "</div>" + (extra || "") + "</header>";
 }
@@ -118,8 +122,7 @@ function formHtml() {
 }
 function shareHtml() {
   const blocks = (view.items || []).map(function (item) {
-    const copied = view.copied === item.code;
-    return '<div class="block"><span>' + esc(item.label) + (item.hint ? " · " + esc(item.hint) : "") + '</span><p class="big">' + ltr(item.code) + '</p><div class="pair"><button class="primary wa" type="button" data-act="wa" data-role="' + item.role + '" data-code="' + esc(item.code) + '">' + ico(I.chat, true) + "וואטסאפ</button><button class=\"ghost\" type=\"button\" data-act=\"copy\" data-role=\"" + item.role + "\" data-code=\"" + esc(item.code) + "\">" + (copied ? "הועתק" : "העתקה") + "</button></div></div>";
+    return '<div class="block"><span>' + esc(item.label) + (item.hint ? " · " + esc(item.hint) : "") + '</span><p class="big">' + ltr(item.code) + '</p><div class="pair"><button class="primary wa" type="button" data-act="wa" data-role="' + item.role + '" data-code="' + esc(item.code) + '">' + ico(I.chat, true) + "וואטסאפ</button><button class=\"ghost\" type=\"button\" data-act=\"copy\" data-role=\"" + item.role + "\" data-code=\"" + esc(item.code) + "\">העתקה</button></div></div>";
   }).join("");
   return shell(bar("שיתוף"), blocks);
 }
@@ -203,10 +206,24 @@ function onClick(event) {
     render();
   } else if (act === "wa") window.open("https://wa.me/?text=" + encodeURIComponent(message(el.dataset.role, el.dataset.code)), "_blank", "noopener");
   else if (act === "copy") {
-    const text = message(el.dataset.role, el.dataset.code);
-    const done = function () { view.copied = el.dataset.code; render(); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(done);
-    else done();
+    const payload = S.copyPayload(el.dataset.code);
+    const done = function () {
+      view.toast = "הועתק";
+      render();
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { view.toast = ""; render(); }, 1400);
+    };
+    const fallback = function () {
+      const area = document.createElement("textarea");
+      area.value = payload;
+      area.dir = "ltr";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(payload).then(done).catch(function () { fallback(); done(); });
+    else { fallback(); done(); }
   }
 }
 function onSubmit(event) {

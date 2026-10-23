@@ -22,6 +22,11 @@
     if (!text) throw new Error("missing");
     return text.slice(0, 40);
   }
+  function copyPayload(code) {
+    const text = norm(code);
+    if (!CODE.test(text)) throw new Error("missing");
+    return text;
+  }
   function generateCode(random) {
     const next = random || Math.random;
     let out = "";
@@ -318,6 +323,7 @@
   return {
     SUBJECTS,
     generateCode,
+    copyPayload,
     emptyState,
     identify: locate,
     addPrincipal,
