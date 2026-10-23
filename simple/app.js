@@ -41,12 +41,10 @@ let talk = null;
 let listenToken = 0;
 let listenStream = null;
 let listenRec = null;
-let listenRecorder = null;
 let listenTimer = 0;
 let listenStarted = 0;
 let listenTarget = "chat";
 let heardTalk = "";
-const speechProxy = { sttUrl: "", ttsUrl: "" };
 let chatLog = [];
 let wizard = null;
 let setupPending = null;
@@ -368,14 +366,6 @@ function speakBubbles(bubbles) {
       if (studentMicAllowed()) startListen("chat");
     }
   };
-  if (window.NohwSpeech && window.NohwSpeech.speak) {
-    window.NohwSpeech.speak(items, hooks, {
-      speaker: window.NohwSpeak,
-      origin: location.origin,
-      settings: speechProxy
-    });
-    return;
-  }
   if (window.NohwSpeak) window.NohwSpeak.speakQueue(items, hooks);
 }
 function speakLatest() {
@@ -3021,8 +3011,7 @@ function studentMicAllowed() {
 }
 function speechHint() {
   if (!studentMicAllowed()) return "המיקרופון כבוי לתלמידים בכיתה";
-  const remote = window.NohwSpeech && window.NohwSpeech.sameOriginUrl(speechProxy.sttUrl, location.origin);
-  if (!speechCtor() && !remote) return "הדיבור לא זמין בדפדפן זה";
+  if (!speechCtor()) return "הדיבור לא זמין בדפדפן זה";
   return "הדפדפן עשוי להשתמש בשירות דיבור משלו. זיהוי הדיבור בדפדפן עשוי לשלוח שמע לספק הדפדפן.";
 }
 function makeMicButton() {
@@ -3071,10 +3060,6 @@ function stopListenTracks() {
     try { listenRec.onresult = null; listenRec.onerror = null; listenRec.onend = null; listenRec.stop(); } catch (e) {}
     listenRec = null;
   }
-  if (listenRecorder) {
-    try { listenRecorder.onstop = null; if (listenRecorder.state !== "inactive") listenRecorder.stop(); } catch (e) {}
-    listenRecorder = null;
-  }
   if (listenStream) {
     listenStream.getTracks().forEach(function (track) { try { track.stop(); } catch (e) {} });
     listenStream = null;
@@ -3116,10 +3101,6 @@ function finishListen(submit) {
   deliverTranscript(routed);
 }
 function userStopListen() {
-  if (listenRecorder && listenRecorder.state === "recording") {
-    try { listenRecorder.stop(); } catch (e) { finishListen(false); }
-    return;
-  }
   finishListen(!!heardTalk);
 }
 function tickListen() {
@@ -3128,10 +3109,6 @@ function tickListen() {
   if (node) node.textContent = clockText(Date.now() - listenStarted);
   paintLive(heardTalk);
   if (!window.NohwSpeech || Date.now() - listenStarted < window.NohwSpeech.LISTEN_MS) return;
-  if (listenRecorder && listenRecorder.state === "recording") {
-    try { listenRecorder.stop(); } catch (e) {}
-    return;
-  }
   const machine = talkMachine();
   view.hearing = false;
   heardTalk = "";
@@ -3189,38 +3166,6 @@ function bindWebRecognizer(token) {
     render();
   }
 }
-function bindRemoteRecognizer(token, url, stream) {
-  if (!stream || !window.MediaRecorder || !window.NohwSpeech) {
-    view.speechMissing = true;
-    view.hearing = false;
-    stopListenTracks();
-    render();
-    return;
-  }
-  const chunks = [];
-  const rec = new window.MediaRecorder(stream);
-  listenRecorder = rec;
-  rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
-  rec.onstop = function () {
-    if (token !== listenToken) return;
-    const blob = new Blob(chunks, { type: (chunks[0] && chunks[0].type) || "audio/webm" });
-    view.hearing = false;
-    window.NohwSpeech.transcribeRemote(fetch, url, blob, location.origin).then(function (text) {
-      stopListenTracks();
-      heardTalk = text;
-      const machine = talkMachine();
-      const routed = window.NohwSpeech.routeTranscript(text, listenTarget);
-      if (machine && routed.ok) machine.final(routed.text);
-      if (routed.ok) deliverTranscript(routed);
-      else render();
-    }).catch(function () {
-      stopListenTracks();
-      view.speechMissing = true;
-      toast("הדיבור לא זמין בדפדפן זה");
-    });
-  };
-  rec.start();
-}
 function startListen(target) {
   if (view.recording) return;
   if (!studentMicAllowed()) {
@@ -3229,8 +3174,8 @@ function startListen(target) {
     render();
     return;
   }
-  const plan = window.NohwSpeech ? window.NohwSpeech.chooseStt({ webSpeech: !!speechCtor(), origin: location.origin }, speechProxy) : { id: speechCtor() ? "web" : "none" };
-  if (!plan || plan.id === "none") {
+  const plan = window.NohwSpeech ? window.NohwSpeech.listenWith(!!speechCtor()) : (speechCtor() ? "web" : "none");
+  if (plan === "none") {
     view.speechMissing = true;
     view.hearing = false;
     render();
@@ -3259,8 +3204,7 @@ function startListen(target) {
       return;
     }
     listenStream = stream;
-    if (plan.id === "remote") bindRemoteRecognizer(token, plan.url, stream);
-    else bindWebRecognizer(token);
+    bindWebRecognizer(token);
     render();
   }).catch(function (error) {
     if (token !== listenToken) return;
@@ -3282,8 +3226,8 @@ function toggleHandsFree() {
     render();
     return;
   }
-  const plan = window.NohwSpeech ? window.NohwSpeech.chooseStt({ webSpeech: !!speechCtor(), origin: location.origin }, speechProxy) : { id: "none" };
-  if (!plan || plan.id === "none") {
+  const plan = window.NohwSpeech ? window.NohwSpeech.listenWith(!!speechCtor()) : "none";
+  if (plan === "none") {
     view.speechMissing = true;
     render();
     return;

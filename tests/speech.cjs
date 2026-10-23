@@ -8,7 +8,6 @@ const A = require("../simple/assistant.js");
 const D = require("../simple/demo.js");
 
 const today = "2026-10-23";
-const origin = "https://app.example";
 
 assert.equal(Speech.normalize("  מה יש למחר?  "), "מה יש למחר");
 assert.equal(Speech.normalize("כן."), "כן");
@@ -42,18 +41,10 @@ kids = G.guide(state, who, kids.session, Speech.normalize("נועה, תמר, א�
 assert.deepEqual(kids.confirm.payload.names, ["נועה", "תמר", "אורי"]);
 assert.equal(room.kids.length, 0);
 
-assert.equal(Speech.chooseStt({ webSpeech: true, origin: origin }, {}).id, "web");
-assert.equal(Speech.chooseStt({ webSpeech: false, origin: origin }, {}).id, "none");
-assert.deepEqual(Speech.sttOrder({ webSpeech: true, origin: origin }, { sttUrl: origin + "/stt" }).map(function (item) { return item.id; }), ["remote", "web"]);
-assert.equal(Speech.chooseStt({ webSpeech: true, origin: origin }, { sttUrl: "https://evil.example/stt" }).id, "web");
-assert.equal(Speech.chooseStt({ webSpeech: false, origin: origin }, { sttUrl: "https://evil.example/stt" }).id, "none");
-assert.equal(Speech.chooseStt({ webSpeech: false, origin: origin }, { sttUrl: "/stt" }).id, "remote");
-
-const clipFirst = Speech.ttsOrder("voice-test", "היי", { ttsUrl: origin + "/tts" }, "clip.mp3", origin);
-assert.deepEqual(clipFirst.map(function (item) { return item.id; }), ["clip", "remote", "synth"]);
-assert.equal(Speech.chooseTts("x", "היי", {}, "", origin).id, "synth");
-assert.equal(Speech.chooseTts("x", "היי", { ttsUrl: "https://evil.example/tts" }, "", origin).id, "synth");
-assert.equal(Speech.chooseTts("x", "היי", { ttsUrl: origin + "/tts" }, "", origin).id, "remote");
+assert.equal(Speech.listenWith(true), "web");
+assert.equal(Speech.listenWith(false), "none");
+assert.equal(Speech.speakWith("clip.mp3"), "clip");
+assert.equal(Speech.speakWith(""), "synth");
 
 const talk = Speech.conversation();
 assert.equal(talk.mode(), "off");
@@ -94,8 +85,9 @@ S.setStudentMic(state, teacher, { classId: room.id, on: true });
 assert.equal(room.mic, undefined);
 
 const speech = fs.readFileSync(path.join(__dirname, "..", "simple", "speech.js"), "utf8");
-assert.doesNotMatch(speech, /api[_-]?key|authorization|bearer |sk-|openai|subscription/i);
-assert.match(speech, /he-IL|webSpeech/);
+assert.doesNotMatch(speech, /api[_-]?key|authorization|bearer |sk-|openai|subscription|fetch\(/i);
+assert.match(speech, /he-IL/);
+assert.match(speech, /TODO/);
 const app = fs.readFileSync(path.join(__dirname, "..", "simple", "app.js"), "utf8");
 assert.match(app, /micbig/);
 assert.match(app, /דיבור רצוף/);
@@ -109,24 +101,7 @@ const page = fs.readFileSync(path.join(__dirname, "..", "simple", "index.html"),
 assert.match(page, /speech\.js/);
 assert.match(page, /connect-src 'self'/);
 const sw = fs.readFileSync(path.join(__dirname, "..", "simple", "sw.js"), "utf8");
-assert.match(sw, /nohw-simple-v21/);
+assert.match(sw, /nohw-simple-v22/);
 assert.match(sw, /speech\.js/);
 
-async function remote() {
-  let called = 0;
-  await assert.rejects(Speech.transcribeRemote(function () { called += 1; }, "https://evil.example/stt", new Blob(["a"]), origin), /blocked/);
-  assert.equal(called, 0);
-  const sent = await Speech.transcribeRemote(function (url, opts) {
-    assert.equal(url, origin + "/stt");
-    assert.equal(opts.method, "POST");
-    assert.equal(opts.headers.authorization, undefined);
-    assert.equal(opts.headers.Authorization, undefined);
-    return Promise.resolve({ ok: true, json: function () { return Promise.resolve({ text: "מה יש למחר?" }); } });
-  }, origin + "/stt", new Blob(["a"], { type: "audio/webm" }), origin);
-  assert.equal(sent, "מה יש למחר");
-  await assert.rejects(Speech.synthesizeRemote(function () { throw new Error("called"); }, "https://evil.example/tts", "היי", origin), /blocked/);
-}
-remote().then(function () { console.log("speech ok"); }).catch(function (error) {
-  console.error(error);
-  process.exit(1);
-});
+console.log("speech ok");

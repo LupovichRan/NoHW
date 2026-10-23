@@ -1,4 +1,4 @@
-const CACHE = "nohw-simple-v21";
+const CACHE = "nohw-simple-v22";
 const SHELL = ["./","index.html","app.css","app.js","logic.js","avatar-he.js","speak-he.js","speech.js","assistant.js","setup.js","lead.js","demo.js","media.js","manifest.webmanifest","icon-192.png","icon-512.png","fonts/rubik-hebrew-400-normal.woff2","fonts/rubik-hebrew-500-normal.woff2","fonts/rubik-hebrew-600-normal.woff2","fonts/rubik-hebrew-700-normal.woff2","fonts/rubik-latin-400-normal.woff2","fonts/rubik-latin-500-normal.woff2","fonts/rubik-latin-600-normal.woff2","fonts/rubik-latin-700-normal.woff2"];
 
 self.addEventListener("install", function (event) {

@@ -376,6 +376,7 @@
     }
     return cards;
   }
+  // One scored list per role. Morning, afternoon, and evening only change the numbers.
   function candidates(state, who, opts) {
     const today = String(opts && opts.today || "");
     const part = partOf(opts && opts.hour);
