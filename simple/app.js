@@ -9,12 +9,13 @@ const I = {
   back: "M9 5l7 7-7 7",
   check: "M5 12.5 9.2 16.8 19 7.2",
   pencil: "M14.5 5.5l4 4M4 20l4.2-.8L19.2 8.2a2 2 0 0 0-2.8-2.8L5.4 16.4 4 20z",
-  menu: "M4 7h16M4 12h16M4 17h16",
+  live: "M4 12h2.8l2-6 3.4 12 2.2-6H20",
   cast: "M8 11.2a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2zM16.2 10.2a2.1 2.1 0 1 1 0-4.2 2.1 2.1 0 0 1 0 4.2zM3.6 18.6c.7-2.2 2.4-3.4 4.4-3.4s3.7 1.2 4.4 3.4M13 18.6c.4-1.5 1.6-2.4 3.2-2.4 1.5 0 2.7.8 3.2 2.4"
 };
 
 let scenarioId = "cast";
 let scenarioTitle = "";
+let suggestedId = "";
 let people = [];
 let state = S.emptyState();
 let person = null;
@@ -40,7 +41,7 @@ function readJSON(key) {
   try { return JSON.parse(localStorage.getItem(key) || ""); } catch (e) { return null; }
 }
 function saveStore() {
-  localStorage.setItem(STORE, JSON.stringify({ scenarioId: scenarioId, scenarioTitle: scenarioTitle, personId: person && person.id || "", people: people, state: state }));
+  localStorage.setItem(STORE, JSON.stringify({ scenarioId: scenarioId, scenarioTitle: scenarioTitle, personId: person && person.id || "", suggestedId: suggestedId, people: people, state: state }));
 }
 function render() { document.getElementById("app").innerHTML = html(); }
 function push(next) { stack.push(view); view = next; render(); }
@@ -51,9 +52,12 @@ function shell(head, body) {
 function castButton() {
   return '<button class="icon" type="button" data-act="cast" aria-label="החלפת דמות">' + ico(I.cast) + "</button>";
 }
+function liveButton() {
+  return '<button class="icon" type="button" data-act="live" aria-label="נתונים חיים">' + ico(I.live) + "</button>";
+}
 function bar(title, sub, extra) {
   const back = stack.length ? '<button class="icon" type="button" data-act="back" aria-label="חזרה">' + ico(I.back) + "</button>" : "";
-  return '<header class="top">' + back + '<div class="titles"><h1>' + esc(title) + "</h1>" + (sub ? "<p>" + esc(sub) + "</p>" : "") + "</div>" + (extra || "") + castButton() + "</header>";
+  return '<header class="top">' + back + '<div class="titles"><h1>' + esc(title) + "</h1>" + (sub ? "<p>" + esc(sub) + "</p>" : "") + "</div>" + (extra || "") + liveButton() + castButton() + "</header>";
 }
 function err() { return view.error ? '<p class="err">' + esc(view.error) + "</p>" : ""; }
 function byRole(a, b) { return (ROLE_ORDER[a.role] - ROLE_ORDER[b.role]) || a.name.localeCompare(b.name, "he"); }
@@ -91,30 +95,57 @@ function remember(role, code) {
   else if (role === "teacher") people.push({ id: "t-" + found.room.id, name: found.room.teacherName, emoji: "📚", role: "teacher", schoolId: found.school.id, classId: found.room.id });
   else if (role === "student") people.push({ id: "s-" + found.kid.id, name: found.kid.firstName, emoji: "🎒", role: "student", schoolId: found.school.id, classId: found.room.id, kidId: found.kid.id });
 }
-function applyPack(pack, personId) {
+function adopt(pack, next) {
   scenarioId = pack.id;
   scenarioTitle = pack.title || "";
   people = pack.people;
   state = pack.state;
-  person = people.find(function (item) { return item.id === personId; }) || null;
-  stack = [];
-  view = person ? { name: "main" } : { name: "people" };
+  person = null;
+  suggestedId = pack.personId || "";
+  stack = next.stack || [];
+  view = { name: next.name };
   saveStore();
   render();
 }
 function peopleHtml() {
   const cards = people.slice().sort(byRole).map(function (item) {
-    return '<button class="person" type="button" data-act="enter" data-id="' + esc(item.id) + '"><span class="avatar">' + item.emoji + "</span><strong>" + esc(item.name) + '</strong><span class="tag">' + esc(ROLE_LABEL[item.role] || "") + "</span></button>";
+    const on = item.id === suggestedId;
+    return '<button class="person' + (on ? " on" : "") + '" type="button" data-act="enter" data-id="' + esc(item.id) + '"' + (on ? ' aria-current="true"' : "") + '><span class="avatar">' + item.emoji + "</span><strong>" + esc(item.name) + '</strong><span class="tag">' + esc(ROLE_LABEL[item.role] || "") + "</span></button>";
   }).join("");
-  const sub = scenarioTitle ? "<p>" + esc(scenarioTitle) + "</p>" : "";
-  const head = '<header class="top"><div class="titles"><h1>שיעורי בית</h1>' + sub + '</div><button class="icon" type="button" data-act="menu" aria-label="תרחישים">' + ico(I.menu) + "</button>" + castButton() + "</header>";
-  return shell(head, '<div class="cast">' + cards + "</div>");
+  return shell(bar("שיעורי בית", scenarioTitle), '<div class="cast">' + cards + "</div>");
 }
-function scenariosHtml() {
-  const rows = D.scenarios(today()).map(function (item) {
-    return '<button class="scenario" type="button" data-act="scenario" data-id="' + esc(item.id) + '">' + esc(item.title) + "</button>";
+function startHtml() {
+  const head = '<header class="top"><div class="titles"><h1>שיעורי בית</h1></div></header>';
+  const cards = [["data", "📂", "נתונים"], ["live", "📡", "נתונים חיים"], ["people", "👥", "דמויות"]].map(function (item) {
+    return '<button class="choice" type="button" data-act="go" data-to="' + item[0] + '"><span class="avatar">' + item[1] + "</span><strong>" + esc(item[2]) + "</strong></button>";
   }).join("");
-  return shell(bar("תרחישים"), '<div class="list">' + rows + '</div><button class="ghost reset" type="button" data-act="reset">איפוס</button>');
+  return shell(head, '<div class="hub">' + cards + "</div>");
+}
+function dataHtml() {
+  const rows = D.scenarios(today()).map(function (item) {
+    const on = item.id === scenarioId;
+    return '<button class="scenario' + (on ? " on" : "") + '" type="button" data-act="scenario" data-id="' + esc(item.id) + '"' + (on ? ' aria-current="true"' : "") + '><span class="avatar">' + esc(item.emoji) + "</span><strong>" + esc(item.title) + "</strong>" + (on ? '<span class="mark">' + ico(I.check) + "<small>פעיל</small></span>" : "") + "</button>";
+  }).join("");
+  return shell(bar("נתונים"), '<div class="list picks">' + rows + '</div><button class="ghost reset" type="button" data-act="reset">איפוס</button>');
+}
+function stat(icon, value, label) {
+  return '<span class="stat" aria-label="' + esc(label + " " + value) + '"><span class="emo">' + icon + "</span><b>" + value + "</b><small>" + esc(label) + "</small></span>";
+}
+function liveHtml() {
+  const tree = D.liveView(state, today());
+  const schools = tree.schools.map(function (school) {
+    const classes = school.classes.map(function (room) {
+      const kids = room.kids.map(function (kid) {
+        return '<div class="kid"><span>🎒</span><b>' + esc(kid.name) + '</b><span class="mini" aria-label="' + esc("הוכן " + kid.done) + '">✅ ' + kid.done + "</span></div>";
+      }).join("");
+      return '<div class="room"><div class="line"><span class="emo">📚</span><strong>' + esc(room.name) + '</strong><span class="mini" aria-label="' + esc("ילדים " + room.kidCount) + '">🎒 ' + room.kidCount + '</span></div><div class="stats">' + stat("📝", room.posted, "פורסם") + stat("⏳", room.notUpdated, "לא עודכן") + stat("🚫", room.none, "אין שיעורים") + stat("✅", room.done, "הוכן") + "</div>" + kids + "</div>";
+    }).join("");
+    return '<section class="school"><div class="line"><span class="emo">🏫</span><strong>' + esc(school.name) + '</strong><span class="mini" aria-label="' + esc("כיתות " + school.classCount) + '">📚 ' + school.classCount + '</span><span class="mini" aria-label="' + esc("ילדים " + school.kidCount) + '">🎒 ' + school.kidCount + "</span></div>" + classes + "</section>";
+  }).join("");
+  return shell(bar("נתונים חיים"), '<div class="tree">' + (schools || '<p class="empty">אין בתי ספר</p>') + "</div>");
+}
+function resetHtml() {
+  return shell(bar("איפוס"), '<div class="confirm"><p class="ask">לאפס?</p><div class="pair"><button class="primary" type="button" data-act="do-reset">איפוס</button><button class="ghost" type="button" data-act="back">ביטול</button></div></div>');
 }
 function pencil(kind, id) {
   if (!S.canEdit(state, actor(), { kind: kind, id: id })) return "";
@@ -239,7 +270,10 @@ function home() {
   return schoolsHtml();
 }
 function html() {
-  if (view.name === "scenarios") return scenariosHtml();
+  if (view.name === "start") return startHtml();
+  if (view.name === "data") return dataHtml();
+  if (view.name === "live") return liveHtml();
+  if (view.name === "reset") return resetHtml();
   if (view.name === "people" || !person) return peopleHtml();
   if (view.name === "form") return formHtml();
   if (view.name === "edit") return editHtml();
@@ -284,11 +318,16 @@ function onClick(event) {
   const el = event.target.closest("[data-act]");
   if (!el || (el.closest("form") && el.type === "submit")) return;
   const act = el.dataset.act;
-  if (act === "menu") push({ name: "scenarios" });
-  else if (act === "scenario") {
-    const pack = D.scenarios(today()).find(function (item) { return item.id === el.dataset.id; });
-    if (pack) applyPack(pack, pack.personId);
-  } else if (act === "reset") applyPack(D.cast(today()), "");
+  if (act === "go") {
+    const name = el.dataset.to;
+    if (name === "data" || name === "live" || name === "people") push({ name: name });
+  } else if (act === "live") {
+    if (view.name !== "live") push({ name: "live" });
+  } else if (act === "scenario") {
+    const pack = D.scenarioById(el.dataset.id, today());
+    if (pack && pack.id === el.dataset.id) adopt(pack, { name: "people", stack: [{ name: "start" }, { name: "data" }] });
+  } else if (act === "reset") push({ name: "reset" });
+  else if (act === "do-reset") adopt(D.scenarioById(scenarioId, today()), { name: "data", stack: [{ name: "start" }] });
   else if (act === "enter") {
     const who = people.find(function (item) { return item.id === el.dataset.id; });
     if (!who) return;
@@ -299,13 +338,13 @@ function onClick(event) {
     render();
   } else if (act === "cast") {
     person = null;
-    stack = [];
+    stack = [{ name: "start" }];
     view = { name: "people" };
     saveStore();
     render();
   } else if (act === "back") {
     if (stack.length) { view = stack.pop(); render(); }
-    else { person = null; view = { name: "people" }; saveStore(); render(); }
+    else { person = null; stack = [{ name: "start" }]; view = { name: "people" }; saveStore(); render(); }
   } else if (act === "add") {
     const level = listLevel();
     if (level === "schools") push({ name: "form", add: "school" });
@@ -391,8 +430,19 @@ function boot() {
     people = saved.people;
     state = saved.state;
     person = people.find(function (item) { return item.id === saved.personId; }) || null;
-    view = person ? { name: "main" } : { name: "people" };
-  } else applyPack(D.cast(today()), "");
+    suggestedId = saved.suggestedId || "";
+    view = person ? { name: "main" } : { name: "start" };
+  } else {
+    const pack = D.cast(today());
+    scenarioId = pack.id;
+    scenarioTitle = "";
+    people = pack.people;
+    state = pack.state;
+    person = null;
+    suggestedId = "";
+    stack = [];
+    view = { name: "start" };
+  }
   const app = document.getElementById("app");
   app.addEventListener("click", onClick);
   app.addEventListener("submit", onSubmit);

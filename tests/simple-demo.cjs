@@ -120,10 +120,91 @@ assert.equal(S.rowsFor(weekKid.room, days[3], weekKid.kid).filter((row) => row.d
 assert.equal(S.rowsFor(weekKid.room, days[5], weekKid.kid).find((row) => row.subject === S.SUBJECTS[1]).done, true);
 assert.equal(S.rowsFor(weekKid.room, days[5], weekKid.kid).find((row) => row.subject === S.SUBJECTS[0]).done, false);
 
+const emojis = D.scenarios(today).map((pack) => pack.emoji);
+assert.equal(emojis.every((emoji) => emoji), true);
+assert.equal(new Set(emojis).size, emojis.length);
+
+const freshNormal = D.liveView(D.scenarioById("normal", today).state, today);
+assert.equal(freshNormal.date, today);
+assert.equal(freshNormal.schools.length, 1);
+assert.equal(freshNormal.schools[0].name, "אלון");
+assert.equal(freshNormal.schools[0].classCount, 1);
+assert.equal(freshNormal.schools[0].kidCount, 2);
+const freshRoom = freshNormal.schools[0].classes[0];
+assert.equal(freshRoom.name, "ה'2");
+assert.equal(freshRoom.kidCount, 2);
+assert.equal(freshRoom.posted, 3);
+assert.equal(freshRoom.notUpdated, 2);
+assert.equal(freshRoom.none, 0);
+assert.equal(freshRoom.done, 2);
+assert.equal(freshRoom.kids[0].name, "נועה");
+assert.equal(freshRoom.kids[0].done, 2);
+assert.equal(freshRoom.kids[1].name, "עומר");
+assert.equal(freshRoom.kids[1].done, 0);
+
+const dirty = D.scenarioById("normal", today);
+dirty.state.schools[0].classrooms[0].kids[0].firstName = "רות";
+S.setHomework(dirty.state, D.personActor(dirty.state, who(dirty, "t-c-h2")), { classId: "c-h2", date: today, subject: S.SUBJECTS[3], mode: "post", text: "עמוד 9" });
+const dirtyLive = D.liveView(dirty.state, today);
+assert.equal(dirtyLive.schools[0].classes[0].kids[0].name, "רות");
+assert.equal(dirtyLive.schools[0].classes[0].posted, 4);
+assert.equal(dirtyLive.schools[0].classes[0].notUpdated, 1);
+const restored = D.scenarioById("normal", today);
+const restoredLive = D.liveView(restored.state, today);
+assert.equal(D.findKid(restored.state, "k-noa").kid.firstName, "נועה");
+assert.equal(restoredLive.schools[0].classes[0].posted, 3);
+assert.equal(restoredLive.schools[0].classes[0].notUpdated, 2);
+assert.equal(restoredLive.schools[0].classes[0].none, 0);
+assert.equal(restoredLive.schools[0].classes[0].done, 2);
+assert.equal(restoredLive.schools[0].classes[0].kids[0].name, "נועה");
+assert.equal(D.scenarioById("cast", today).people.length, D.cast(today).people.length);
+assert.equal(D.scenarioById("missing", today).id, "cast");
+assert.equal(JSON.stringify(D.liveView(restored.state, today)), JSON.stringify(restoredLive));
+
+const staleLive = D.liveView(byId.stale.state, today);
+assert.equal(staleLive.schools[0].classes[0].posted, 0);
+assert.equal(staleLive.schools[0].classes[0].notUpdated, 5);
+assert.equal(staleLive.schools[0].classes[0].none, 0);
+assert.equal(staleLive.schools[0].classes[0].done, 0);
+const noneLive = D.liveView(byId.none.state, today);
+assert.equal(noneLive.schools[0].classes[0].none, 5);
+assert.equal(noneLive.schools[0].classes[0].posted, 0);
+assert.equal(noneLive.schools[0].classes[0].notUpdated, 0);
+const emptyLive = D.liveView(byId.empty.state, today);
+assert.equal(emptyLive.schools.length, 1);
+assert.equal(emptyLive.schools[0].name, "דקל");
+assert.equal(emptyLive.schools[0].classCount, 0);
+assert.equal(emptyLive.schools[0].kidCount, 0);
+assert.equal(emptyLive.schools[0].classes.length, 0);
+const hiddenLive = D.liveView(byId.hidden.state, today);
+assert.equal(hiddenLive.schools.length, 2);
+assert.equal(hiddenLive.schools[0].classCount, 2);
+assert.equal(hiddenLive.schools[0].kidCount, 2);
+assert.equal(hiddenLive.schools[1].classCount, 1);
+assert.equal(hiddenLive.schools[1].kidCount, 1);
+const weekLive = D.liveView(byId.week.state, today);
+assert.equal(weekLive.schools[0].classes[0].posted, 2);
+assert.equal(weekLive.schools[0].classes[0].notUpdated, 3);
+assert.equal(weekLive.schools[0].classes[0].done, 1);
+assert.equal(D.liveView(byId.stale.state, saturday).date, today);
+
+const before = JSON.stringify(byId.empty.state);
+D.liveView(byId.empty.state, today);
+assert.equal(JSON.stringify(byId.empty.state), before);
+
+const appJs = fs.readFileSync(path.join(__dirname, "..", "simple", "app.js"), "utf8");
+assert.match(appJs, /scenarioById/);
+assert.match(appJs, /liveView/);
+assert.match(appJs, /לאפס/);
+assert.match(appJs, /פעיל/);
+
 const doc = fs.readFileSync(path.join(__dirname, "..", "docs", "simple-demo-scenarios.md"), "utf8");
 for (const pack of D.scenarios(today)) assert.ok(doc.includes(pack.title), pack.title);
 assert.match(doc, /איפוס/);
+assert.match(doc, /לאפס/);
 assert.match(doc, /החלפת דמות/);
+assert.match(doc, /נתונים/);
+assert.match(doc, /נתונים חיים/);
 
 function ROLE(pack, role) {
   return pack.people.find((item) => item.role === role).name;

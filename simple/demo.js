@@ -52,8 +52,8 @@
   function person(id, name, emoji, role, extra) {
     return Object.assign({ id: id, name: name, emoji: emoji, role: role }, extra || {});
   }
-  function pack(id, title, personId, people, schools) {
-    return { id: id, title: title, personId: personId, people: people, state: { v: 1, schools: schools } };
+  function pack(id, title, personId, people, schools, emoji) {
+    return { id: id, title: title, personId: personId, people: people, emoji: emoji || "", state: { v: 1, schools: schools } };
   }
   function findSchool(state, id) {
     return (state.schools || []).find(function (item) { return item.id === id; }) || null;
@@ -233,9 +233,9 @@
     tamarDone[day][SUB[3]] = true;
 
     return [
-      pack("normal", "יום רגיל · 2 מתוך 3 הושלמו", "s-k-noa", corePeople(), [alonPair(day, normalHomework(day), normalDone(day))]),
-      pack("stale", "המורה לא עדכנה", "s-k-noa", corePeople(), [alonPair(day)]),
-      pack("none", "אין שיעורים היום", "s-k-noa", corePeople(), [alonPair(day, noneDay(day))]),
+      pack("normal", "יום רגיל · 2 מתוך 3 הושלמו", "s-k-noa", corePeople(), [alonPair(day, normalHomework(day), normalDone(day))], "✅"),
+      pack("stale", "המורה לא עדכנה", "s-k-noa", corePeople(), [alonPair(day)], "⏳"),
+      pack("none", "אין שיעורים היום", "s-k-noa", corePeople(), [alonPair(day, noneDay(day))], "🚫"),
       pack("two", "הורה לשני ילדים", "par-yael", [
         person("p-s-alon", "דנה כהן", "👩", "principal", { schoolId: "s-alon" }),
         person("t-c-h2", "מיכל אביב", "👩‍🏫", "teacher", { schoolId: "s-alon", classId: "c-h2" }),
@@ -254,18 +254,18 @@
             return homework;
           })())
         ])
-      ]),
+      ], "👪"),
       pack("add-class", "מנהל מוסיף כיתה", "p-s-alon", [
         person("p-s-alon", "דנה כהן", "👩", "principal", { schoolId: "s-alon" }),
         person("t-c-h2", "מיכל אביב", "👩‍🏫", "teacher", { schoolId: "s-alon", classId: "c-h2" }),
         person("s-k-noa", "נועה", "👧", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-noa" })
-      ], [school("s-alon", "אלון", "דנה כהן", [room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה")])])]),
+      ], [school("s-alon", "אלון", "דנה כהן", [room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה")])])], "➕"),
       pack("add-school", "מנהל מערכת מוסיף בית ספר", "admin", [
         person("admin", "נועם גל", "🧔", "admin"),
         person("p-s-alon", "דנה כהן", "👩", "principal", { schoolId: "s-alon" }),
         person("t-c-h2", "מיכל אביב", "👩‍🏫", "teacher", { schoolId: "s-alon", classId: "c-h2" }),
         person("s-k-omer", "עומר", "👦", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-omer" })
-      ], [school("s-alon", "אלון", "דנה כהן", [room("c-h2", "ה'2", "מיכל אביב", [kid("k-omer", "עומר")])])]),
+      ], [school("s-alon", "אלון", "דנה כהן", [room("c-h2", "ה'2", "מיכל אביב", [kid("k-omer", "עומר")])])], "🏫"),
       pack("hidden", "כיתה או בית ספר אחר לא מופיעים", "t-c-h2", [
         person("p-s-alon", "דנה כהן", "👩", "principal", { schoolId: "s-alon" }),
         person("p-s-brosh", "יואב מזרחי", "👨", "principal", { schoolId: "s-brosh" }),
@@ -281,16 +281,54 @@
           room("c-d1", "ד'1", "אור לוי", [kid("k-tamar", "תמר")])
         ]),
         school("s-brosh", "ברוש", "יואב מזרחי", [room("c-v1", "ו'1", "רונית שמש", [kid("k-ido", "עידו")])])
-      ]),
+      ], "🙈"),
       pack("empty", "בית ספר חדש וריק", "p-s-dekel", [
         person("p-s-dekel", "רן אור", "👨", "principal", { schoolId: "s-dekel" })
-      ], [school("s-dekel", "דקל", "רן אור", [])]),
+      ], [school("s-dekel", "דקל", "רן אור", [])], "🌱"),
       pack("week", "שבוע עם השלמה חלקית", "par-yael", [
         person("t-c-h2", "מיכל אביב", "👩‍🏫", "teacher", { schoolId: "s-alon", classId: "c-h2" }),
         person("s-k-noa", "נועה", "👧", "student", { schoolId: "s-alon", classId: "c-h2", kidId: "k-noa" }),
         person("par-yael", "יעל ברק", "👩", "parent", { kidIds: ["k-noa"] })
-      ], [school("s-alon", "אלון", "דנה כהן", [room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה", weekDone)], weekHomework)])])
+      ], [school("s-alon", "אלון", "דנה כהן", [room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה", weekDone)], weekHomework)])], "📅")
     ];
+  }
+
+  function scenarioById(id, today) {
+    if (id && id !== "cast") {
+      const found = scenarios(today).find(function (item) { return item.id === id; });
+      if (found) return found;
+    }
+    return cast(today);
+  }
+  function liveView(state, date) {
+    const day = schoolDay(date);
+    const schools = ((state && state.schools) || []).map(function (item) {
+      const classes = (item.classrooms || []).map(function (room) {
+        const rows = S.rowsFor(room, day, null);
+        const kids = (room.kids || []).map(function (kid) {
+          const done = S.rowsFor(room, day, kid).filter(function (row) { return row.done; }).length;
+          return { id: kid.id, name: kid.firstName, done: done };
+        });
+        return {
+          id: room.id,
+          name: room.name,
+          kidCount: kids.length,
+          posted: rows.filter(function (row) { return row.status === "posted"; }).length,
+          notUpdated: rows.filter(function (row) { return row.status === "not-updated"; }).length,
+          none: rows.filter(function (row) { return row.status === "no-homework"; }).length,
+          done: kids.reduce(function (sum, kid) { return sum + kid.done; }, 0),
+          kids: kids
+        };
+      });
+      return {
+        id: item.id,
+        name: item.name,
+        classCount: classes.length,
+        kidCount: classes.reduce(function (sum, room) { return sum + room.kidCount; }, 0),
+        classes: classes
+      };
+    });
+    return { date: day, schools: schools };
   }
 
   return {
@@ -298,6 +336,8 @@
     schoolDay: schoolDay,
     cast: cast,
     scenarios: scenarios,
+    scenarioById: scenarioById,
+    liveView: liveView,
     findSchool: findSchool,
     findClass: findClass,
     findKid: findKid,
