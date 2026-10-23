@@ -76,7 +76,7 @@ function recordOverlay() {
 function shell(head, body) {
   const note = toastText ? '<p class="toast" role="status">' + esc(toastText) + "</p>" : "";
   const busy = view.recording ? " busy" : "";
-  return '<section class="app' + busy + '" lang="he" dir="rtl">' + head + body + recordOverlay() + note + "</section>";
+  return '<section class="app' + busy + '" lang="he" dir="rtl">' + head + body + recordOverlay() + sheetHtml() + note + "</section>";
 }
 function toast(text) {
   toastText = text;
@@ -96,7 +96,52 @@ function liveButton() {
 }
 function bar(title, sub, extra) {
   const back = stack.length ? '<button class="icon" type="button" data-act="back" aria-label="חזרה">' + ico(I.back) + "</button>" : "";
-  return '<header class="top">' + back + '<div class="titles"><h1>' + esc(title) + "</h1>" + (sub ? "<p>" + esc(sub) + "</p>" : "") + "</div>" + (extra || "") + liveButton() + castButton() + "</header>";
+  return '<header class="top">' + back + '<div class="titles"><h1>' + esc(title) + "</h1>" + (sub ? "<p>" + esc(sub) + "</p>" : "") + "</div>" + (extra || "") + selfAvatar() + liveButton() + castButton() + "</header>";
+}
+function profileId(who) {
+  const id = String(who && who.profile || "");
+  return /^[A-Za-z0-9_-]{1,48}$/.test(id) ? id : "";
+}
+function faceHtml(who) {
+  if (!who) return "";
+  const id = profileId(who);
+  const src = id && urls[id];
+  if (id && !src) queueMedia(id);
+  if (src) return '<img alt="" src="' + esc(src) + '">';
+  return esc(who.emoji || "🙂");
+}
+function photoActor() {
+  const base = actor() || { role: person ? person.role : "" };
+  if (person) base.personId = person.id;
+  return base;
+}
+function canPhoto(who) {
+  return !!(who && S.canSetPhoto(state, photoActor(), who));
+}
+function faceNode(who) {
+  if (!who) return "";
+  const inner = '<span class="face">' + faceHtml(who) + "</span>";
+  if (!canPhoto(who)) return inner;
+  return '<button class="face" type="button" data-act="avatar" data-id="' + esc(who.id) + '" aria-label="תמונת פרופיל">' + faceHtml(who) + "</button>";
+}
+function selfAvatar() {
+  if (!person) return "";
+  return faceNode(person);
+}
+function sheetHtml() {
+  if (!view.sheet) return "";
+  const who = people.find(function (item) { return item.id === view.sheet; });
+  if (!who || !canPhoto(who)) return "";
+  return '<div class="sheetscrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-label="תמונת פרופיל"><div class="face big">' + faceHtml(who) + '</div><button type="button" data-act="avatar-cam">📷 צלם</button><button type="button" data-act="avatar-lib">🖼️ מהגלריה</button><button type="button" data-act="avatar-clear">הסר</button></div>';
+}
+function personForKid(id) {
+  return people.find(function (item) { return item.role === "student" && item.kidId === id; }) || null;
+}
+function personForClass(id) {
+  return people.find(function (item) { return item.role === "teacher" && item.classId === id; }) || null;
+}
+function personForSchool(id) {
+  return people.find(function (item) { return item.role === "principal" && item.schoolId === id; }) || null;
 }
 function err() { return view.error ? '<p class="err">' + esc(view.error) + "</p>" : ""; }
 function byRole(a, b) { return (ROLE_ORDER[a.role] - ROLE_ORDER[b.role]) || a.name.localeCompare(b.name, "he"); }
@@ -172,7 +217,7 @@ function peopleHtml() {
     const cards = items.map(function (item) {
       const on = item.id === suggestedId;
       const caption = D.parentCaption(item, state);
-      return '<button class="person' + (group[0] === "parent" ? " parent" : "") + (on ? " on" : "") + '" type="button" data-act="enter" data-id="' + esc(item.id) + '"' + (on ? ' aria-current="true"' : "") + '><span class="avatar">' + item.emoji + '</span><span class="meta"><strong>' + esc(item.name) + "</strong>" + (caption ? "<small>" + esc(caption) + "</small>" : "") + "</span></button>";
+      return '<button class="person' + (group[0] === "parent" ? " parent" : "") + (on ? " on" : "") + '" type="button" data-act="enter" data-id="' + esc(item.id) + '"' + (on ? ' aria-current="true"' : "") + '><span class="avatar">' + faceHtml(item) + '</span><span class="meta"><strong>' + esc(item.name) + "</strong>" + (caption ? "<small>" + esc(caption) + "</small>" : "") + "</span></button>";
     }).join("");
     return '<section class="group" data-role="' + group[0] + '"><h2><span>' + group[2] + "</span>" + esc(group[1]) + '</h2><div class="cast' + (group[0] === "parent" ? " parents" : "") + '">' + cards + "</div></section>";
   }).join("");
@@ -217,19 +262,19 @@ function pencil(kind, id) {
 }
 function entityList(kind, rows, title, sub, extra, empty) {
   const body = rows.length ? '<div class="list">' + rows.map(function (row) {
-    return '<div class="card"><button class="who" type="button" data-act="open" data-id="' + esc(row.id) + '"><strong>' + esc(row.title) + "</strong>" + (row.meta ? "<small>" + esc(row.meta) + "</small>" : "") + "</button>" + (row.aside || "") + pencil(kind, row.id) + "</div>";
+    return '<div class="card">' + (row.face || "") + '<button class="who" type="button" data-act="open" data-id="' + esc(row.id) + '"><strong>' + esc(row.title) + "</strong>" + (row.meta ? "<small>" + esc(row.meta) + "</small>" : "") + "</button>" + (row.aside || "") + pencil(kind, row.id) + "</div>";
   }).join("") + "</div>" : '<p class="empty">' + empty + "</p>";
   return shell(bar(title, sub, extra || ""), body + '<button class="primary add" type="button" data-act="add"><span aria-hidden="true">+</span>הוספה</button>');
 }
 function schoolsHtml() {
   return entityList("school", (state.schools || []).map(function (item) {
-    return { id: item.id, title: item.name, meta: item.principalName };
+    return { id: item.id, title: item.name, meta: item.principalName, face: faceNode(personForSchool(item.id)) };
   }), "בתי ספר", "", "", "אין בתי ספר");
 }
 function classesHtml(schoolId) {
   const school = D.findSchool(state, schoolId);
   const rows = school ? (school.classrooms || []).map(function (item) {
-    return { id: item.id, title: item.name, meta: item.teacherName };
+    return { id: item.id, title: item.name, meta: item.teacherName, face: faceNode(personForClass(item.id)) };
   }) : [];
   return entityList("class", rows, school ? school.name : "כיתות", school ? "כיתות" : "", "", "אין כיתות");
 }
@@ -251,12 +296,12 @@ function parentOf(kidId) {
 function parentIcon(kidId) {
   const parent = parentOf(kidId);
   if (!parent) return "";
-  return '<button class="icon" type="button" data-act="as-parent" data-id="' + esc(parent.id) + '" aria-label="ראה כהורה"><span class="emo">👪</span></button>';
+  return '<button class="icon" type="button" data-act="as-parent" data-id="' + esc(parent.id) + '" aria-label="ראה כהורה">' + faceHtml(parent) + "</button>";
 }
 function kidsHtml(classId) {
   const found = D.findClass(state, classId);
   const rows = found ? (found.room.kids || []).map(function (item) {
-    return { id: item.id, title: item.firstName, meta: "", aside: parentIcon(item.id) };
+    return { id: item.id, title: item.firstName, meta: "", aside: parentIcon(item.id), face: faceNode(personForKid(item.id)) };
   }) : [];
   return entityList("kid", rows, found ? found.room.name : "כיתה", found ? found.room.teacherName : "", found ? dayButton(found.room.id) : "", "אין ילדים");
 }
@@ -266,7 +311,7 @@ function parentKidsHtml() {
     return found ? { id: found.kid.id, title: found.kid.firstName, meta: found.room.name } : null;
   }).filter(Boolean);
   const body = rows.length ? '<div class="list">' + rows.map(function (row) {
-    return '<button class="card" type="button" data-act="open" data-id="' + esc(row.id) + '"><span class="who"><strong>' + esc(row.title) + "</strong><small>" + esc(row.meta) + "</small></span></button>";
+    return '<button class="card" type="button" data-act="open" data-id="' + esc(row.id) + '">' + faceNode(personForKid(row.id)) + '<span class="who"><strong>' + esc(row.title) + "</strong><small>" + esc(row.meta) + "</small></span></button>";
   }).join("") + "</div>" : '<p class="empty">אין ילדים</p>';
   return shell(bar(person.name, D.parentCaption(person, state) || "הילדים"), alertBanner() + inboxLink() + body);
 }
@@ -363,7 +408,7 @@ function parentShortcut(kidId) {
   const parent = parentOf(kidId);
   if (!parent) return "";
   const caption = D.parentCaption(parent, state);
-  return '<button class="jump" type="button" data-act="as-parent" data-id="' + esc(parent.id) + '"><span>👪</span><b>ראה כהורה</b>' + (caption ? "<small>" + esc(caption) + "</small>" : "") + "</button>";
+  return '<button class="jump" type="button" data-act="as-parent" data-id="' + esc(parent.id) + '">' + faceNode(parent) + '<b>ראה כהורה</b>' + (caption ? "<small>" + esc(caption) + "</small>" : "") + "</button>";
 }
 function dayHtml(kidId, live) {
   const found = D.findKid(state, kidId);
@@ -455,7 +500,7 @@ function visibleMessages(who) {
   if (!who) return [];
   if (who.role === "student") {
     const found = D.findKid(state, who.kidId);
-    return found ? S.messagesFor(found.room, "student") : [];
+    return found ? S.messagesFor(found.room, "student").map(function (msg) { return Object.assign({ classId: found.room.id }, msg); }) : [];
   }
   if (who.role === "parent") {
     const seen = {};
@@ -467,14 +512,14 @@ function visibleMessages(who) {
         const key = found.room.id + ":" + msg.id;
         if (seen[key]) return;
         seen[key] = true;
-        all.push(msg);
+        all.push(Object.assign({ classId: found.room.id }, msg));
       });
     });
     all.sort(function (a, b) { return (b.bump || b.at || 0) - (a.bump || a.at || 0); });
     return all;
   }
   const found = classFor(who);
-  return found ? S.messagesFor(found.room, "teacher") : [];
+  return found ? S.messagesFor(found.room, "teacher").map(function (msg) { return Object.assign({ classId: found.room.id }, msg); }) : [];
 }
 function unseenAlert(who) {
   const seen = (who && who.seen) || {};
@@ -582,7 +627,13 @@ function messageCard(msg, can) {
   const voices = asVoices(msg);
   const media = (photos.length || voices.length) ? '<div class="clips">' + photoThumbs(photos, { msgId: msg.id }) + voiceClips(voices) + "</div>" : "";
   const tools = can ? '<div class="actions"><button type="button" data-act="edit-msg" data-id="' + esc(msg.id) + '">✏️<small>עריכה</small></button><button type="button" data-act="ask-msg" data-id="' + esc(msg.id) + '">🗑️<small>מחיקה</small></button><button type="button" data-act="bump" data-id="' + esc(msg.id) + '">⬆️<small>הקפצה</small></button></div>' : "";
-  return '<article class="card msg"><div class="who"><strong>' + esc(msg.text || (photos.length ? "תמונה" : "הקלטה")) + "</strong><small>" + esc(who) + "</small>" + marks + "</div>" + media + tools + "</article>";
+  return '<article class="card msg">' + faceNode(messageSender(msg)) + '<div class="who"><strong>' + esc(msg.text || (photos.length ? "תמונה" : "הקלטה")) + "</strong><small>" + esc(who) + "</small>" + marks + "</div>" + media + tools + "</article>";
+}
+function messageSender(msg) {
+  const classId = msg && msg.classId;
+  if (classId) return personForClass(classId);
+  if (person && person.role === "teacher") return person;
+  return personForClass(person && person.classId);
 }
 function messagesHtml() {
   const list = visibleMessages(person);
@@ -875,6 +926,88 @@ function imageFromUrl(file) {
     img.src = url;
   });
 }
+function cropSquare(source, width, height) {
+  const side = Math.max(1, Math.min(width, height));
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  canvas.getContext("2d").drawImage(source, (width - side) / 2, (height - side) / 2, side, side, 0, 0, 256, 256);
+  return new Promise(function (resolve, reject) {
+    canvas.toBlob(function (blob) {
+      if (blob) resolve(blob);
+      else reject(new Error("save"));
+    }, "image/jpeg", 0.7);
+  });
+}
+function squareFromBitmap(file) {
+  if (typeof createImageBitmap !== "function") return null;
+  return createImageBitmap(file, { imageOrientation: "from-image" }).catch(function () {
+    return createImageBitmap(file);
+  }).then(function (bitmap) {
+    return cropSquare(bitmap, bitmap.width, bitmap.height).then(function (blob) {
+      if (bitmap.close) bitmap.close();
+      return blob;
+    }, function (error) {
+      if (bitmap.close) bitmap.close();
+      throw error;
+    });
+  });
+}
+function squareFromUrl(file) {
+  return new Promise(function (resolve, reject) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = function () {
+      cropSquare(img, img.naturalWidth || img.width, img.naturalHeight || img.height).then(function (blob) {
+        URL.revokeObjectURL(url);
+        resolve(blob);
+      }).catch(function (error) {
+        URL.revokeObjectURL(url);
+        reject(error);
+      });
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      reject(new Error("read"));
+    };
+    img.src = url;
+  });
+}
+function squareImage(file) {
+  const bitmap = squareFromBitmap(file);
+  if (!bitmap) return squareFromUrl(file);
+  return bitmap.catch(function () { return squareFromUrl(file); });
+}
+function forgetProfile(who) {
+  const id = profileId(who);
+  if (!id) return;
+  if (urls[id]) { URL.revokeObjectURL(urls[id]); delete urls[id]; }
+  delete missingMedia[id];
+  readyStore().then(function (store) { return store.remove(id); }).catch(function () {});
+  delete who.profile;
+}
+function setProfile(file, fromCamera) {
+  const who = people.find(function (item) { return item.id === view.sheet; });
+  if (!who || !canPhoto(who)) return;
+  const problem = imageProblem(file, fromCamera);
+  if (problem) { toast(problem); return; }
+  squareImage(file).then(function (blob) {
+    if (!blob.type || blob.type.indexOf("image/") !== 0) throw new Error("bad-type");
+    const id = mediaId("a");
+    return readyStore().then(function (store) { return store.put(id, blob); }).then(function () {
+      forgetProfile(who);
+      who.profile = id;
+      urls[id] = URL.createObjectURL(blob);
+      view.sheet = "";
+      view.avatarPick = false;
+      saveStore();
+      toast("נשמר ✓");
+    });
+  }).catch(function (error) {
+    const full = error && (error.name === "QuotaExceededError" || error.code === 22 || error.message === "full");
+    toast(full ? "האחסון מלא" : (error && error.message === "bad-type" ? "סוג קובץ לא נתמך" : (error && error.message === "read" ? "לא הצלחנו לקרוא את התמונה" : "השמירה נכשלה")));
+  });
+}
 function compressImage(file) {
   if (typeof createImageBitmap !== "function") return imageFromUrl(file);
   return createImageBitmap(file, { imageOrientation: "from-image" }).catch(function () {
@@ -927,7 +1060,13 @@ function onFile(event) {
   if (!input || input.type !== "file") return;
   const files = Array.from(input.files || []);
   input.value = "";
-  if (!files.length || (view.name !== "post" && view.name !== "compose")) return;
+  if (!files.length) return;
+  if (input.id === "face" || view.avatarPick) {
+    view.avatarPick = false;
+    setProfile(files[0], input.id === "face" || input.id === "cam");
+    return;
+  }
+  if (view.name !== "post" && view.name !== "compose") return;
   const fromCamera = input.id === "cam";
   const problem = files.map(function (file) { return imageProblem(file, fromCamera); }).find(Boolean);
   if (problem) { toast(problem); return; }
@@ -1081,6 +1220,32 @@ function onClick(event) {
   if (!el || (el.closest("form") && el.type === "submit")) return;
   const act = el.dataset.act;
   if (view.recording && act !== "record") return;
+  if (act === "avatar") {
+    const who = people.find(function (item) { return item.id === el.dataset.id; });
+    if (!who || !canPhoto(who)) return;
+    view.sheet = who.id;
+    render();
+    return;
+  }
+  if (act === "close-sheet") { view.sheet = ""; view.avatarPick = false; render(); return; }
+  if (act === "avatar-cam") {
+    const input = document.getElementById("face");
+    if (input) input.click();
+    return;
+  }
+  if (act === "avatar-lib") {
+    view.avatarPick = true;
+    const input = document.getElementById("lib");
+    if (input) input.click();
+    return;
+  }
+  if (act === "avatar-clear") {
+    const who = people.find(function (item) { return item.id === view.sheet; });
+    if (who && canPhoto(who)) { forgetProfile(who); saveStore(); }
+    view.sheet = "";
+    toast("נשמר ✓");
+    return;
+  }
   if (act === "go") {
     const name = el.dataset.to;
     if (name === "data" || name === "live" || name === "people") {
@@ -1381,8 +1546,9 @@ function boot() {
     if (view.voices && view.voices[index]) view.voices[index].text = String(node.value || "").slice(0, 280);
   });
   if (!document.getElementById("cam")) {
-    document.body.insertAdjacentHTML("beforeend", '<input id="cam" class="picker" type="file" accept="image/*" capture="environment" aria-label="מצלמה"><input id="lib" class="picker" type="file" accept="image/*" multiple aria-label="גלריה">');
+    document.body.insertAdjacentHTML("beforeend", '<input id="cam" class="picker" type="file" accept="image/*" capture="environment" aria-label="מצלמה"><input id="face" class="picker" type="file" accept="image/*" capture="user" aria-label="צלם"><input id="lib" class="picker" type="file" accept="image/*" multiple aria-label="גלריה">');
     document.getElementById("cam").addEventListener("change", onFile);
+    document.getElementById("face").addEventListener("change", onFile);
     document.getElementById("lib").addEventListener("change", onFile);
   }
   render();

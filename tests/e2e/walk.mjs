@@ -269,6 +269,51 @@ try {
   await page.locator("[aria-current='true']").click();
   record("scenario reset", true);
 
+  await openScenario("יום רגיל · 2 מתוך 3 הושלמו");
+  await page.locator('header [aria-label="תמונת פרופיל"]').click();
+  await page.waitForSelector("text=📷 צלם");
+  if (!(await page.locator("body").innerText()).includes("מהגלריה") || !(await page.locator("body").innerText()).includes("הסר")) throw new Error("sheet");
+  await page.screenshot({ path: "/opt/cursor/artifacts/avatar_sheet.png" });
+  await layout("avatar sheet");
+  await axe("avatar sheet");
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.locator("button", { hasText: "מהגלריה" }).click();
+  await (await chooserPromise).setFiles(jpeg);
+  await page.waitForFunction(() => {
+    const img = document.querySelector("header .face img");
+    return img && img.complete && img.naturalWidth === 256;
+  });
+  record("set own profile photo", true);
+  await page.locator('header [aria-label="תמונת פרופיל"]').click();
+  await clickText("הסר");
+  await page.waitForFunction(() => !document.querySelector("header .face img"));
+  const fallback = await page.locator("header .face").innerText();
+  if (!fallback.trim()) throw new Error("emoji fallback empty");
+  record("remove profile photo falls back to emoji", true);
+  await page.locator('[aria-label="החלפת דמות"]').click();
+  await clickText("מיכל");
+  await clickText("תלמידים");
+  if (!(await page.locator('.card [aria-label="תמונת פרופיל"]').count())) throw new Error("teacher cannot open a student's photo");
+  await page.locator('.card [aria-label="תמונת פרופיל"]').first().click();
+  await page.locator("#face").setInputFiles(jpeg);
+  await page.waitForSelector(".card .face img");
+  record("teacher sets a student's photo", true);
+  await page.locator('.card [aria-label="תמונת פרופיל"]').nth(1).click();
+  await page.locator("#face").setInputFiles(jpeg);
+  await page.locator('[aria-label="החלפת דמות"]').click();
+  await clickText("נועה");
+  await page.locator('header [aria-label="תמונת פרופיל"]').click();
+  await page.locator("#face").setInputFiles(jpeg);
+  await page.waitForSelector("header .face img");
+  if (await page.locator('.card [aria-label="תמונת פרופיל"]').count()) throw new Error("student can edit another photo");
+  await page.locator('[aria-label="החלפת דמות"]').click();
+  const faces = await page.locator(".person img").count();
+  if (faces < 2) throw new Error("picker photos " + faces);
+  await page.screenshot({ path: "/opt/cursor/artifacts/avatar_picker.png" });
+  await layout("avatar picker");
+  await axe("avatar picker");
+  record("profile photos show on the character picker", true);
+
   const manifest = await page.evaluate(async (root) => {
     const response = await fetch(new URL("manifest.webmanifest", root));
     const data = await response.json();

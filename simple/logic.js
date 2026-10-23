@@ -138,6 +138,16 @@
     if (scope.role === "principal") return true;
     return !!(node.room && scope.room && node.room.id === scope.room.id);
   }
+  function canSetPhoto(state, actor, who) {
+    if (!who || !who.role) return false;
+    if (actor && actor.personId && who.id && actor.personId === who.id) return true;
+    if (who.role === "admin") return false;
+    if (who.role === "principal") return canEdit(state, actor, { kind: "school", id: who.schoolId });
+    if (who.role === "teacher") return canEdit(state, actor, { kind: "class", id: who.classId });
+    if (who.role === "student") return canEdit(state, actor, { kind: "kid", id: who.kidId });
+    if (who.role === "parent") return (who.kidIds || []).some(function (id) { return canEdit(state, actor, { kind: "parent", id: id }); });
+    return false;
+  }
   function requireEdit(state, actor, target) {
     if (!canEdit(state, actor, target)) throw new Error("forbidden");
     return resolveTarget(state, target);
@@ -506,7 +516,7 @@
     };
     if (role === "principal") {
       school.classrooms = clone(found.school.classrooms || []);
-      return { v: 1, role, code: found.code, schools: [school] };
+      return finishPack({ v: 1, role, code: found.code, schools: [school] }, arguments[3]);
     }
     const room = found.room;
     school.classrooms = [{
@@ -519,7 +529,25 @@
       messages: clone(messagesFor(room, role)),
       kids: role === "teacher" ? clone(room.kids || []) : [kidSlice(found.kid, role)]
     }];
-    return { v: 1, role, code: found.code, schools: [school] };
+    return finishPack({ v: 1, role, code: found.code, schools: [school] }, arguments[3]);
+  }
+  function dropProfile(value) {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) { value.forEach(dropProfile); return; }
+    delete value.profile;
+    Object.keys(value).forEach(function (key) { dropProfile(value[key]); });
+  }
+  function finishPack(pack, extra) {
+    dropProfile(pack);
+    if (extra && Array.isArray(extra.profiles)) {
+      pack.profiles = extra.profiles.map(function (item) {
+        const id = String(item && item.profile || "");
+        const personId = String(item && item.id || "").slice(0, 40);
+        if (!personId || !/^[A-Za-z0-9_-]{1,48}$/.test(id)) return null;
+        return { id: personId, profile: id };
+      }).filter(Boolean);
+    }
+    return pack;
   }
   function encodePack(pack) {
     const bytes = new TextEncoder().encode(JSON.stringify(pack));
@@ -709,6 +737,7 @@
     addClassroom,
     addKid,
     canEdit,
+    canSetPhoto,
     rename,
     resetCode,
     removeNode,

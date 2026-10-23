@@ -46,7 +46,7 @@ The report covers the build after the approved product changes: a principal home
 | RTL (`dir=rtl`) and no horizontal overflow on every scenario | Pass |
 | Manifest, service worker, and a reload while offline | Pass |
 | axe-core, no serious or critical issues | Pass |
-| Lighthouse performance / accessibility / best practices / PWA | 97 / 100 / 100 / 100 |
+| Lighthouse performance / accessibility / best practices / PWA | 96 / 100 / 100 / 100 |
 | WebKit | Not run. The browser is not installed here. |
 | XSS payloads in a school name, a student name, homework text, a transcript, and a custom subject stay as text | Pass |
 | Content-Security-Policy and referrer policy | Pass |
@@ -56,6 +56,8 @@ The report covers the build after the approved product changes: a principal home
 | npm audit of the e2e dev dependencies | Pass, 0 vulnerabilities |
 | No third-party requests during the walk | Pass |
 | Speech screen says the browser may use its own speech service | Pass |
+| Profile photo: set, remove, emoji fallback, teacher may set a student, student cannot set someone else | Pass |
+| Profile photos stay out of a normal `#pack=` and are included only when a profile export is requested | Pass |
 | Service worker cache stays on the app's own directory | Pass |
 
 ## Bugs found and fixed
@@ -68,6 +70,7 @@ The report covers the build after the approved product changes: a principal home
 6. Photos and recordings had no size or type check before they were stored. An image must be `image/*` (or a known image extension) and at most 15 MB. A recording must be audio (or `video/webm` from a recorder) and at most 4 MB. Removing a clip still revokes its object URL.
 7. Lighthouse's PWA score was 88 because the manifest had no maskable icon. The padded app icons are now also declared as maskable. The score is 100.
 8. The principal opened straight into class management, the teacher day had no whole-day clear and no save-and-next, and several labels still said מערכת, נתונים, or מנהל. Those are the approved product changes, and the checks above were run after them.
+9. People had only emoji avatars. Each person can now keep a square 256px profile photo in IndexedDB. You can change your own photo, and someone above you can change a person below them. A normal share pack does not include those photos.
 
 ## Remaining risks
 
