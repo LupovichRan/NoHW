@@ -64,7 +64,7 @@ async function axe(name) {
   await page.evaluate(axeSource);
   const outcome = await page.evaluate(async () => {
     const result = await window.axe.run(document, { resultTypes: ["violations"] });
-    return result.violations.filter((item) => item.impact === "serious" || item.impact === "critical").map((item) => item.id + " " + item.help);
+    return result.violations.filter((item) => item.impact === "serious" || item.impact === "critical").map((item) => item.id + " " + item.help + " " + (item.nodes[0] ? item.nodes[0].target.join(" ") + " " + item.nodes[0].html : ""));
   });
   if (outcome.length) throw new Error(outcome.join("; "));
   record("axe " + name, true);
@@ -313,6 +313,97 @@ try {
   await layout("avatar picker");
   await axe("avatar picker");
   record("profile photos show on the character picker", true);
+
+  await openScenario("שיחה עם עוזר הכיתה");
+  const fab = page.locator('[aria-label="עוזר הכיתה"]');
+  if ((await fab.count()) !== 1) throw new Error("student fab");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const still = await page.locator(".helperfab .eye").first().evaluate((el) => getComputedStyle(el).animationName);
+  if (still !== "none") throw new Error("reduced motion " + still);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await fab.click();
+  await page.waitForSelector(".chatsheet");
+  if (await page.locator("[data-act='helper-face']").count()) throw new Error("student can restyle the helper");
+  const hint = await page.locator(".chatsheet .hint").innerText();
+  if (!hint.includes("דיבור") && !hint.includes("שירות דיבור")) throw new Error(hint);
+  await clickText("מה יש למחר?");
+  const tomorrow = await page.locator(".bubble.bot").last().innerText();
+  if (!tomorrow.includes("עמ׳ 18") || !tomorrow.includes("קריאה") || tomorrow.includes("שיחת הורים")) throw new Error(tomorrow);
+  if (!(await page.locator(".bubble.bot img").count())) throw new Error("missing homework photo");
+  if (!(await page.locator('.bubble.bot [aria-label="השמעה"]').count())) throw new Error("missing voice button");
+  await page.screenshot({ path: "/opt/cursor/artifacts/helper_student.png" });
+  await layout("helper student");
+  await axe("helper student");
+  await page.locator('.askbox input[name="q"]').fill('<img src=x onerror="window.__xss=1">');
+  await clickText("שאל");
+  const typed = await page.evaluate(() => {
+    const mine = [...document.querySelectorAll(".bubble.me")];
+    const last = mine[mine.length - 1];
+    return {
+      flag: window.__xss || "",
+      images: document.querySelectorAll(".bubble.me img").length,
+      text: last ? last.textContent : ""
+    };
+  });
+  if (typed.flag || typed.images || !typed.text.includes("<img")) throw new Error(JSON.stringify(typed));
+  const stored = await page.evaluate(() => localStorage.getItem("nohw-simple-demo") || "");
+  if (stored.includes("__xss") || stored.includes("onerror")) throw new Error("chat was stored");
+  await page.locator('.askbox input[name="q"]').fill("מה נשאר לעומר");
+  await clickText("שאל");
+  const denied = await page.locator(".bubble.bot").last().innerText();
+  if (!denied.includes("אני יודע רק מה שקשור לכיתה") || denied.includes("עומר")) throw new Error(denied);
+  await clickText("מה המורה שלחה?");
+  const sent = await page.locator(".bubble.bot").last().innerText();
+  if (!sent.includes("מבחן ביום א׳") || sent.includes("שיחת הורים")) throw new Error(sent);
+  record("student helper answers stay inside the class", true);
+
+  await page.locator('[aria-label="סגירה"]').click();
+  await page.locator('[aria-label="החלפת דמות"]').click();
+  await clickText("יעל");
+  if ((await fab.count()) !== 1) throw new Error("parent fab");
+  await fab.click();
+  await clickText("מה המצב?");
+  const parentStatus = await page.locator(".bubble.bot").last().innerText();
+  if (!parentStatus.includes("נועה") || parentStatus.includes("עומר")) throw new Error(parentStatus);
+  await clickText("מה נשלח?");
+  const parentNote = await page.locator(".bubble.bot").last().innerText();
+  if (!parentNote.includes("שיחת הורים ביום ג׳") || !parentNote.includes("מבחן ביום א׳")) throw new Error(parentNote);
+  await page.screenshot({ path: "/opt/cursor/artifacts/helper_parent.png" });
+  await layout("helper parent");
+  await axe("helper parent");
+  record("parent helper includes their kid and parents-only notes", true);
+
+  await page.locator('[aria-label="סגירה"]').click();
+  await page.locator('[aria-label="החלפת דמות"]').click();
+  await clickText("מיכל");
+  await fab.click();
+  if ((await page.locator("[data-act='helper-face']").count()) < 4) throw new Error("teacher cannot set the face");
+  await clickText("מה עוד לא פורסם?");
+  const unposted = await page.locator(".bubble.bot").last().innerText();
+  if (!unposted.includes("אנגלית")) throw new Error(unposted);
+  await clickText("מי עוד לא סיים?");
+  const waiting = await page.locator(".bubble.bot").last().innerText();
+  if (!waiting.includes("נועה") || !waiting.includes("עומר")) throw new Error(waiting);
+  await page.screenshot({ path: "/opt/cursor/artifacts/helper_teacher.png" });
+  await clickText("נסח תזכורת");
+  await clickText("פתח בטיוטה");
+  const draft = await page.locator('input[name="text"]').inputValue();
+  if (!draft.includes("תזכורת") || !draft.includes("עומר") || !draft.includes("נועה")) throw new Error(draft);
+  if ((await page.locator("body").innerText()).includes("נשלח")) throw new Error("draft was sent");
+  record("teacher helper drafts a reminder without sending", true);
+
+  await page.locator('[aria-label="החלפת דמות"]').click();
+  await clickText("דנה");
+  if (await fab.count()) throw new Error("principal home shows the helper");
+  await clickText("ה'2");
+  if ((await fab.count()) !== 1) throw new Error("principal drill-down fab");
+  await fab.click();
+  await clickText("מה מצב הכיתה?");
+  const klass = await page.locator(".bubble.bot").last().innerText();
+  if (!klass.includes("פורסם") || !klass.includes("הוכן") || klass.includes("נועה") || klass.includes("עומר")) throw new Error(klass);
+  await layout("helper principal");
+  await axe("helper principal");
+  record("principal helper reports the class without child names", true);
 
   const manifest = await page.evaluate(async (root) => {
     const response = await fetch(new URL("manifest.webmanifest", root));

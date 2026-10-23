@@ -390,6 +390,46 @@
           person("par-tamar", "רותם ברק", "👩", "parent", { kidIds: ["k-tamar"], kin: "אמא" })
         ]);
         return pack("principal-demo", "הדגמה למנהל/ת – 3 דקות", "p-s-alon", people, [school("s-alon", "אלון", "דנה כהן", [h2, d1])], "📊");
+      })(),
+      (function () {
+        const tomorrow = S.nextSchoolDay(day);
+        const days = weekDates(today);
+        const prevA = days[3];
+        const prevB = days[4];
+        const homework = {};
+        homework[day] = {};
+        homework[day][SUB[0]] = post("עמ׳ 12");
+        homework[day][SUB[1]] = post("כתיב");
+        homework[day][SUB[3]] = none();
+        homework[tomorrow] = {};
+        homework[tomorrow][SUB[0]] = { mode: "post", text: "עמ׳ 18", photo: BOARD_PHOTO, photos: [BOARD_PHOTO], voice: BOARD_VOICE, voices: [{ src: BOARD_VOICE, text: "עמ׳ שמונה עשרה" }] };
+        homework[tomorrow][SUB[1]] = post("קריאה");
+        const done = {};
+        done[day] = {};
+        done[day][SUB[0]] = true;
+        [prevA, prevB].forEach(function (date) {
+          if (!date || date >= day || date === tomorrow) return;
+          homework[date] = {};
+          homework[date][SUB[0]] = post("חזרה");
+          done[date] = {};
+          done[date][SUB[0]] = true;
+        });
+        function weekdayKey(iso) {
+          const parts = String(iso).split("-").map(Number);
+          const index = new Date(parts[0], parts[1] - 1, parts[2]).getDay();
+          return index === 6 ? "5" : String(index);
+        }
+        const table = weekTable();
+        for (let index = 0; index < 6; index++) table[String(index)] = [SUB[0], SUB[1], SUB[2], SUB[3], "", ""];
+        table[weekdayKey(tomorrow)] = [SUB[0], SUB[1], SUB[3], "", "", ""];
+        const built = room("c-h2", "ה'2", "מיכל אביב", [kid("k-noa", "נועה", done), kid("k-omer", "עומר")], homework);
+        built.timetable = table;
+        built.helper = { face: "fox", name: "שועל הכיתה" };
+        built.messages = [
+          { id: "m-class", text: "מבחן ביום א׳", photo: "", voice: "", photos: [], voices: [], audience: "class", alert: false, at: 1000, bump: 1000, edited: false },
+          { id: "m-parents", text: "שיחת הורים ביום ג׳", photo: BOARD_PHOTO, voice: BOARD_VOICE, photos: [BOARD_PHOTO], voices: [{ src: BOARD_VOICE, text: "שיחה" }], audience: "parents", alert: false, at: 2000, bump: 2000, edited: false }
+        ];
+        return pack("helper", "שיחה עם עוזר הכיתה", "s-k-noa", corePeople(), [school("s-alon", "אלון", "דנה כהן", [built])], "🤖");
       })()
     ];
   }

@@ -285,6 +285,23 @@
     if (Number.isNaN(day)) return -1;
     return day === 6 ? 5 : day;
   }
+  function isoDate(date) {
+    return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+  }
+  function parseIso(value) {
+    const parts = String(value || "").split("-").map(Number);
+    if (parts.length < 3 || parts.some(function (n) { return Number.isNaN(n); })) return null;
+    const date = new Date(parts[0], parts[1] - 1, parts[2]);
+    if (date.getFullYear() !== parts[0] || date.getMonth() !== parts[1] - 1 || date.getDate() !== parts[2]) return null;
+    return date;
+  }
+  function nextSchoolDay(value) {
+    const date = parseIso(value);
+    if (!date) return "";
+    date.setDate(date.getDate() + 1);
+    if (date.getDay() === 6) date.setDate(date.getDate() + 1);
+    return isoDate(date);
+  }
   function subjectsFor(room, date) {
     const slots = room && room.timetable && room.timetable[String(weekdayOf(date))];
     if (!Array.isArray(slots)) return SUBJECTS.slice();
@@ -294,6 +311,22 @@
       if (name && names.indexOf(name) < 0) names.push(name);
     });
     return names.length ? names : SUBJECTS.slice();
+  }
+  const HELPER_FACES = { sun: 1, fox: 1, moon: 1, star: 1 };
+  function helperOf(room) {
+    const raw = room && room.helper;
+    const face = raw && HELPER_FACES[raw.face] ? raw.face : "sun";
+    const name = String(raw && raw.name || "").replace(/\s+/g, " ").trim().slice(0, 24);
+    return { face: face, name: name || "עוזר הכיתה" };
+  }
+  function setHelper(state, actor, input) {
+    const node = requireEdit(state, actor, { kind: "homework", classId: ownClassId(state, actor, input) });
+    const current = helperOf(node.room);
+    const face = input && HELPER_FACES[input.face] ? input.face : current.face;
+    const named = input && input.name != null ? input.name : current.name;
+    const name = String(named || "").replace(/\s+/g, " ").trim().slice(0, 24) || "עוזר הכיתה";
+    node.room.helper = { face: face, name: name };
+    return helperOf(node.room);
   }
   function ownClassId(state, actor, input) {
     let classId = input && input.classId;
@@ -519,7 +552,7 @@
       return finishPack({ v: 1, role, code: found.code, schools: [school] }, arguments[3]);
     }
     const room = found.room;
-    school.classrooms = [{
+    const packedRoom = {
       id: room.id,
       name: room.name,
       teacherName: room.teacherName,
@@ -528,7 +561,9 @@
       timetable: clone(room.timetable || {}),
       messages: clone(messagesFor(room, role)),
       kids: role === "teacher" ? clone(room.kids || []) : [kidSlice(found.kid, role)]
-    }];
+    };
+    if (room.helper) packedRoom.helper = helperOf(room);
+    school.classrooms = [packedRoom];
     return finishPack({ v: 1, role, code: found.code, schools: [school] }, arguments[3]);
   }
   function dropProfile(value) {
@@ -674,6 +709,7 @@
       });
       room.timetable = table;
     }
+    if (incoming.helper && typeof incoming.helper === "object") room.helper = helperOf({ helper: incoming.helper });
     if (Array.isArray(incoming.messages)) {
       room.messages = incoming.messages.slice(0, 80).map(function (item) {
         if (!item || typeof item !== "object") return null;
@@ -742,6 +778,9 @@
     resetCode,
     removeNode,
     statusOf,
+    nextSchoolDay,
+    helperOf,
+    setHelper,
     subjectsFor,
     setSlot,
     setHomework,

@@ -1,4 +1,5 @@
 const S = window.Nohw;
+const A = window.NohwAssist;
 const D = window.NohwDemo;
 const STORE = "nohw-simple-demo";
 const STATUS = { "not-updated": "לא עודכן", "no-homework": "אין שיעורים" };
@@ -32,6 +33,8 @@ let toastText = "";
 let toastTimer = 0;
 let heard = "";
 let recognition = null;
+let chatRec = null;
+let chatLog = [];
 
 function ico(d) {
   const paths = Array.isArray(d) ? d : [d];
@@ -62,6 +65,12 @@ function saveStore() {
 function render() {
   document.getElementById("app").innerHTML = html();
   if (view.recording) paintRecording();
+  if (view.chat) paintChat();
+  if (view.fillDraft) {
+    const input = document.querySelector('form input[name="text"]');
+    if (input) input.value = view.text || "";
+    view.fillDraft = false;
+  }
   if (!focusSuggested) return;
   focusSuggested = false;
   const picked = document.querySelector(".person.on");
@@ -76,7 +85,7 @@ function recordOverlay() {
 function shell(head, body) {
   const note = toastText ? '<p class="toast" role="status">' + esc(toastText) + "</p>" : "";
   const busy = view.recording ? " busy" : "";
-  return '<section class="app' + busy + '" lang="he" dir="rtl">' + head + body + recordOverlay() + sheetHtml() + note + "</section>";
+  return '<section class="app' + busy + '" lang="he" dir="rtl">' + head + body + recordOverlay() + sheetHtml() + helperFab() + note + "</section>";
 }
 function toast(text) {
   toastText = text;
@@ -134,6 +143,258 @@ function sheetHtml() {
   if (!who || !canPhoto(who)) return "";
   return '<div class="sheetscrim" data-act="close-sheet"></div><div class="sheet" role="dialog" aria-label="תמונת פרופיל"><div class="face big">' + faceHtml(who) + '</div><button type="button" data-act="avatar-cam">📷 צלם</button><button type="button" data-act="avatar-lib">🖼️ מהגלריה</button><button type="button" data-act="avatar-clear">הסר</button></div>';
 }
+function faceSvg(kind) {
+  const eyes = '<ellipse class="eye" cx="36" cy="42" rx="4" ry="5" fill="#1f2937"/><ellipse class="eye" cx="60" cy="42" rx="4" ry="5" fill="#1f2937"/>';
+  const mouth = '<path class="mouth" d="M38 60c6 8 14 8 20 0" fill="none" stroke="#1f2937" stroke-width="3" stroke-linecap="round"/>';
+  const head = {
+    sun: '<circle cx="48" cy="48" r="22" fill="#fbbf24"/>' + eyes + mouth + '<g stroke="#f59e0b" stroke-width="3" stroke-linecap="round"><path d="M48 8v8M48 80v8M8 48h8M80 48h8M18 18l6 6M72 72l6 6M78 18l-6 6M24 72l-6 6"/></g>',
+    fox: '<polygon points="20,44 30,16 40,42" fill="#e76f51"/><polygon points="76,44 66,16 56,42" fill="#e76f51"/><circle cx="48" cy="50" r="26" fill="#f4a261"/>' + eyes + mouth,
+    moon: '<circle cx="48" cy="48" r="26" fill="#fde68a"/><circle cx="60" cy="40" r="18" fill="#fff7e6"/>' + eyes + mouth,
+    star: '<polygon points="48,6 58,34 88,36 64,54 72,84 48,66 24,84 32,54 8,36 38,34" fill="#facc15"/>' + eyes + mouth
+  };
+  return '<svg class="helperface" viewBox="0 0 96 96" aria-hidden="true">' + (head[kind] || head.sun) + "</svg>";
+}
+function helperContext() {
+  if (!person) return null;
+  if (person.role === "student") {
+    const found = D.findKid(state, person.kidId);
+    return found ? { room: found.room } : null;
+  }
+  if (person.role === "parent") {
+    const ids = person.kidIds || [];
+    const found = ids.length ? D.findKid(state, ids[0]) : null;
+    return found ? { room: found.room } : null;
+  }
+  if (person.role === "teacher") {
+    const found = D.findClass(state, person.classId);
+    return found ? { room: found.room } : null;
+  }
+  if ((person.role === "principal" || person.role === "admin") && view.name === "kids" && view.classId) {
+    const found = D.findClass(state, view.classId);
+    if (!found) return null;
+    if (person.role === "principal" && person.schoolId && found.school.id !== person.schoolId) return null;
+    return { room: found.room };
+  }
+  return null;
+}
+function helperVisible() {
+  if (!person || view.chat) return false;
+  if (view.name === "start" || view.name === "people" || view.name === "data" || view.name === "live" || view.name === "reset") return false;
+  if (view.name === "form" || view.name === "edit" || view.name === "confirm") return false;
+  return !!helperContext();
+}
+function helperFab() {
+  const ctx = helperContext();
+  if (!helperVisible() || !ctx) return "";
+  const helper = S.helperOf(ctx.room);
+  return '<button class="helperfab" type="button" data-act="helper" aria-label="עוזר הכיתה">' + faceSvg(helper.face) + "</button>";
+}
+function helperWho() {
+  const ctx = helperContext();
+  if (!person || !ctx) return null;
+  return {
+    role: person.role,
+    classId: ctx.room.id,
+    kidId: person.kidId || "",
+    kidIds: person.role === "parent" ? (person.kidIds || []).slice() : []
+  };
+}
+function hush() {
+  if (window.speechSynthesis) {
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+  }
+  const face = document.querySelector(".chatsheet .helperface");
+  if (face) face.classList.remove("talking");
+}
+function speakAnswer(text) {
+  hush();
+  if (!view.readAloud || !window.speechSynthesis || !text) return;
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = "he-IL";
+  const face = document.querySelector(".chatsheet .helperface");
+  utter.onstart = function () { if (face) face.classList.add("talking"); };
+  utter.onend = function () { if (face) face.classList.remove("talking"); };
+  try { window.speechSynthesis.speak(utter); } catch (e) {}
+}
+function askHelper(opts) {
+  const who = helperWho();
+  if (!who || !A) return;
+  opts = opts || {};
+  const typed = String(opts.text || "").slice(0, 200);
+  const answer = A.ask(state, who, { intent: opts.intent || "", text: typed, today: D.schoolDay(today()) });
+  if (typed) chatLog.push({ role: "me", text: typed });
+  else if (opts.intent) {
+    const chip = A.chips(who.role).filter(function (item) { return item.id === opts.intent; })[0];
+    if (chip) chatLog.push({ role: "me", text: chip.label });
+  }
+  chatLog.push({ role: "bot", text: answer.text, photos: answer.photos || [], voices: answer.voices || [], draft: answer.draft || "" });
+  if (chatLog.length > 40) chatLog.splice(0, chatLog.length - 40);
+  view.chat = true;
+  render();
+  if (view.readAloud) speakAnswer(answer.text);
+}
+function paintChat() {
+  const ctx = helperContext();
+  const host = document.querySelector(".app");
+  if (!ctx || !host || !A) return;
+  const helper = S.helperOf(ctx.room);
+  const role = person.role;
+  const scrim = document.createElement("div");
+  scrim.className = "sheetscrim";
+  scrim.dataset.act = "close-chat";
+  const sheet = document.createElement("div");
+  sheet.className = "chatsheet";
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-modal", "true");
+  sheet.setAttribute("aria-label", helper.name);
+  sheet.lang = "he";
+  sheet.dir = "rtl";
+  const head = document.createElement("div");
+  head.className = "chathead";
+  head.insertAdjacentHTML("beforeend", faceSvg(helper.face));
+  const title = document.createElement("strong");
+  title.textContent = helper.name;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.dataset.act = "close-chat";
+  close.setAttribute("aria-label", "סגירה");
+  close.textContent = "✕";
+  head.appendChild(title);
+  head.appendChild(close);
+  const log = document.createElement("div");
+  log.className = "chatlog";
+  log.tabIndex = 0;
+  if (!chatLog.length) {
+    const hello = document.createElement("p");
+    hello.className = "bubble bot";
+    hello.textContent = "שלום, שואלים אותי על הכיתה.";
+    log.appendChild(hello);
+  }
+  chatLog.forEach(function (turn) {
+    const bubble = document.createElement("div");
+    bubble.className = "bubble " + (turn.role === "me" ? "me" : "bot");
+    const text = document.createElement("p");
+    text.textContent = turn.text || "";
+    bubble.appendChild(text);
+    (turn.photos || []).forEach(function (item) {
+      const src = srcOf(item);
+      if (!src && item.id) queueMedia(item.id);
+      if (!src) return;
+      const img = document.createElement("img");
+      img.alt = "תמונה";
+      img.src = src;
+      bubble.appendChild(img);
+    });
+    (turn.voices || []).forEach(function (item) {
+      const src = srcOf(item) || item.src || item.id || "";
+      if (!src && item.id) queueMedia(item.id);
+      const play = document.createElement("button");
+      play.type = "button";
+      play.className = "play";
+      play.dataset.act = "play";
+      play.dataset.voice = src;
+      play.setAttribute("aria-label", "השמעה");
+      play.textContent = "🎤 השמעה";
+      bubble.appendChild(play);
+      if (item.text) {
+        const said = document.createElement("p");
+        said.className = "said";
+        said.textContent = item.text;
+        bubble.appendChild(said);
+      }
+    });
+    if (turn.draft) {
+      const open = document.createElement("button");
+      open.type = "button";
+      open.dataset.act = "helper-draft";
+      open.textContent = "פתח בטיוטה";
+      bubble.appendChild(open);
+    }
+    log.appendChild(bubble);
+  });
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  A.chips(role).forEach(function (item) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.act = "helper-ask";
+    button.dataset.intent = item.id;
+    button.textContent = item.label;
+    chips.appendChild(button);
+  });
+  const form = document.createElement("form");
+  form.className = "askbox";
+  const input = document.createElement("input");
+  input.name = "q";
+  input.dir = "rtl";
+  input.maxLength = 200;
+  input.autocomplete = "off";
+  input.setAttribute("aria-label", "שאלה");
+  input.placeholder = "שאלה על הכיתה";
+  const send = document.createElement("button");
+  send.type = "submit";
+  send.textContent = "שאל";
+  form.appendChild(input);
+  form.appendChild(send);
+  const tools = document.createElement("div");
+  tools.className = "pair";
+  const read = document.createElement("button");
+  read.type = "button";
+  read.dataset.act = "helper-read";
+  read.setAttribute("aria-pressed", view.readAloud ? "true" : "false");
+  read.setAttribute("aria-label", "הקראה");
+  read.textContent = view.readAloud ? "הקראה פעילה" : "הקראה";
+  const mic = document.createElement("button");
+  mic.type = "button";
+  mic.dataset.act = "helper-mic";
+  mic.textContent = "🎤 דיבור";
+  tools.appendChild(read);
+  tools.appendChild(mic);
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = speechCtor() ? "הדפדפן עשוי להשתמש בשירות דיבור משלו" : "הדיבור לא זמין בדפדפן זה";
+  sheet.appendChild(head);
+  sheet.appendChild(log);
+  sheet.appendChild(chips);
+  sheet.appendChild(form);
+  sheet.appendChild(tools);
+  sheet.appendChild(hint);
+  if (S.canEdit(state, actor(), { kind: "homework", classId: ctx.room.id })) {
+    const settings = document.createElement("div");
+    settings.className = "helperset";
+    const label = document.createElement("span");
+    label.textContent = "הפנים של העוזר";
+    settings.appendChild(label);
+    ["sun", "fox", "moon", "star"].forEach(function (face) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.act = "helper-face";
+      button.dataset.face = face;
+      button.setAttribute("aria-label", face);
+      button.setAttribute("aria-pressed", helper.face === face ? "true" : "false");
+      button.insertAdjacentHTML("beforeend", faceSvg(face));
+      settings.appendChild(button);
+    });
+    const nameForm = document.createElement("form");
+    nameForm.className = "askbox helpername";
+    const name = document.createElement("input");
+    name.name = "helper-name";
+    name.dir = "rtl";
+    name.maxLength = 24;
+    name.setAttribute("aria-label", "שם העוזר");
+    name.value = helper.name;
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.textContent = "שמירת שם";
+    nameForm.appendChild(name);
+    nameForm.appendChild(save);
+    settings.appendChild(nameForm);
+    sheet.appendChild(settings);
+  }
+  host.appendChild(scrim);
+  host.appendChild(sheet);
+  log.scrollTop = log.scrollHeight;
+}
 function personForKid(id) {
   return people.find(function (item) { return item.role === "student" && item.kidId === id; }) || null;
 }
@@ -183,7 +444,16 @@ function remember(role, code) {
   else if (role === "teacher") people.push({ id: "t-" + found.room.id, name: found.room.teacherName, emoji: "📚", role: "teacher", schoolId: found.school.id, classId: found.room.id });
   else if (role === "student") people.push({ id: "s-" + found.kid.id, name: found.kid.firstName, emoji: "🎒", role: "student", schoolId: found.school.id, classId: found.room.id, kidId: found.kid.id });
 }
+function resetChat() {
+  chatLog = [];
+  hush();
+  if (chatRec) {
+    try { chatRec.onresult = null; chatRec.stop(); } catch (e) {}
+    chatRec = null;
+  }
+}
 function adopt(pack, next) {
+  resetChat();
   scenarioId = pack.id;
   scenarioTitle = pack.title || "";
   people = pack.people;
@@ -327,7 +597,7 @@ function chip(row) {
 function tick(row, live) {
   if (row.status !== "posted") return "";
   const mark = row.done ? ico(I.check) : "";
-  if (!live) return '<span class="tick' + (row.done ? " on" : "") + '" aria-label="' + (row.done ? "הוכן" : "לא הוכן") + '">' + mark + "</span>";
+  if (!live) return '<span class="tick' + (row.done ? " on" : "") + '" role="img" aria-label="' + (row.done ? "הוכן" : "לא הוכן") + '">' + mark + "</span>";
   return '<button class="tick' + (row.done ? " on" : "") + '" type="button" data-act="tick" data-subject="' + esc(row.subject) + '" aria-pressed="' + (row.done ? "true" : "false") + '" aria-label="הוכן">' + mark + "</button>";
 }
 function asPhotos(entry) {
@@ -649,7 +919,8 @@ function composeHtml() {
   const alertOn = !!view.alert;
   const picks = '<div class="pair"><button class="ghost' + (audience === "class" ? " on" : "") + '" type="button" data-act="audience" data-audience="class">כל הכיתה</button><button class="ghost' + (audience === "parents" ? " on" : "") + '" type="button" data-act="audience" data-audience="parents">הורים בלבד</button></div>';
   const alert = '<button class="ghost' + (alertOn ? " on" : "") + '" type="button" data-act="alert" aria-pressed="' + (alertOn ? "true" : "false") + '">התראה</button>';
-  return shell(bar(view.id ? "עריכת הודעה" : "הודעה חדשה"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="280" value="' + esc(view.text || "") + '" placeholder="הודעה" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, msgId: view.id || "" }) + pickButtons() + voicePanel() + picks + alert + err() + '<button class="primary" type="submit">' + (view.id ? "שמירה" : "שליחה") + "</button></form>");
+  const draftValue = view.fillDraft ? "" : esc(view.text || "");
+  return shell(bar(view.id ? "עריכת הודעה" : "הודעה חדשה"), '<form class="stack"><label class="field"><span>טקסט</span><input name="text" dir="rtl" maxlength="280" value="' + draftValue + '" placeholder="הודעה" aria-label="טקסט"></label>' + photoThumbs(view.photos, { remove: true, msgId: view.id || "" }) + pickButtons() + voicePanel() + picks + alert + err() + '<button class="primary" type="submit">' + (view.id ? "שמירה" : "שליחה") + "</button></form>");
 }
 function photoHtml() {
   return shell(bar("תמונה"), '<button class="frame" type="button" data-act="back"><img alt="תמונה" src="' + esc(view.src || "") + '"></button>');
@@ -1228,6 +1499,40 @@ function onClick(event) {
     return;
   }
   if (act === "close-sheet") { view.sheet = ""; view.avatarPick = false; render(); return; }
+  if (act === "helper") {
+    view.sheet = "";
+    view.chat = true;
+    render();
+    const field = document.querySelector(".chatsheet input[name='q']");
+    if (field) field.focus();
+    return;
+  }
+  if (act === "close-chat") { view.chat = false; hush(); render(); return; }
+  if (act === "helper-ask") { askHelper({ intent: el.dataset.intent || "" }); return; }
+  if (act === "helper-read") {
+    view.readAloud = !view.readAloud;
+    if (!view.readAloud) hush();
+    render();
+    return;
+  }
+  if (act === "helper-mic") { startChatMic(); return; }
+  if (act === "helper-face") {
+    const ctx = helperContext();
+    if (!ctx) return;
+    try { S.setHelper(state, actor(), { classId: ctx.room.id, face: el.dataset.face }); saveStore(); }
+    catch (e) { return; }
+    render();
+    return;
+  }
+  if (act === "helper-draft") {
+    let draft = "";
+    for (let i = chatLog.length - 1; i >= 0; i--) if (chatLog[i].draft) { draft = chatLog[i].draft; break; }
+    if (!draft || !person || person.role !== "teacher") return;
+    view.chat = false;
+    hush();
+    push({ name: "compose", classId: person.classId, text: draft, photos: [], voices: [], audience: "class", alert: false, fillDraft: true });
+    return;
+  }
   if (act === "avatar-cam") {
     const input = document.getElementById("face");
     if (input) input.click();
@@ -1263,6 +1568,7 @@ function onClick(event) {
   else if (act === "as-parent") {
     const who = people.find(function (item) { return item.id === el.dataset.id; });
     if (!who || who.role !== "parent") return;
+    resetChat();
     const prev = { name: view.name, personId: person && person.id || "" };
     ["schoolId", "classId", "kidId", "date", "subject", "kind", "id", "add", "title"].forEach(function (key) { if (view[key]) prev[key] = view[key]; });
     stack.push(prev);
@@ -1273,12 +1579,14 @@ function onClick(event) {
   } else if (act === "enter") {
     const who = people.find(function (item) { return item.id === el.dataset.id; });
     if (!who) return;
+    resetChat();
     person = who;
     stack = [];
     view = { name: "main" };
     saveStore();
     render();
   } else if (act === "cast") {
+    resetChat();
     person = null;
     roleFilter = "all";
     stack = [{ name: "start" }];
@@ -1435,9 +1743,56 @@ function onClick(event) {
     render();
   }
 }
+function startChatMic() {
+  const Ctor = speechCtor();
+  const hint = document.querySelector(".chatsheet .hint");
+  if (!Ctor) {
+    if (hint) hint.textContent = "הדיבור לא זמין בדפדפן זה";
+    return;
+  }
+  if (chatRec) {
+    try { chatRec.onresult = null; chatRec.stop(); } catch (e) {}
+    chatRec = null;
+    return;
+  }
+  try {
+    chatRec = new Ctor();
+    chatRec.lang = "he-IL";
+    chatRec.onresult = function (event) {
+      const field = document.querySelector(".chatsheet input[name='q']");
+      if (!field) return;
+      let said = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) said += event.results[i][0].transcript;
+      field.value = String(said || "").slice(0, 200);
+    };
+    chatRec.onend = function () { chatRec = null; };
+    chatRec.onerror = function () { chatRec = null; };
+    chatRec.start();
+  } catch (e) {
+    chatRec = null;
+    if (hint) hint.textContent = "הדיבור לא זמין בדפדפן זה";
+  }
+}
 function onSubmit(event) {
   event.preventDefault();
   if (view.recording) return;
+  if (event.target && event.target.classList.contains("helpername")) {
+    const ctx = helperContext();
+    const field = event.target.querySelector("input");
+    if (ctx && field) {
+      try { S.setHelper(state, actor(), { classId: ctx.room.id, name: field.value }); saveStore(); }
+      catch (e) { fail(e); return; }
+    }
+    render();
+    return;
+  }
+  if (event.target && event.target.classList.contains("askbox")) {
+    const field = event.target.querySelector("input");
+    const text = field ? field.value : "";
+    if (field) field.value = "";
+    askHelper({ text: text });
+    return;
+  }
   const data = new FormData(event.target);
   if (view.name === "post") {
     try { keepDraft(); homeworkInput("post", data.get("text")); saveStore(); haltMic(); view = stack.pop() || { name: "homework" }; }

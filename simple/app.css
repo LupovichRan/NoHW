@@ -580,8 +580,61 @@ svg.mirror { transform: scaleX(-1); }
 @keyframes recblink {
   50% { opacity: 0.2; }
 }
+.helperfab {
+  position: fixed;
+  z-index: 5;
+  width: 64px;
+  height: 64px;
+  inset-inline-start: 16px;
+  inset-block-end: calc(18px + env(safe-area-inset-bottom));
+  border: 3px solid #fff;
+  border-radius: 999px;
+  padding: 4px;
+  background: #fff7e8;
+  box-shadow: 0 8px 24px rgba(21, 32, 51, 0.18);
+}
+.helperfab .helperface { width: 100%; height: 100%; display: block; }
+.chatsheet {
+  position: fixed;
+  z-index: 8;
+  inset-inline: 10px;
+  inset-block-end: 10px;
+  max-height: min(82vh, 720px);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 16px 40px rgba(21, 32, 51, 0.2);
+}
+.chathead { display: flex; align-items: center; gap: 8px; }
+.chathead .helperface { width: 48px; height: 48px; flex: none; }
+.chathead strong { flex: 1; font-size: 18px; }
+.chathead button { width: 40px; height: 40px; border: 0; background: transparent; font-size: 18px; }
+.chatlog { display: flex; flex-direction: column; gap: 8px; overflow: auto; max-height: 38vh; }
+.bubble { max-width: 88%; padding: 8px 10px; border-radius: 16px; }
+.bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble.me { margin-inline-start: auto; background: #dbeafe; }
+.bubble.bot { margin-inline-end: auto; background: #f3f6ee; }
+.bubble img { width: 100%; max-height: 140px; object-fit: cover; border-radius: 10px; margin-top: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button, .askbox button, .chatsheet .pair button, .bubble .play, .bubble button { min-height: 40px; border: 1px solid var(--line); border-radius: 999px; background: #fff; font-weight: 700; padding: 6px 10px; }
+.askbox { display: flex; gap: 6px; }
+.askbox input { flex: 1; min-width: 0; min-height: 44px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; font: inherit; }
+.helperset { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.helperset > span { flex: 1 1 100%; font-weight: 700; }
+.helperset button { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: #fff; padding: 2px; }
+.helperset button[aria-pressed="true"] { border-color: #15803d; }
+.helperset .helperface { width: 100%; height: 100%; display: block; }
+.helpername { flex: 1 1 100%; }
+.helperface .eye { transform-box: fill-box; transform-origin: center; animation: helperblink 4.6s infinite; }
+.helperface.talking .mouth { transform-box: fill-box; transform-origin: center; animation: helpertalk 0.28s ease-in-out infinite; }
+@keyframes helperblink { 0%, 42%, 48%, 100% { transform: scaleY(1); } 45% { transform: scaleY(0.12); } }
+@keyframes helpertalk { 50% { transform: scaleY(1.7); } }
 @media (prefers-reduced-motion: reduce) {
-  .recdot { animation: none; }
+  .recdot, .helperface .eye, .helperface.talking .mouth { animation: none; }
 }
 .meter {
   height: 10px;

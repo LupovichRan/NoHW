@@ -42,7 +42,7 @@ assert.deepEqual(yael.kidIds, ["k-noa", "k-tamar"]);
 assert.notEqual(D.findKid(cast.state, "k-noa").room.id, D.findKid(cast.state, "k-tamar").room.id);
 
 const packs = [cast].concat(D.scenarios(today));
-assert.equal(D.scenarios(today).length, 13);
+assert.equal(D.scenarios(today).length, 14);
 for (const pack of packs) {
   assert.equal(pack.state.v, 1);
   assert.ok(Array.isArray(pack.people) && pack.people.length > 0);
@@ -53,7 +53,7 @@ for (const pack of packs) {
 }
 
 const byId = Object.fromEntries(D.scenarios(today).map((pack) => [pack.id, pack]));
-for (const id of ["normal", "stale", "none", "two", "add-class", "add-school", "hidden", "empty", "week", "board", "parents-msg", "bump-msg", "principal-demo"]) assert.ok(byId[id], id);
+for (const id of ["normal", "stale", "none", "two", "add-class", "add-school", "hidden", "empty", "week", "board", "parents-msg", "bump-msg", "principal-demo", "helper"]) assert.ok(byId[id], id);
 assert.equal(who(byId["principal-demo"], byId["principal-demo"].personId).role, "principal");
 assert.equal(byId["principal-demo"].state.schools[0].classrooms.length, 2);
 const demoLive = D.scopedLive(byId["principal-demo"].state, who(byId["principal-demo"], "p-s-alon"), today);

@@ -2,15 +2,15 @@
 
 Date: 23 October 2026. Build under test is the `simple` branch, the Hebrew PWA in `simple/`. Nothing was merged.
 
-The report covers the build after the approved product changes: a principal home with today's class numbers, live data scoped to the signed-in character, specific media errors, a one-tap teacher day, the renamed labels, a self-hosted Rubik font, and the three-minute principal scenario.
+The report covers the final build: the approved product changes (principal home, scoped live data, specific media errors, a one-tap teacher day, renamed labels, self-hosted Rubik, the three-minute principal scenario, profile photos) and the class assistant, עוזר הכיתה. The assistant answers only from the class data already on the device. It does not call a language model, use an API key, or open a network request.
 
 ## How it was run
 
-- Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`.
-- Browser walk at 390×844 in headless Chromium: `node tests/e2e/walk.mjs` against a local static server. 42 checks passed, 0 failed. WebKit is not installed in this environment, so that browser was not run.
-- axe-core on the start hub, the principal home, the timetable, a student day, and the message list. No serious or critical violations.
-- Lighthouse mobile, local server: performance 97, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA).
-- gitleaks 8.28.0 on the workspace, no leaks. `npm audit` in `tests/e2e` reported 0 vulnerabilities.
+- Logic and demo tests: `node tests/simple.cjs`, `node tests/simple-demo.cjs`, `node tests/media.cjs`, `node tests/assist.cjs`.
+- Browser walk at 390×844 in headless Chromium: `node tests/e2e/walk.mjs` against a local static server. 55 checks passed, 0 failed. WebKit is not installed in this environment, so that browser was not run.
+- axe-core on the start hub, the principal home, the timetable, a student day, the message list, the profile sheet, and the assistant chat as a student, a parent, and a principal. No serious or critical violations.
+- Lighthouse mobile, local server: performance 94, accessibility 100, best practices 100 (Lighthouse 12). PWA 100 (Lighthouse 11.7, the last release that still scores PWA).
+- gitleaks 8.28.0 on the current tree, no leaks. `npm audit` in `tests/e2e` reported 0 vulnerabilities.
 
 ## Pass / fail
 
@@ -29,6 +29,7 @@ The report covers the build after the approved product changes: a principal home
 | הודעה להורים בלבד | Pass |
 | עדכון והקפצת הודעה | Pass |
 | הדגמה למנהל/ת – 3 דקות | Pass |
+| שיחה עם עוזר הכיתה | Pass |
 | Character switching and the people filters | Pass |
 | Start screen: תרחישים, נתונים חיים, דמויות | Pass |
 | Scenario reset returns the seeded data | Pass |
@@ -46,7 +47,7 @@ The report covers the build after the approved product changes: a principal home
 | RTL (`dir=rtl`) and no horizontal overflow on every scenario | Pass |
 | Manifest, service worker, and a reload while offline | Pass |
 | axe-core, no serious or critical issues | Pass |
-| Lighthouse performance / accessibility / best practices / PWA | 96 / 100 / 100 / 100 |
+| Lighthouse performance / accessibility / best practices / PWA | 94 / 100 / 100 / 100 |
 | WebKit | Not run. The browser is not installed here. |
 | XSS payloads in a school name, a student name, homework text, a transcript, and a custom subject stay as text | Pass |
 | Content-Security-Policy and referrer policy | Pass |
@@ -59,6 +60,13 @@ The report covers the build after the approved product changes: a principal home
 | Profile photo: set, remove, emoji fallback, teacher may set a student, student cannot set someone else | Pass |
 | Profile photos stay out of a normal `#pack=` and are included only when a profile export is requested | Pass |
 | Service worker cache stays on the app's own directory | Pass |
+| Class assistant: each chip and the common phrasings map to one intent, and the answers match the seeded class | Pass |
+| A student does not receive another child's details, and a student does not see parents-only messages | Pass |
+| An unknown question returns «אני יודע רק מה שקשור לכיתה 😊» and the suggestion chips | Pass |
+| Chat text is set with `textContent`; an HTML payload in a question stays text and does not run | Pass |
+| A reminder draft fills the composer and is not sent until the teacher sends it | Pass |
+| Principal and admin class drill-down reports counts only, with no child names | Pass |
+| Assistant questions are kept in memory for the session and are not written to localStorage | Pass |
 
 ## Bugs found and fixed
 
@@ -71,13 +79,14 @@ The report covers the build after the approved product changes: a principal home
 7. Lighthouse's PWA score was 88 because the manifest had no maskable icon. The padded app icons are now also declared as maskable. The score is 100.
 8. The principal opened straight into class management, the teacher day had no whole-day clear and no save-and-next, and several labels still said מערכת, נתונים, or מנהל. Those are the approved product changes, and the checks above were run after them.
 9. People had only emoji avatars. Each person can now keep a square 256px profile photo in IndexedDB. You can change your own photo, and someone above you can change a person below them. A normal share pack does not include those photos.
+10. A parent's done mark was a `span` with `aria-label`, which axe rejects on a generic element. It is now `role="img"`, so the name is allowed and the chat sheet can sit on top of that screen without a serious violation.
 
 ## Remaining risks
 
 | Risk | Severity | Notes |
 | --- | --- | --- |
-| Web Speech may send audio to the browser's own speech service | Medium | The app does not upload homework. The recording screen says the browser may use its own speech service. Turning transcription off would remove the risk and also the transcript. |
+| Web Speech may send audio to the browser's own speech service | Medium | The app does not upload homework or chat text. Recording, read-aloud, and the assistant microphone use the browser's speech APIs. The recording screen and the chat say the browser may use its own speech service. |
 | A `#pack=` link can still change the local demo | Low | The pack cannot run code or pollute prototypes. It can merge names and homework into the on-device demo, which has no accounts. |
-| The page is drawn with `innerHTML` | Low | User-entered strings go through `esc()`. Scenario emoji are catalog data, not typed input. A later edit that interpolates a field without `esc()` would be an XSS bug. The CSP blocks injected scripts. |
+| Most of the page is drawn with `innerHTML` | Low | User-entered strings go through `esc()`. The assistant chat does not: questions, answers, and the helper name are set with `textContent`. A later edit that interpolates a field without `esc()` would be an XSS bug. The CSP blocks injected scripts. |
 | WebKit was not executed here | Low | Chromium at 390×844 passed, including the camera file input and the recording bar. A real iPhone pass is still the check for Safari's camera picker. |
 | The service worker caches later same-origin GETs inside its directory | Low | It does not cache other origins, and it does not cache the rest of `/NoHW/`. |
