@@ -78,6 +78,70 @@
     }
     return null;
   }
+  function locateClass(state, classId) {
+    if (!classId) return null;
+    for (const school of state.schools || []) {
+      for (const room of school.classrooms || []) {
+        if (room.id === classId) return { school, room };
+      }
+    }
+    return null;
+  }
+  function locateKid(state, kidId) {
+    if (!kidId) return null;
+    for (const school of state.schools || []) {
+      for (const room of school.classrooms || []) {
+        for (const kid of room.kids || []) {
+          if (kid.id === kidId) return { school, room, kid };
+        }
+      }
+    }
+    return null;
+  }
+  function resolveTarget(state, target) {
+    if (!target) return null;
+    if (target.kind === "school") {
+      const school = (state.schools || []).find(function (item) { return item.id === target.id; });
+      return school ? { school } : null;
+    }
+    if (target.kind === "class") {
+      if (target.id) return locateClass(state, target.id);
+      const school = (state.schools || []).find(function (item) { return item.id === target.schoolId; });
+      return school ? { school } : null;
+    }
+    if (target.kind === "homework") return locateClass(state, target.classId || target.id);
+    if (target.kind === "kid" || target.kind === "parent") {
+      if (target.id) return locateKid(state, target.id);
+      return locateClass(state, target.classId);
+    }
+    return null;
+  }
+  function actorScope(state, actor) {
+    if (!actor || actor.role === "student" || actor.role === "parent") return null;
+    if (actor.role === "admin") return { role: "admin" };
+    if (actor.role !== "principal" && actor.role !== "teacher") return null;
+    const found = locate(state, actor.code);
+    return found && found.role === actor.role ? found : null;
+  }
+  const EDIT = {
+    admin: { school: 1, class: 1, kid: 1, parent: 1, homework: 1 },
+    principal: { class: 1, kid: 1, parent: 1, homework: 1 },
+    teacher: { kid: 1, parent: 1, homework: 1 }
+  };
+  function canEdit(state, actor, target) {
+    const scope = actorScope(state, actor);
+    if (!scope || !target || !EDIT[scope.role][target.kind]) return false;
+    const node = resolveTarget(state, target);
+    if (!node) return false;
+    if (scope.role === "admin") return true;
+    if (!node.school || node.school.id !== scope.school.id) return false;
+    if (scope.role === "principal") return true;
+    return !!(node.room && scope.room && node.room.id === scope.room.id);
+  }
+  function requireEdit(state, actor, target) {
+    if (!canEdit(state, actor, target)) throw new Error("forbidden");
+    return resolveTarget(state, target);
+  }
   function addPrincipal(state, actor, input, random) {
     if (!actor || actor.role !== "admin") throw new Error("forbidden");
     const school = {
@@ -91,9 +155,12 @@
     return school.principalCode;
   }
   function addClassroom(state, actor, input, random) {
-    if (!actor || actor.role !== "principal") throw new Error("forbidden");
-    const found = locate(state, actor.code);
-    if (!found || found.role !== "principal") throw new Error("forbidden");
+    let schoolId = input && input.schoolId;
+    if (!schoolId && actor && actor.role === "principal") {
+      const found = locate(state, actor.code);
+      schoolId = found && found.role === "principal" ? found.school.id : "";
+    }
+    const node = requireEdit(state, actor, { kind: "class", schoolId });
     const room = {
       id: uid(random),
       name: textOf(input && input.className),
@@ -102,16 +169,20 @@
       homework: {},
       kids: []
     };
-    found.school.classrooms.push(room);
+    node.school.classrooms.push(room);
     return room.teacherCode;
   }
   function addKid(state, actor, input, random) {
-    if (!actor || actor.role !== "teacher") throw new Error("forbidden");
-    const found = locate(state, actor.code);
-    if (!found || found.role !== "teacher") throw new Error("forbidden");
+    let classId = input && input.classId;
+    if (!classId && actor && actor.role === "teacher") {
+      const found = locate(state, actor.code);
+      classId = found && found.role === "teacher" ? found.room.id : "";
+    }
+    const node = requireEdit(state, actor, { kind: "kid", classId });
+    if (!node.room) throw new Error("forbidden");
     const kidCode = uniqueCode(state, random);
     const parentCode = uniqueCode(state, random, new Set([kidCode]));
-    found.room.kids.push({
+    node.room.kids.push({
       id: uid(random),
       firstName: textOf(input && input.firstName),
       kidCode,
@@ -127,21 +198,65 @@
     return "not-updated";
   }
   function setHomework(state, actor, input) {
-    if (!actor || actor.role !== "teacher") throw new Error("forbidden");
-    const found = locate(state, actor.code);
-    if (!found || found.role !== "teacher") throw new Error("forbidden");
+    let classId = input && input.classId;
+    if (!classId && actor && actor.role === "teacher") {
+      const found = locate(state, actor.code);
+      classId = found && found.role === "teacher" ? found.room.id : "";
+    }
+    const node = requireEdit(state, actor, { kind: "homework", classId });
     const subject = input && input.subject;
     const date = input && input.date;
     if (!SUBJECTS.includes(subject) || !date) throw new Error("missing");
-    found.room.homework = found.room.homework || {};
-    found.room.homework[date] = found.room.homework[date] || {};
+    node.room.homework = node.room.homework || {};
+    node.room.homework[date] = node.room.homework[date] || {};
     if (input.mode === "none") {
-      found.room.homework[date][subject] = { mode: "none" };
+      node.room.homework[date][subject] = { mode: "none" };
       return;
     }
     const text = String((input && input.text) || "").trim();
     if (input.mode !== "post" || !text) throw new Error("missing");
-    found.room.homework[date][subject] = { mode: "post", text: text.slice(0, 80) };
+    node.room.homework[date][subject] = { mode: "post", text: text.slice(0, 80) };
+  }
+  function rename(state, actor, target) {
+    const node = requireEdit(state, actor, target);
+    if (target.kind === "school") {
+      node.school.name = textOf(target.name);
+      node.school.principalName = textOf(target.extra);
+      return;
+    }
+    if (target.kind === "class") {
+      if (!node.room) throw new Error("forbidden");
+      node.room.name = textOf(target.name);
+      node.room.teacherName = textOf(target.extra);
+      return;
+    }
+    if (target.kind === "kid") {
+      if (!node.kid) throw new Error("forbidden");
+      node.kid.firstName = textOf(target.name);
+      return;
+    }
+    throw new Error("forbidden");
+  }
+  function resetCode(state, actor, target, random) {
+    if (!target || (target.kind !== "school" && target.kind !== "class" && target.kind !== "kid" && target.kind !== "parent")) throw new Error("forbidden");
+    const node = requireEdit(state, actor, target);
+    if (target.kind === "class" && !node.room) throw new Error("forbidden");
+    if ((target.kind === "kid" || target.kind === "parent") && !node.kid) throw new Error("forbidden");
+    const code = uniqueCode(state, random);
+    if (target.kind === "school") node.school.principalCode = code;
+    else if (target.kind === "class") node.room.teacherCode = code;
+    else if (target.kind === "kid") node.kid.kidCode = code;
+    else node.kid.parentCode = code;
+    return code;
+  }
+  function removeNode(state, actor, target) {
+    if (!target || (target.kind !== "school" && target.kind !== "class" && target.kind !== "kid")) throw new Error("forbidden");
+    const node = requireEdit(state, actor, target);
+    if (target.kind === "class" && !node.room) throw new Error("forbidden");
+    if (target.kind === "kid" && !node.kid) throw new Error("forbidden");
+    if (target.kind === "school") state.schools = state.schools.filter(function (item) { return item.id !== node.school.id; });
+    else if (target.kind === "class") node.school.classrooms = node.school.classrooms.filter(function (item) { return item.id !== node.room.id; });
+    else node.room.kids = node.room.kids.filter(function (item) { return item.id !== node.kid.id; });
   }
   function rowsFor(room, date, kid) {
     const day = (room.homework || {})[date] || {};
@@ -329,6 +444,10 @@
     addPrincipal,
     addClassroom,
     addKid,
+    canEdit,
+    rename,
+    resetCode,
+    removeNode,
     statusOf,
     setHomework,
     rowsFor,

@@ -41,7 +41,7 @@ button { cursor: pointer; }
   color: inherit;
   text-align: start;
 }
-.role:active, .card:active, .primary:active, .ghost:active { transform: scale(0.985); }
+.role:active, .who:active, .icon:active, .primary:active, .ghost:active { transform: scale(0.985); }
 .badge {
   width: 48px;
   height: 48px;
@@ -53,6 +53,30 @@ button { cursor: pointer; }
   flex: none;
 }
 .role b, .card strong, .row strong { display: block; font-size: 20px; font-weight: 600; line-height: 1.2; }
+.who {
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: start;
+}
+.stack.fit { flex: none; }
+.stack.fit .primary { margin-top: 0; }
+.tools { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.code-line {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+}
+.code-line span { color: var(--muted); font-size: 14px; font-weight: 600; }
+.code-line b { font-size: 18px; letter-spacing: 0.08em; }
+.confirm { flex: 1; display: flex; flex-direction: column; }
+.ask { margin: auto; text-align: center; font-size: 32px; font-weight: 700; }
 .card small, .sub { display: block; margin-top: 2px; color: var(--muted); font-size: 13px; font-weight: 500; }
 .top { display: flex; flex-direction: row; align-items: center; gap: 10px; min-height: 56px; }
 .titles, .who { flex: 1; min-width: 0; text-align: start; }
