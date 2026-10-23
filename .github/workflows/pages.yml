@@ -24,12 +24,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Assemble site
+        run: |
+          rm -rf _site
+          mkdir -p _site
+          cp -a dist/. _site/
+          git fetch origin simple
+          git archive origin/simple simple | tar -x -C _site
       - name: Configure Pages
         uses: actions/configure-pages@v5
-      - name: Upload dist
+      - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: _site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
